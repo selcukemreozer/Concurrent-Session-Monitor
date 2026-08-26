@@ -48,18 +48,20 @@ export function safeId(id: unknown): string {
 /**
  * The D-01b store-location seam. Precedence (highest first):
  *   1. process.env.CSM_STORE_DIR            (test + power-user override)
- *   2. ${CLAUDE_PLUGIN_DATA}/csm            (persistent plugin data dir)
- *   3. ~/.claude/csm                        (per-user default)
+ *   2. ~/.claude/csm                        (per-user default)
  *
  * This is the single seam every hook and the panel resolve identically so all
- * processes agree on where the shards live.
+ * processes agree on where the shards live. CLAUDE_PLUGIN_DATA is deliberately
+ * NOT a tier: it is set only for processes Claude Code spawns as plugin hooks,
+ * so honoring it would resolve the store to `${CLAUDE_PLUGIN_DATA}/csm` for the
+ * capture hooks while the standalone panel (`node bin/csm.mjs`, no such env)
+ * resolved `~/.claude/csm` — writer and reader would never meet. Session shards
+ * are ephemeral (SessionEnd removes them; a stale mtime marks a shard inactive),
+ * so they do not need the update-surviving persistence CLAUDE_PLUGIN_DATA offers.
  */
 export function storeRoot(): string {
   const override = process.env.CSM_STORE_DIR;
   if (override) return override;
-
-  const pluginData = process.env.CLAUDE_PLUGIN_DATA;
-  if (pluginData) return path.join(pluginData, "csm");
 
   return path.join(os.homedir(), ".claude", "csm");
 }

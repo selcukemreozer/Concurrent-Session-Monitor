@@ -24,12 +24,13 @@ const FILE_MODE = 0o600;
 const SAFE_ID = /^[A-Za-z0-9._-]{1,128}$/;
 
 // D-01b store-location seam — identical precedence to src/paths.ts so every
-// process agrees on where the shards live.
+// process agrees on where the shards live: 1) CSM_STORE_DIR override, else
+// 2) ~/.claude/csm. CLAUDE_PLUGIN_DATA is deliberately NOT a tier — it is set
+// only for plugin-hook processes, so honoring it would split this writer's root
+// from the standalone panel's reader root.
 function storeRoot() {
   const override = process.env.CSM_STORE_DIR;
   if (override) return override;
-  const pluginData = process.env.CLAUDE_PLUGIN_DATA;
-  if (pluginData) return path.join(pluginData, "csm");
   return path.join(os.homedir(), ".claude", "csm");
 }
 

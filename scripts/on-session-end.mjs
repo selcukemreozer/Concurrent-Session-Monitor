@@ -14,12 +14,13 @@ import * as path from "node:path";
 // T-1-01: allowlist the untrusted session_id before it becomes a path segment.
 const SAFE_ID = /^[A-Za-z0-9._-]{1,128}$/;
 
-// D-01b store-location seam — identical precedence to src/paths.ts.
+// D-01b store-location seam — identical precedence to src/paths.ts: 1)
+// CSM_STORE_DIR override, else 2) ~/.claude/csm. CLAUDE_PLUGIN_DATA is
+// deliberately NOT a tier — it is set only for plugin-hook processes, so
+// honoring it would split this cleanup's root from the standalone panel's.
 function storeRoot() {
   const override = process.env.CSM_STORE_DIR;
   if (override) return override;
-  const pluginData = process.env.CLAUDE_PLUGIN_DATA;
-  if (pluginData) return path.join(pluginData, "csm");
   return path.join(os.homedir(), ".claude", "csm");
 }
 
