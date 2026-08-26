@@ -1,2 +1,4 @@
 session-conflict-tracker-handoff.md
 .planning/
+node_modules/
+dist/

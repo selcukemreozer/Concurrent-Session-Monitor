@@ -1,0 +1,23 @@
+{
+  "name": "concurrent-session-monitor",
+  "version": "0.1.0",
+  "description": "Real-time visibility into multiple parallel Claude Code sessions: which files each session is touching and what work is being done.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "ink": "^7.1.1",
+    "react": "^19"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "tsx": "^4",
+    "typescript": "^5.9",
+    "vitest": "^3"
+  }
+}
