@@ -35,8 +35,12 @@ export interface SessionState {
   source?: string;
   /** OS process id of the session (optional, D-05). */
   pid?: number;
-  /** True when running inside Warp or a similar host (optional, D-05). */
-  warp?: boolean;
+  /**
+   * Warp go-to-pane enrichment (optional, D-05/D-06). The SessionStart hook
+   * (01-03) writes `{ focus_url, session_uuid }` when running inside Warp, or
+   * `null` otherwise. The panel renders a clickable OSC-8 link from focus_url.
+   */
+  warp?: { focus_url?: string; session_uuid?: string } | null;
 }
 
 /**
