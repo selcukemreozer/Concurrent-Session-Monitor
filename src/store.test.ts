@@ -61,6 +61,13 @@ describe("writeSnapshot", () => {
 
     for (let i = 0; i < 200; i++) {
       writeSnapshot(dir, "session.json", { ...makeState("atomic-session"), seq: i });
+      // Yield to the event loop so the concurrent reader actually observes each
+      // freshly-renamed snapshot. Without a yield the writer loop is one
+      // uninterruptible synchronous burst and the reader gets zero turns while
+      // stop is false — i.e. it never reads a written file at all, which would
+      // make the torn===0 atomicity check vacuous. Yielding exercises the real
+      // temp+rename atomicity guarantee under concurrent reads.
+      await new Promise((r) => setImmediate(r));
     }
     stop = true;
     await reader;
