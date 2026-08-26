@@ -11,12 +11,12 @@
   },
   "dependencies": {
     "ink": "^7.1.1",
-    "react": "^19"
+    "react": "^19",
+    "tsx": "^4"
   },
   "devDependencies": {
     "@types/node": "^22",
     "@types/react": "^19",
-    "tsx": "^4",
     "typescript": "^5.9",
     "vitest": "^3"
   }
