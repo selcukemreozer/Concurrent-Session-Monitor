@@ -42,6 +42,50 @@ function readStdin() {
   }
 }
 
+// D-04 durable pid capture (RESEARCH Pattern 3): the transient shell ppid dies
+// long before the session does, so walk the ancestry to the persistent
+// `claude` process and record it plus a `ps -o lstart=` identity token the
+// 02-01 reader cross-checks against pid reuse (T-02-12). One ps snapshot, max
+// ~10 hops, hard 1000ms timeouts (T-02-13). Any failure falls back to
+// process.ppid + "" — the TTL remains the liveness safety net.
+function captureDurablePid() {
+  try {
+    const out = execFileSync("ps", ["-Ao", "pid=,ppid=,comm="], {
+      encoding: "utf8",
+      timeout: 1000,
+    });
+    const tbl = new Map();
+    for (const ln of out.split("\n")) {
+      const m = ln.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/);
+      if (m) tbl.set(Number(m[1]), { ppid: Number(m[2]), comm: m[3] });
+    }
+    let pid = process.ppid;
+    let hops = 0;
+    let chosen = process.ppid;
+    while (pid > 1 && hops++ < 10) {
+      const n = tbl.get(pid);
+      if (!n) break;
+      if (/claude/i.test(n.comm)) {
+        chosen = pid;
+        break;
+      }
+      pid = n.ppid;
+    }
+    let started = "";
+    try {
+      started = execFileSync("ps", ["-o", "lstart=", "-p", String(chosen)], {
+        encoding: "utf8",
+        timeout: 1000,
+      }).trim();
+    } catch {
+      started = "";
+    }
+    return { pid: chosen, pid_started: started };
+  } catch {
+    return { pid: process.ppid, pid_started: "" };
+  }
+}
+
 try {
   let payload;
   try {
@@ -77,6 +121,10 @@ try {
           }
         : null;
 
+    // D-04: durable claude-ancestor pid + identity token, captured off the hot
+    // path (this hook is async, WR-05).
+    const { pid, pid_started } = captureDurablePid();
+
     const record = {
       schema_version: SCHEMA_VERSION,
       session_id: id,
@@ -84,13 +132,15 @@ try {
       folder: path.basename(cwd), // D-05 human-friendly label
       branch,
       // Best-effort model — the SessionStart payload MAY carry it ("not
-      // guaranteed"); there is no $CLAUDE_MODEL. null when unknown.
-      model: (payload && payload.model) ?? null,
+      // guaranteed"); there is no $CLAUDE_MODEL. WR-02/D-09: use the "unknown"
+      // sentinel (never null) so the 02-01 reader has a single missing-value form.
+      model: (payload && payload.model) ?? "unknown",
       source: payload && payload.source,
       // ISO-8601 to match the cross-process reader contract (aggregate.ts sorts
       // via Date.parse(start_time)); NOT epoch ms.
       start_time: new Date().toISOString(),
-      pid: process.ppid, // captured for Phase 2 liveness (kill -0); unused now
+      pid, // D-04 durable claude-ancestor pid for Phase 2 liveness (kill -0)
+      pid_started, // D-04 `ps -o lstart=` identity token; "" when unavailable
       warp,
     };
 
