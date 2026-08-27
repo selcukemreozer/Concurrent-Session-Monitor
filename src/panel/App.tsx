@@ -19,6 +19,14 @@ const POLL_MS = 750;
  */
 const CARD_LINES = 4;
 
+/**
+ * Vertical lines the framed header box occupies: round border (top + bottom) +
+ * two content rows (the title/clock line and the summary line) + its
+ * `marginBottom`. Reserved from the terminal height so the overflow-to-compact
+ * switch (D-13) accounts for the taller framed header, not a single line.
+ */
+const HEADER_LINES = 5;
+
 /** Grace window (D-05, RESEARCH Open Q3): render a dead/vanished session dim-grey
  * as "ended" for ~1.2s (one–two poll ticks) BEFORE pruning it, so the user sees
  * it die rather than blink out. Env-gated for tuning/tests. */
@@ -114,6 +122,18 @@ function shortId(session_id: string): string {
 }
 
 /**
+ * Live wall-clock stamp `YYYY-MM-DD HH:MM:SS` (local time) for the header band.
+ * Recomputed on every render; since the ~750ms poll re-renders App each tick,
+ * the clock advances on its own with no dedicated timer — this is what gives the
+ * panel its "live" feel.
+ */
+function fmtClock(now: number): string {
+  const d = new Date(now);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+/**
  * The live cross-session panel (PANEL-01, PANEL-03, PANEL-05).
  *
  * Seeds its rows from a synchronous `readAll()` on mount, then arms a ~750ms
@@ -145,15 +165,31 @@ export function App() {
     return () => clearInterval(timer);
   }, []);
 
-  const { rows: termRows } = useWindowSize();
-  const capacity = Math.max(1, termRows - 1); // reserve one line for the header
+  const { rows: termRows, columns: termCols } = useWindowSize();
+  const capacity = Math.max(1, termRows - HEADER_LINES);
   const compact = state.display.length * CARD_LINES > capacity;
 
-  const header = sanitize(`${state.live} live · ${state.idle} idle · 0 conflicts`);
+  const summary = sanitize(`${state.live} live · ${state.idle} idle · 0 conflicts`);
+  const clock = sanitize(fmtClock(Date.now()));
 
   return (
     <Box flexDirection="column">
-      <Text>{header}</Text>
+      <Box
+        flexDirection="column"
+        borderStyle="round"
+        borderColor="cyan"
+        paddingX={1}
+        marginBottom={1}
+        width={termCols}
+      >
+        <Box justifyContent="space-between">
+          <Text bold color="cyan">
+            {"◆ Concurrent Session Monitor"}
+          </Text>
+          <Text dimColor>{clock}</Text>
+        </Box>
+        <Text>{summary}</Text>
+      </Box>
       {state.display.map((d) =>
         d.ended ? (
           <Text key={d.id} dimColor color="grey">
