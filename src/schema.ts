@@ -25,7 +25,11 @@ export interface SessionState {
   folder: string;
   /** Current git branch, or a best-effort placeholder. */
   branch: string;
-  /** Model id/name, or "unknown" when the hook can't determine it. */
+  /**
+   * Model id/name as a plain string; the sentinel is the literal string
+   * "unknown" when the hook can't determine it (WR-02, D-09). The reader never
+   * handles a null here — an absent model is always the "unknown" string.
+   */
   model: string;
   /** Session start time as an ISO-8601 string. */
   start_time: string;
@@ -35,6 +39,18 @@ export interface SessionState {
   source?: string;
   /** OS process id of the session (optional, D-05). */
   pid?: number;
+  /**
+   * ISO-8601 timestamp of the last heartbeat (optional, LIFE-01). The reader
+   * (`resolveLastSeen`) prefers the on-disk `heartbeat` sidecar and falls back
+   * to newest touch / `start_time` when this and the sidecar are absent.
+   */
+  last_seen?: string;
+  /**
+   * The `ps -o lstart=` start-time identity token captured at SessionStart,
+   * guarding against PID reuse (optional, LIFE-01/D-01). A soft guard only —
+   * the TTL stays authoritative when it is empty or cannot be re-derived.
+   */
+  pid_started?: string;
   /**
    * Warp go-to-pane enrichment (optional, D-05/D-06). The SessionStart hook
    * (01-03) writes `{ focus_url, session_uuid }` when running inside Warp, or
