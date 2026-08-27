@@ -156,17 +156,24 @@ export function readAll(
     // process -> the verdict is "dead", so a zombie can neither render active nor
     // dodge prune. The started-probe is injected (defaults to `ps -o lstart=`) so
     // this stays testable without spawning real long-lived processes.
-    const procAlive =
-      isProcessAlive(state.pid, probe, state.pid_started, startedProbe) === "alive";
+    const verdict = isProcessAlive(state.pid, probe, state.pid_started, startedProbe);
+    const procAlive = verdict === "alive";
+    // "dead" is authoritative negative evidence: a KNOWN pid that probes gone
+    // (ESRCH) or is a proven reuse (pid_started mismatch). "unknown" is NOT — it
+    // means SessionStart could not capture a trustworthy pid (WR-01 sentinel),
+    // so the reader must defer to the TTL/heartbeat for the dot rather than
+    // asserting "stale" and mislabelling a genuinely-live session.
+    const procDead = verdict === "dead";
     const alive = fresh || procAlive; // shown while EITHER says alive (SC-4)
-    const readyToPrune = !fresh && !procAlive; // D-06: dead AND stale (SC-3)
+    const readyToPrune = !fresh && !procAlive; // D-06: dead/unknown AND stale (SC-3)
 
-    // dotState (D-12): kill -0-fail takes precedence over touch recency. A dead
-    // probe (or stale heartbeat) forces "stale" even when last_active is recent
-    // and the heartbeat is fresh — this is the SC-4 phantom-dot guard. Key off
-    // procAlive/fresh directly, NOT the TTL-authoritative `alive` flag.
+    // dotState (D-12): an authoritative-dead pid (or stale heartbeat) forces
+    // "stale" even when last_active is recent and the heartbeat is fresh — the
+    // SC-4 phantom-dot guard. An "unknown" pid does NOT force stale: with no
+    // trustworthy pid the TTL/heartbeat is the liveness authority for the dot
+    // (WR-01). Key off procDead/fresh directly, NOT the TTL `alive` flag.
     let dotState: "active" | "idle" | "stale";
-    if (!fresh || !procAlive) {
+    if (!fresh || procDead) {
       dotState = "stale";
     } else {
       const touchMs = lastActive ? Date.parse(lastActive) : NaN;

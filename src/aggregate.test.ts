@@ -251,3 +251,37 @@ describe("readAll PID-reuse guard (CR-01 / WR-03)", () => {
     expect(row.dotState).toBe("active");
   });
 });
+
+// RED (02-02 fix, WR-01): when SessionStart could not capture a trustworthy pid
+// it writes no `pid` (the sentinel). The reader must then defer to the
+// TTL/heartbeat for the dot rather than forcing "stale" on the missing probe —
+// otherwise a genuinely-active session shows grey.
+describe("readAll no-pid sentinel defers to TTL (WR-01)", () => {
+  // deadProbe would be consulted only if a pid existed; here there is none, so
+  // isProcessAlive short-circuits to "unknown" and never calls it.
+  it("no pid + fresh heartbeat + recent touch => dot 'active', not 'stale'", () => {
+    process.env.CSM_ACTIVE_MS = "30000";
+    const now = Date.now();
+    const dir = seedSession("nopid-live", new Date(now).toISOString(), {
+      heartbeat: new Date(now).toISOString(), // fresh, no pid seeded
+    });
+    appendTouch(dir, { file_path: "/repo/a.ts", ts: new Date(now - 5_000).toISOString() });
+
+    const row = readAll(now, deadProbe).find((r) => r.session_id === "nopid-live")!;
+    expect(row.dotState).toBe("active");
+    expect(row.alive).toBe(true);
+  });
+
+  it("no pid + stale heartbeat => not alive, readyToPrune, dot 'stale'", () => {
+    process.env.CSM_STALE_MS = "120000";
+    const now = Date.now();
+    seedSession("nopid-dead", new Date(now - 600_000).toISOString(), {
+      heartbeat: new Date(now - 200_000).toISOString(), // older than staleMs
+    });
+
+    const row = readAll(now, deadProbe).find((r) => r.session_id === "nopid-dead")!;
+    expect(row.alive).toBe(false);
+    expect(row.readyToPrune).toBe(true);
+    expect(row.dotState).toBe("stale");
+  });
+});

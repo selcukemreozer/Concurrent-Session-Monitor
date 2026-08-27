@@ -46,8 +46,17 @@ function readStdin() {
 // long before the session does, so walk the ancestry to the persistent
 // `claude` process and record it plus a `ps -o lstart=` identity token the
 // 02-01 reader cross-checks against pid reuse (T-02-12). One ps snapshot, max
-// ~10 hops, hard 1000ms timeouts (T-02-13). Any failure falls back to
-// process.ppid + "" — the TTL remains the liveness safety net.
+// ~10 hops, hard 1000ms timeouts (T-02-13).
+//
+// WR-01: only persist a pid we can stand behind. When the walk positively
+// confirms a `claude` ancestor, that pid is durable. When it does NOT (comm
+// often reads `node`, or the hook is spawned under a short-lived `sh -c`
+// wrapper), `process.ppid` may be a transient shell that exits moments later —
+// persisting it would make the 02-01 reader probe a dead pid and mislabel a
+// live session "stale". So for an unconfirmed pid we verify it is still alive
+// at capture time; if it is already gone we record a SENTINEL (pid undefined)
+// and let the reader fall back to TTL-only for the dot. The TTL is always the
+// liveness safety net.
 function captureDurablePid() {
   try {
     const out = execFileSync("ps", ["-Ao", "pid=,ppid=,comm="], {
@@ -62,14 +71,25 @@ function captureDurablePid() {
     let pid = process.ppid;
     let hops = 0;
     let chosen = process.ppid;
+    let confirmed = false;
     while (pid > 1 && hops++ < 10) {
       const n = tbl.get(pid);
       if (!n) break;
       if (/claude/i.test(n.comm)) {
         chosen = pid;
+        confirmed = true;
         break;
       }
       pid = n.ppid;
+    }
+    // Unconfirmed pid: never persist an already-dead wrapper. kill -0 verifies
+    // liveness at capture; if it throws the pid is gone -> record the sentinel.
+    if (!confirmed) {
+      try {
+        process.kill(chosen, 0);
+      } catch {
+        return { pid: undefined, pid_started: "" };
+      }
     }
     let started = "";
     try {
@@ -82,7 +102,8 @@ function captureDurablePid() {
     }
     return { pid: chosen, pid_started: started };
   } catch {
-    return { pid: process.ppid, pid_started: "" };
+    // No trustworthy pid available -> sentinel; the reader defers to the TTL.
+    return { pid: undefined, pid_started: "" };
   }
 }
 
@@ -139,7 +160,11 @@ try {
       // ISO-8601 to match the cross-process reader contract (aggregate.ts sorts
       // via Date.parse(start_time)); NOT epoch ms.
       start_time: new Date().toISOString(),
-      pid, // D-04 durable claude-ancestor pid for Phase 2 liveness (kill -0)
+      // D-04 durable claude-ancestor pid for Phase 2 liveness (kill -0). Omitted
+      // entirely (WR-01 sentinel) when no trustworthy pid could be captured, so
+      // the reader sees no pid and defers to the TTL rather than probing a
+      // possibly-transient wrapper.
+      ...(typeof pid === "number" ? { pid } : {}),
       pid_started, // D-04 `ps -o lstart=` identity token; "" when unavailable
       warp,
     };
