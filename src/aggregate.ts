@@ -9,7 +9,9 @@ import {
   staleMs,
   activeMs,
   defaultProbe,
+  defaultStartedProbe,
   type Probe,
+  type StartedProbe,
 } from "./liveness.js";
 
 /**
@@ -117,7 +119,11 @@ function activeFiles(dir: string, now: number): { files: ActiveFile[]; lastActiv
  * self-heals on the next tick. Returns an empty array when the store dir does
  * not exist yet.
  */
-export function readAll(now: number = Date.now(), probe: Probe = defaultProbe): SessionRow[] {
+export function readAll(
+  now: number = Date.now(),
+  probe: Probe = defaultProbe,
+  startedProbe: StartedProbe = defaultStartedProbe,
+): SessionRow[] {
   const root = sessionsDir();
 
   let ids: string[];
@@ -144,10 +150,14 @@ export function readAll(now: number = Date.now(), probe: Probe = defaultProbe): 
     const heartbeatMs = resolveLastSeen(dir);
     const lastSeenMs = heartbeatMs ?? Date.parse(lastActive ?? state.start_time);
     const fresh = now - lastSeenMs < staleMs(); // TTL authoritative (D-07)
-    // pid_started is a soft PID-reuse guard only: re-deriving the OS start-time
-    // is outside the pure reducer, so we trust the probe result and let the TTL
-    // stay authoritative (a mismatch/absence never blocks the roster).
-    const procAlive = isProcessAlive(state.pid, probe) === "alive";
+    // PID-reuse guard (CR-01/WR-03): consult the captured `pid_started` identity
+    // token. When the pid probes alive but its re-derived start-time differs from
+    // what SessionStart recorded, the numeric pid has been recycled by another
+    // process -> the verdict is "dead", so a zombie can neither render active nor
+    // dodge prune. The started-probe is injected (defaults to `ps -o lstart=`) so
+    // this stays testable without spawning real long-lived processes.
+    const procAlive =
+      isProcessAlive(state.pid, probe, state.pid_started, startedProbe) === "alive";
     const alive = fresh || procAlive; // shown while EITHER says alive (SC-4)
     const readyToPrune = !fresh && !procAlive; // D-06: dead AND stale (SC-3)
 

@@ -76,6 +76,53 @@ describe("isProcessAlive", () => {
     expect(child.pid).toBeGreaterThan(0);
     expect(isProcessAlive(child.pid)).toBe("dead");
   });
+
+  // --- PID-reuse identity guard (CR-01/WR-03), pure injected started-probe ---
+
+  it("reuse: alive probe + mismatched started token => 'dead' (pid recycled)", () => {
+    const verdict = isProcessAlive(
+      1234,
+      () => "alive",
+      "Mon Jan  1 00:00:00 2020",
+      () => "Wed Aug 27 09:00:00 2026", // a different process now holds pid 1234
+    );
+    expect(verdict).toBe("dead");
+  });
+
+  it("identity: alive probe + matching started token => 'alive'", () => {
+    const token = "Mon Jan  1 00:00:00 2020";
+    expect(isProcessAlive(1234, () => "alive", token, () => token)).toBe("alive");
+  });
+
+  it("soft miss: alive probe + empty re-derived token => 'alive' (TTL decides)", () => {
+    let calls = 0;
+    const started = (): string => {
+      calls++;
+      return ""; // cannot re-derive (pid gone / ps unavailable)
+    };
+    expect(isProcessAlive(1234, () => "alive", "Mon Jan  1 00:00:00 2020", started)).toBe("alive");
+    expect(calls).toBe(1);
+  });
+
+  it("no expectedStarted: identity check is skipped, started-probe never called", () => {
+    let calls = 0;
+    const started = (): string => {
+      calls++;
+      return "whatever";
+    };
+    expect(isProcessAlive(1234, () => "alive", undefined, started)).toBe("alive");
+    expect(calls).toBe(0);
+  });
+
+  it("dead base probe short-circuits before the identity check", () => {
+    let calls = 0;
+    const started = (): string => {
+      calls++;
+      return "whatever";
+    };
+    expect(isProcessAlive(1234, () => "dead", "Mon Jan  1 00:00:00 2020", started)).toBe("dead");
+    expect(calls).toBe(0);
+  });
 });
 
 describe("staleMs", () => {

@@ -165,3 +165,89 @@ describe("readAll liveness (SC-3 / SC-4 / dot state)", () => {
     expect(row.dotState).toBe("idle");
   });
 });
+
+// RED (02-01 fix, CR-01/WR-03): the reader must consult the captured
+// `pid_started` identity token so a numeric pid reused by an unrelated live
+// process cannot masquerade as the original session. `aliveProbe` models the
+// reused pid still answering kill -0; the injected started-probe returns a
+// DIFFERENT start-time than what SessionStart recorded.
+const reusedStartedProbe = (): string => "Wed Aug 27 09:00:00 2026";
+const matchingStartedProbe =
+  (token: string) =>
+  (): string =>
+    token;
+
+describe("readAll PID-reuse guard (CR-01 / WR-03)", () => {
+  const ORIG = "Mon Jan  1 00:00:00 2020"; // start-time captured at SessionStart
+
+  it("WR-03: reused pid + stale heartbeat => not alive, readyToPrune, dot not active", () => {
+    process.env.CSM_STALE_MS = "120000";
+    process.env.CSM_ACTIVE_MS = "30000";
+    const now = Date.now();
+    // Stale heartbeat (older than staleMs); the pid still answers alive but its
+    // start-time no longer matches -> a recycled pid, i.e. a zombie shard.
+    const dir = seedSession("zombie", new Date(now - 600_000).toISOString(), {
+      pid: 1234,
+      pid_started: ORIG,
+      heartbeat: new Date(now - 200_000).toISOString(),
+    });
+    appendTouch(dir, { file_path: "/repo/z.ts", ts: new Date(now - 5_000).toISOString() });
+
+    const row = readAll(now, aliveProbe, reusedStartedProbe).find(
+      (r) => r.session_id === "zombie",
+    )!;
+    expect(row.alive).toBe(false);
+    expect(row.readyToPrune).toBe(true);
+    expect(row.dotState).not.toBe("active");
+  });
+
+  it("CR-01: reused pid + fresh heartbeat + recent touch => dot 'stale', never 'active'", () => {
+    process.env.CSM_ACTIVE_MS = "30000";
+    const now = Date.now();
+    const dir = seedSession("phantom-reuse", new Date(now).toISOString(), {
+      pid: 1234,
+      pid_started: ORIG,
+      heartbeat: new Date(now).toISOString(), // fresh
+    });
+    // A touch well within the active window — would read "active" if the reused
+    // pid were trusted.
+    appendTouch(dir, { file_path: "/repo/x.ts", ts: new Date(now - 5_000).toISOString() });
+
+    const row = readAll(now, aliveProbe, reusedStartedProbe).find(
+      (r) => r.session_id === "phantom-reuse",
+    )!;
+    expect(row.dotState).toBe("stale"); // reused pid cannot render green
+    expect(row.dotState).not.toBe("active");
+  });
+
+  it("identity match: same start-time keeps a live session active (no false positive)", () => {
+    process.env.CSM_ACTIVE_MS = "30000";
+    const now = Date.now();
+    const dir = seedSession("genuine", new Date(now).toISOString(), {
+      pid: 1234,
+      pid_started: ORIG,
+      heartbeat: new Date(now).toISOString(),
+    });
+    appendTouch(dir, { file_path: "/repo/a.ts", ts: new Date(now - 5_000).toISOString() });
+
+    const row = readAll(now, aliveProbe, matchingStartedProbe(ORIG)).find(
+      (r) => r.session_id === "genuine",
+    )!;
+    expect(row.dotState).toBe("active");
+    expect(row.readyToPrune).toBe(false);
+  });
+
+  it("soft miss: an empty re-derived token never blocks the roster (TTL decides)", () => {
+    process.env.CSM_ACTIVE_MS = "30000";
+    const now = Date.now();
+    const dir = seedSession("soft", new Date(now).toISOString(), {
+      pid: 1234,
+      pid_started: ORIG,
+      heartbeat: new Date(now).toISOString(),
+    });
+    appendTouch(dir, { file_path: "/repo/a.ts", ts: new Date(now - 5_000).toISOString() });
+
+    const row = readAll(now, aliveProbe, () => "").find((r) => r.session_id === "soft")!;
+    expect(row.dotState).toBe("active");
+  });
+});

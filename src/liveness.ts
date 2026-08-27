@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { execFileSync } from "node:child_process";
 import { numEnv } from "./env.js";
 
 /**
@@ -12,6 +13,30 @@ import { numEnv } from "./env.js";
 
 /** A pid probe: reports whether an OS process currently exists. */
 export type Probe = (pid: number) => "alive" | "dead";
+
+/**
+ * A started-time probe: re-derives a pid's OS start-time identity token
+ * (`ps -o lstart=`). Returns "" when it cannot be derived (pid gone, ps
+ * unavailable) — an empty token is a soft miss, never a mismatch.
+ */
+export type StartedProbe = (pid: number) => string;
+
+/**
+ * The default started-time probe: `ps -o lstart= -p <pid>`, matching exactly
+ * what the SessionStart hook captured into `pid_started`. Any failure yields ""
+ * so the caller treats it as "cannot re-derive" (TTL stays authoritative), not
+ * as a reuse mismatch. Hard 1000ms timeout mirrors the writer (T-02-13).
+ */
+export function defaultStartedProbe(pid: number): string {
+  try {
+    return execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], {
+      encoding: "utf8",
+      timeout: 1000,
+    }).trim();
+  } catch {
+    return "";
+  }
+}
 
 /**
  * The default probe: `kill -0` semantics verified locally.
@@ -36,13 +61,28 @@ export function defaultProbe(pid: number): "alive" | "dead" {
  *
  * A non-integer, `<= 0`, or `undefined` pid returns "unknown" WITHOUT calling
  * the probe — the caller then defers entirely to the TTL.
+ *
+ * PID-reuse guard (CR-01/WR-03): when the base probe says "alive" AND an
+ * `expectedStarted` identity token was captured at SessionStart, re-derive the
+ * pid's current start-time. A non-empty re-derived token that DIFFERS means the
+ * numeric pid has been recycled by an unrelated process — report "dead" so a
+ * reused pid can never masquerade as the original session. An empty re-derived
+ * token (cannot probe) is a soft miss: keep "alive" and let the TTL decide.
+ * `startedProbe` is injectable so tests stay pure — no real long-lived process.
  */
 export function isProcessAlive(
   pid: number | undefined,
   probe: Probe = defaultProbe,
+  expectedStarted?: string,
+  startedProbe: StartedProbe = defaultStartedProbe,
 ): "alive" | "dead" | "unknown" {
   if (typeof pid !== "number" || !Number.isInteger(pid) || pid <= 0) return "unknown";
-  return probe(pid);
+  if (probe(pid) !== "alive") return "dead";
+  if (expectedStarted) {
+    const current = startedProbe(pid);
+    if (current && current !== expectedStarted) return "dead"; // pid reused
+  }
+  return "alive";
 }
 
 /**
