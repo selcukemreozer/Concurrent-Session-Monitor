@@ -2,6 +2,14 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { sessionsDir } from "./paths.js";
 import type { SessionState, TouchEvent } from "./schema.js";
+import {
+  isProcessAlive,
+  resolveLastSeen,
+  staleMs,
+  activeMs,
+  defaultProbe,
+  type Probe,
+} from "./liveness.js";
 
 /**
  * The rolling active window (D-02), config-adjustable via CSM_WINDOW_MS.
@@ -24,6 +32,23 @@ export type SessionRow = SessionState & {
   files: ActiveFile[];
   /** Newest surviving touch ts (ISO-8601), or undefined if no active files. */
   last_active?: string;
+  /** Resolved last-seen ts (ISO-8601) from the heartbeat sidecar, when present. */
+  last_seen?: string;
+  /**
+   * Whether the session is shown at all (LIFE-01). TTL-authoritative:
+   * `fresh || procAlive` — a fresh heartbeat keeps a row alive even when its
+   * captured pid probes dead (SC-4).
+   */
+  alive: boolean;
+  /** D-06 conjunction: heartbeat stale AND process gone. Consumed by the panel's prune path. */
+  readyToPrune: boolean;
+  /**
+   * The status dot (D-12). A dead pid probe (or stale heartbeat) ALWAYS forces
+   * "stale" (grey) — it keys off procAlive/fresh directly, never the
+   * TTL-authoritative `alive` flag — so a dead-but-fresh row can never show
+   * "active" (the SC-4 phantom guard at the compute layer).
+   */
+  dotState: "active" | "idle" | "stale";
 };
 
 /**
@@ -91,7 +116,7 @@ function activeFiles(dir: string, now: number): { files: ActiveFile[]; lastActiv
  * self-heals on the next tick. Returns an empty array when the store dir does
  * not exist yet.
  */
-export function readAll(now: number = Date.now()): SessionRow[] {
+export function readAll(now: number = Date.now(), probe: Probe = defaultProbe): SessionRow[] {
   const root = sessionsDir();
 
   let ids: string[];
@@ -112,7 +137,41 @@ export function readAll(now: number = Date.now()): SessionRow[] {
     }
 
     const { files, lastActive } = activeFiles(dir, now);
-    rows.push({ ...state, files, last_active: lastActive });
+
+    // --- Liveness reduction (D-01/D-06/D-12), pure — NO disk mutation here.
+    // last_seen priority: heartbeat sidecar -> newest active touch -> start_time.
+    const heartbeatMs = resolveLastSeen(dir);
+    const lastSeenMs = heartbeatMs ?? Date.parse(lastActive ?? state.start_time);
+    const fresh = now - lastSeenMs < staleMs(); // TTL authoritative (D-07)
+    // pid_started is a soft PID-reuse guard only: re-deriving the OS start-time
+    // is outside the pure reducer, so we trust the probe result and let the TTL
+    // stay authoritative (a mismatch/absence never blocks the roster).
+    const procAlive = isProcessAlive(state.pid, probe) === "alive";
+    const alive = fresh || procAlive; // shown while EITHER says alive (SC-4)
+    const readyToPrune = !fresh && !procAlive; // D-06: dead AND stale (SC-3)
+
+    // dotState (D-12): kill -0-fail takes precedence over touch recency. A dead
+    // probe (or stale heartbeat) forces "stale" even when last_active is recent
+    // and the heartbeat is fresh — this is the SC-4 phantom-dot guard. Key off
+    // procAlive/fresh directly, NOT the TTL-authoritative `alive` flag.
+    let dotState: "active" | "idle" | "stale";
+    if (!fresh || !procAlive) {
+      dotState = "stale";
+    } else {
+      const touchMs = lastActive ? Date.parse(lastActive) : NaN;
+      const recentTouch = !Number.isNaN(touchMs) && now - touchMs < activeMs();
+      dotState = recentTouch ? "active" : "idle";
+    }
+
+    rows.push({
+      ...state,
+      files,
+      last_active: lastActive,
+      last_seen: heartbeatMs !== undefined ? new Date(heartbeatMs).toISOString() : state.last_seen,
+      alive,
+      readyToPrune,
+      dotState,
+    });
   }
 
   // D-09: most-recently-active first. Fall back to start_time when a session
