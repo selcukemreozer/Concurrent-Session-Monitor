@@ -13,6 +13,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
 const onTool = path.join(repoRoot, "scripts", "on-tool.mjs");
 const onSessionStart = path.join(repoRoot, "scripts", "on-session-start.mjs");
+const onUserPrompt = path.join(repoRoot, "scripts", "on-user-prompt.mjs");
 
 let tmp: string;
 
@@ -88,5 +89,90 @@ describe("capture hooks", () => {
     expect(state.branch).toBeDefined();
     expect(state.model).toBe("claude-opus");
     expect(state.start_time).toBeDefined();
+  });
+
+  // --- Plan 02-02: heartbeat writes + durable pid + passivity (LIFE-01 write half) ---
+
+  it("heartbeat: on-user-prompt writes a heartbeat sidecar whose content parses as an ISO date (D-03)", () => {
+    const payload = JSON.stringify({
+      session_id: "hook-sess",
+      cwd: "/repo",
+      hook_event_name: "UserPromptSubmit",
+    });
+    const res = runHook(onUserPrompt, payload, tmp);
+    expect(res.status).toBe(0);
+
+    const hb = path.join(tmp, "sessions", "hook-sess", "heartbeat");
+    const content = fs.readFileSync(hb, "utf8");
+    expect(Number.isFinite(Date.parse(content.trim()))).toBe(true);
+
+    // on-user-prompt is a heartbeat-only hook: it must NOT append a files.jsonl line.
+    expect(fs.existsSync(path.join(tmp, "sessions", "hook-sess", "files.jsonl"))).toBe(false);
+  });
+
+  it("passivity: on-user-prompt exits 0 with empty stdout on malformed stdin AND an unwritable dir (T-02-11)", () => {
+    const malformed = runHook(onUserPrompt, "not json{", tmp);
+    expect(malformed.status).toBe(0);
+    expect(malformed.stdout).toBe("");
+
+    const readOnly = path.join(tmp, "readonly");
+    fs.mkdirSync(readOnly, { recursive: true });
+    fs.chmodSync(readOnly, 0o500);
+    const payload = JSON.stringify({ session_id: "hook-sess", hook_event_name: "UserPromptSubmit" });
+    const unwritable = runHook(onUserPrompt, payload, readOnly);
+    expect(unwritable.status).toBe(0);
+    expect(unwritable.stdout).toBe("");
+    fs.chmodSync(readOnly, 0o700);
+  });
+
+  it("heartbeat: a valid PostToolUse payload writes BOTH files.jsonl (1 line) and a heartbeat sidecar (D-02, WR-03)", () => {
+    const payload = JSON.stringify({
+      session_id: "hook-sess",
+      cwd: "/repo",
+      hook_event_name: "PostToolUse",
+      tool_name: "Edit",
+      tool_input: { file_path: "/repo/x.ts" },
+    });
+    const res = runHook(onTool, payload, tmp);
+    expect(res.status).toBe(0);
+
+    const jsonl = path.join(tmp, "sessions", "hook-sess", "files.jsonl");
+    const lines = fs.readFileSync(jsonl, "utf8").trim().split("\n").filter(Boolean);
+    expect(lines.length).toBe(1);
+
+    const hb = path.join(tmp, "sessions", "hook-sess", "heartbeat");
+    const content = fs.readFileSync(hb, "utf8");
+    expect(Number.isFinite(Date.parse(content.trim()))).toBe(true);
+  });
+
+  it("pid: SessionStart writes an integer pid > 0 and a string pid_started (D-04)", () => {
+    const payload = JSON.stringify({
+      session_id: "hook-sess",
+      cwd: repoRoot,
+      hook_event_name: "SessionStart",
+      model: "claude-opus",
+    });
+    const res = runHook(onSessionStart, payload, tmp);
+    expect(res.status).toBe(0);
+
+    const sessionJson = path.join(tmp, "sessions", "hook-sess", "session.json");
+    const state = JSON.parse(fs.readFileSync(sessionJson, "utf8"));
+    expect(Number.isInteger(state.pid)).toBe(true);
+    expect(state.pid).toBeGreaterThan(0);
+    expect(typeof state.pid_started).toBe("string");
+  });
+
+  it("model sentinel: a model-less SessionStart payload yields session.json.model === 'unknown' (WR-02, D-09)", () => {
+    const payload = JSON.stringify({
+      session_id: "hook-sess",
+      cwd: repoRoot,
+      hook_event_name: "SessionStart",
+    });
+    const res = runHook(onSessionStart, payload, tmp);
+    expect(res.status).toBe(0);
+
+    const sessionJson = path.join(tmp, "sessions", "hook-sess", "session.json");
+    const state = JSON.parse(fs.readFileSync(sessionJson, "utf8"));
+    expect(state.model).toBe("unknown");
   });
 });
