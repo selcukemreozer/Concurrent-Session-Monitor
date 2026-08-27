@@ -3,6 +3,7 @@ import { Box, Text, useWindowSize } from "ink";
 import { readAll, type SessionRow } from "../aggregate.js";
 import { pruneSession } from "../prune.js";
 import { sanitize } from "../sanitize.js";
+import { numEnv } from "../env.js";
 import { SessionCard, CompactRow } from "./Card.js";
 
 /** Poll cadence (Claude's Discretion): ~750ms comfortably meets criterion #1
@@ -22,7 +23,7 @@ const CARD_LINES = 4;
  * as "ended" for ~1.2s (one–two poll ticks) BEFORE pruning it, so the user sees
  * it die rather than blink out. Env-gated for tuning/tests. */
 function graceMs(): number {
-  return Number(process.env.CSM_GRACE_MS ?? 1200);
+  return numEnv("CSM_GRACE_MS", 1200);
 }
 
 /** One row as the panel will display it: the last-known session data plus whether

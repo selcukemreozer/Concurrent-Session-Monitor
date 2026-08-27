@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { sessionsDir } from "./paths.js";
+import { numEnv } from "./env.js";
 import type { SessionState, TouchEvent } from "./schema.js";
 import {
   isProcessAlive,
@@ -17,7 +18,7 @@ import {
  * Read lazily (not module-const) so tests can flip the env per-case.
  */
 function windowMs(): number {
-  return Number(process.env.CSM_WINDOW_MS ?? 5 * 60 * 1000);
+  return numEnv("CSM_WINDOW_MS", 5 * 60 * 1000);
 }
 
 /** One file a session is actively touching within the window. */

@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { numEnv } from "./env.js";
 
 /**
  * The pure read-side liveness spine (LIFE-01 read half).
@@ -83,7 +84,7 @@ export function resolveLastSeen(dir: string): number | undefined {
  * DISTINCT from `CSM_WINDOW_MS` (the active-file window) — do not conflate.
  */
 export function staleMs(): number {
-  return Number(process.env.CSM_STALE_MS ?? 120000);
+  return numEnv("CSM_STALE_MS", 120000);
 }
 
 /**
@@ -92,7 +93,7 @@ export function staleMs(): number {
  * (green); otherwise "idle" (yellow). Read lazily like `staleMs()`.
  */
 export function activeMs(): number {
-  return Number(process.env.CSM_ACTIVE_MS ?? 30000);
+  return numEnv("CSM_ACTIVE_MS", 30000);
 }
 
 /**
