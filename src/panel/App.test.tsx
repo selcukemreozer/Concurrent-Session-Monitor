@@ -121,9 +121,7 @@ describe("App grace-then-prune lifecycle (D-05/D-06/D-08, SC-3/SC-4)", () => {
     vi.setSystemTime(0);
     const id = "vanish-1";
     // Present on mount, then it vanishes (clean SessionEnd) on every later tick.
-    (readAll as unknown as { mockReturnValueOnce: (v: unknown) => unknown; mockReturnValue: (v: unknown) => unknown })
-      .mockReturnValueOnce([makeRow({ session_id: id })])
-      .mockReturnValue([]);
+    vi.mocked(readAll).mockReturnValueOnce([makeRow({ session_id: id })]).mockReturnValue([]);
 
     const { unmount } = render(React.createElement(App), {
       stdout: fakeStdout(),
