@@ -8,7 +8,7 @@
 // MultiEdit. It is wired "async" so the agent's tool call never waits on it,
 // and the whole body is wrapped so it ALWAYS exits 0. A non-zero PostToolUse
 // exit (2) would inject stderr straight into Claude's context — forbidden.
-import { readFileSync, mkdirSync, appendFileSync } from "node:fs";
+import { readFileSync, mkdirSync, appendFileSync, writeFileSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
@@ -73,6 +73,12 @@ try {
     };
     // O_APPEND single-writer-per-file: no cross-writer contention (sharding).
     appendFileSync(path.join(dir, "files.jsonl"), JSON.stringify(evt) + "\n", { mode: FILE_MODE });
+    // D-02 heartbeat: refresh last_seen alongside the touch so the 02-01 reader
+    // (resolveLastSeen) sees a current liveness signal. Same FROZEN sidecar
+    // contract as on-user-prompt.mjs: file `heartbeat`, content = ISO-8601,
+    // plain writeFileSync (one-line file, no torn-read window), into the dir we
+    // already mkdir'd above.
+    writeFileSync(path.join(dir, "heartbeat"), new Date().toISOString(), { mode: FILE_MODE });
   }
 } catch {
   // Swallow every error (T-1-05): NEVER exit non-zero, NEVER asyncRewake.
