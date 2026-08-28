@@ -206,16 +206,14 @@ describe("SessionCard read lines (PANEL-06 D-08/D-09/D-10)", () => {
     expect(writeLine).not.toContain("◇"); // writes carry no read glyph
   });
 
-  it("renders a read file as `◇ basename | directory` keeping the blue ◇ glyph and a dim dir", () => {
+  it("renders a read file as `◇ basename | directory` — read glyph kept, dir split off", () => {
     const out = renderToString(
       <SessionCard s={makeRow({ reads: [{ file_path: "/lib/util.ts", ts: now() }] })} />,
     );
-    expect(out).toContain("◇ util.ts");
-    expect(out).toContain("/lib");
-    expect(out).not.toContain("/lib/util.ts");
-    // blue foreground (READ_COLOR) and a dim SGR (the dir) are both emitted
-    expect(out).toContain(ESC + "[34m"); // blue
-    expect(out).toContain(ESC + "[2m"); // dim
+    expect(out).toContain("◇ util.ts"); // read glyph + basename
+    expect(out).toContain("/lib"); // directory portion only
+    expect(out).toContain("|"); // ASCII name|dir separator
+    expect(out).not.toContain("/lib/util.ts"); // never the contiguous full path
   });
 
   it("aligns the `|` column across short + long write basenames and a read line", () => {

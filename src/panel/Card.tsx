@@ -71,6 +71,22 @@ function shortId(session_id: string): string {
 }
 
 /**
+ * Split a realpath into `{ name, dir }` WITHOUT opening it: `name` is the final
+ * `/`-segment (same rule as `basename`), `dir` is the leading segments rejoined
+ * by `/` (empty string when the path has no directory segment). Lets the card
+ * render file lines as an aligned `name | dir` instead of a long full path. The
+ * caller sanitizes `name` and `dir` SEPARATELY — never the joined string — so no
+ * OSC/control byte can survive the split (T-3td-01).
+ */
+function splitPath(rp: string): { name: string; dir: string } {
+  const s = String(rp);
+  const parts = s.split("/");
+  const name = parts[parts.length - 1] || s;
+  const dir = parts.slice(0, -1).join("/");
+  return { name, dir };
+}
+
+/**
  * One bordered card per session (D-09), rendered by the panel most-recently
  * -active first. A steady 3-state liveness dot (green=active, yellow=idle,
  * grey=stale, NO blink — D-11/D-12) leads the header, followed by the folder
@@ -90,6 +106,21 @@ function shortId(session_id: string): string {
 export function SessionCard({ s }: { s: SessionRow }) {
   const focusUrl = s.warp?.focus_url;
   const uptime = sanitize(fmtUptime(Date.parse(s.start_time), Date.now()));
+  const reads = s.reads ?? [];
+
+  // Per-card `|` alignment (T-3td-01): the left field is `sanitize(name)` for a
+  // write and `READ_GLYPH + " " + sanitize(name)` for a read (so the read's
+  // leading `◇ ` counts toward the column). `W` is the widest left field across
+  // BOTH writes and reads, so `padEnd(W)` lines up the ` | ` separator on every
+  // file line. Basename and directory are sanitized SEPARATELY, never joined.
+  const writeParts = s.files.map((f) => splitPath(f.file_path));
+  const readParts = reads.map((r) => splitPath(r.file_path));
+  const W = Math.max(
+    0,
+    ...writeParts.map((p) => sanitize(p.name).length),
+    ...readParts.map((p) => (READ_GLYPH + " " + sanitize(p.name)).length),
+  );
+
   return (
     <Box flexDirection="column" borderStyle="round" paddingX={1} marginBottom={1}>
       <Box>
@@ -112,13 +143,35 @@ export function SessionCard({ s }: { s: SessionRow }) {
       {s.files.length === 0 ? (
         <Text dimColor>{"  (no active files)"}</Text>
       ) : (
-        s.files.map((f) => <Text key={f.file_path}>{"  " + sanitize(f.file_path)}</Text>)
+        s.files.map((f, i) => {
+          const { name, dir } = writeParts[i];
+          const left = sanitize(name);
+          const d = sanitize(dir);
+          return d === "" ? (
+            <Text key={f.file_path}>{"  " + left}</Text>
+          ) : (
+            <Text key={f.file_path}>
+              {"  " + left.padEnd(W) + " | "}
+              <Text dimColor>{d}</Text>
+            </Text>
+          );
+        })
       )}
-      {(s.reads ?? []).map((r) => (
-        <Text key={"r:" + r.file_path} color={READ_COLOR}>
-          {"  " + READ_GLYPH + " " + sanitize(r.file_path)}
-        </Text>
-      ))}
+      {reads.map((r, i) => {
+        const { name, dir } = readParts[i];
+        const left = READ_GLYPH + " " + sanitize(name);
+        const d = sanitize(dir);
+        return d === "" ? (
+          <Text key={"r:" + r.file_path} color={READ_COLOR}>
+            {"  " + left}
+          </Text>
+        ) : (
+          <Text key={"r:" + r.file_path} color={READ_COLOR}>
+            {"  " + left.padEnd(W) + " | "}
+            <Text dimColor>{d}</Text>
+          </Text>
+        );
+      })}
     </Box>
   );
 }
