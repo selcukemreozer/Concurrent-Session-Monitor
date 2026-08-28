@@ -141,6 +141,67 @@ describe("CompactRow (D-13 one-line overflow row)", () => {
   });
 });
 
+describe("SessionCard read lines (PANEL-06 D-08/D-09/D-10)", () => {
+  const now = () => new Date().toISOString();
+
+  it("renders each read path on its own line with the ◇ glyph (D-08)", () => {
+    const out = renderToString(
+      <SessionCard s={makeRow({ reads: [{ file_path: "/repo/r.ts", ts: now() }] })} />,
+    );
+    expect(out).toContain("◇");
+    expect(out).toContain("/repo/r.ts");
+  });
+
+  it("renders reads distinct from writes: no read glyph on the write line (D-08)", () => {
+    const out = renderToString(
+      <SessionCard
+        s={makeRow({
+          files: [{ file_path: "/repo/w.ts", ts: now() }],
+          reads: [{ file_path: "/repo/r.ts", ts: now() }],
+        })}
+      />,
+    );
+    expect(out).toContain("/repo/w.ts");
+    expect(out).toContain("/repo/r.ts");
+    // the write line carries no read glyph; the read line does
+    const writeLine = out.split("\n").find((l) => l.includes("/repo/w.ts")) ?? "";
+    const readLine = out.split("\n").find((l) => l.includes("/repo/r.ts")) ?? "";
+    expect(writeLine).not.toContain("◇");
+    expect(readLine).toContain("◇");
+  });
+
+  it("sanitizes an ESC byte embedded in a read file_path before render (T-03.1-05)", () => {
+    const out = renderToString(
+      <SessionCard s={makeRow({ reads: [{ file_path: "/repo/ev" + ESC + "il.ts", ts: now() }] })} />,
+    );
+    expect(out).toContain("/repo/evil.ts"); // ESC stripped, path text intact
+    const readLine = out.split("\n").find((l) => l.includes("/repo/evil.ts")) ?? "";
+    expect(readLine).not.toContain(ESC);
+  });
+
+  it("renders no read glyph when there are no reads (D-08)", () => {
+    const out = renderToString(<SessionCard s={makeRow({ reads: [] })} />);
+    expect(out).not.toContain("◇");
+  });
+
+  it("CompactRow stays card-free: write count Nf only, no ◇, no read counter (D-10)", () => {
+    const s = makeRow({
+      files: [
+        { file_path: "/repo/a.ts", ts: now() },
+        { file_path: "/repo/b.ts", ts: now() },
+      ],
+      reads: [
+        { file_path: "/repo/r1.ts", ts: now() },
+        { file_path: "/repo/r2.ts", ts: now() },
+      ],
+    });
+    const out = renderToString(<CompactRow s={s} />);
+    expect(out).toContain("2f"); // two writes -> 2f
+    expect(out).not.toContain("◇"); // reads are card-only, never in the compact row
+    expect(out).not.toContain("2r"); // no read counter
+  });
+});
+
 /** Minimal Conflict fixture builder for band render assertions. */
 function makeConflict(over: Partial<Conflict> = {}): Conflict {
   return {
