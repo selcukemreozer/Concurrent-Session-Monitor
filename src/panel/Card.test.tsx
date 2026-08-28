@@ -13,6 +13,14 @@ import type { Conflict } from "../conflicts.js";
 
 const ESC = String.fromCharCode(27); // 0x1B
 
+/** Strip SGR/ANSI escape sequences so raw glyph + column positions can be
+ * asserted. The box border uses `│` (U+2502), NOT the ASCII `|` (0x7C) our file
+ * lines use as the name|dir separator, so `indexOf("|")` locates the separator. */
+function stripAnsi(s: string): string {
+  // eslint-disable-next-line no-control-regex
+  return s.replace(new RegExp(ESC + "\\[[0-9;]*m", "g"), "");
+}
+
 /** Minimal SessionRow fixture builder for render assertions. */
 function makeRow(over: Partial<SessionRow> = {}): SessionRow {
   return {
@@ -144,12 +152,14 @@ describe("CompactRow (D-13 one-line overflow row)", () => {
 describe("SessionCard read lines (PANEL-06 D-08/D-09/D-10)", () => {
   const now = () => new Date().toISOString();
 
-  it("renders each read path on its own line with the ◇ glyph (D-08)", () => {
+  it("renders each read path as `◇ basename | dir` — dir only, never the full path (D-08)", () => {
     const out = renderToString(
       <SessionCard s={makeRow({ reads: [{ file_path: "/repo/r.ts", ts: now() }] })} />,
     );
     expect(out).toContain("◇");
-    expect(out).toContain("/repo/r.ts");
+    expect(out).toContain("r.ts"); // basename
+    expect(out).toContain("/repo"); // directory portion only
+    expect(out).not.toContain("/repo/r.ts"); // never the contiguous full path
   });
 
   it("renders reads distinct from writes: no read glyph on the write line (D-08)", () => {
@@ -161,11 +171,14 @@ describe("SessionCard read lines (PANEL-06 D-08/D-09/D-10)", () => {
         })}
       />,
     );
-    expect(out).toContain("/repo/w.ts");
-    expect(out).toContain("/repo/r.ts");
-    // the write line carries no read glyph; the read line does
-    const writeLine = out.split("\n").find((l) => l.includes("/repo/w.ts")) ?? "";
-    const readLine = out.split("\n").find((l) => l.includes("/repo/r.ts")) ?? "";
+    expect(out).toContain("w.ts");
+    expect(out).toContain("r.ts");
+    expect(out).toContain("/repo"); // dir shown for both
+    expect(out).not.toContain("/repo/w.ts");
+    expect(out).not.toContain("/repo/r.ts");
+    // locate lines by basename; the write line carries no read glyph, the read does
+    const writeLine = out.split("\n").find((l) => l.includes("w.ts")) ?? "";
+    const readLine = out.split("\n").find((l) => l.includes("r.ts")) ?? "";
     expect(writeLine).not.toContain("◇");
     expect(readLine).toContain("◇");
   });
@@ -174,9 +187,64 @@ describe("SessionCard read lines (PANEL-06 D-08/D-09/D-10)", () => {
     const out = renderToString(
       <SessionCard s={makeRow({ reads: [{ file_path: "/repo/ev" + ESC + "il.ts", ts: now() }] })} />,
     );
-    expect(out).toContain("/repo/evil.ts"); // ESC stripped, path text intact
-    const readLine = out.split("\n").find((l) => l.includes("/repo/evil.ts")) ?? "";
+    expect(out).toContain("evil.ts"); // ESC stripped, basename intact
+    expect(out).toContain("/repo"); // directory portion
+    expect(out).not.toContain("/repo/evil.ts"); // rendered as basename | dir
+    const readLine = out.split("\n").find((l) => l.includes("evil.ts")) ?? "";
     expect(readLine).not.toContain(ESC);
+  });
+
+  it("renders a write file as `basename | directory` — dir only, not the full path (T-3td-01)", () => {
+    const out = renderToString(
+      <SessionCard s={makeRow({ files: [{ file_path: "/src/index.ts", ts: now() }] })} />,
+    );
+    expect(out).toContain("index.ts");
+    expect(out).toContain("/src");
+    expect(out).toContain("|"); // the ASCII name|dir separator
+    expect(out).not.toContain("/src/index.ts");
+    const writeLine = out.split("\n").find((l) => l.includes("index.ts")) ?? "";
+    expect(writeLine).not.toContain("◇"); // writes carry no read glyph
+  });
+
+  it("renders a read file as `◇ basename | directory` keeping the blue ◇ glyph and a dim dir", () => {
+    const out = renderToString(
+      <SessionCard s={makeRow({ reads: [{ file_path: "/lib/util.ts", ts: now() }] })} />,
+    );
+    expect(out).toContain("◇ util.ts");
+    expect(out).toContain("/lib");
+    expect(out).not.toContain("/lib/util.ts");
+    // blue foreground (READ_COLOR) and a dim SGR (the dir) are both emitted
+    expect(out).toContain(ESC + "[34m"); // blue
+    expect(out).toContain(ESC + "[2m"); // dim
+  });
+
+  it("aligns the `|` column across short + long write basenames and a read line", () => {
+    const out = stripAnsi(
+      renderToString(
+        <SessionCard
+          s={makeRow({
+            files: [
+              { file_path: "/a/x.ts", ts: now() },
+              { file_path: "/some/dir/longname.ts", ts: now() },
+            ],
+            reads: [{ file_path: "/lib/util.ts", ts: now() }],
+          })}
+        />,
+      ),
+    );
+    const pipeLines = out.split("\n").filter((l) => l.includes("|"));
+    expect(pipeLines.length).toBe(3); // two writes + one read all carry a separator
+    const cols = pipeLines.map((l) => l.indexOf("|"));
+    expect(new Set(cols).size).toBe(1); // every `|` shares the same column
+  });
+
+  it("renders a bare filename (no directory) with no separator", () => {
+    const out = renderToString(
+      <SessionCard s={makeRow({ files: [{ file_path: "bare.ts", ts: now() }] })} />,
+    );
+    expect(out).toContain("bare.ts");
+    const line = out.split("\n").find((l) => l.includes("bare.ts")) ?? "";
+    expect(line).not.toContain("|"); // no dir -> no separator
   });
 
   it("renders no read glyph when there are no reads (D-08)", () => {
