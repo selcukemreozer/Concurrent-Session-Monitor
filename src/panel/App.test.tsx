@@ -264,6 +264,26 @@ describe("App conflict surface (PANEL-04 SC-1/SC-3, D-06/D-07)", () => {
   });
 });
 
+describe("App de-framed header (borderless, HEADER_LINES=3)", () => {
+  beforeEach(() => {
+    (readAll as unknown as { mockReset: () => void }).mockReset();
+    (pruneSession as unknown as { mockReset: () => void }).mockReset();
+    (readAll as unknown as { mockReturnValue: (v: unknown) => unknown }).mockReturnValue([]);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("keeps the title + summary but drops the round-border corner glyph", () => {
+    const { inst, frame } = renderCapture();
+    const out = frame();
+    expect(out).toContain("◆ Concurrent Session Monitor");
+    expect(out).toContain("0 live");
+    expect(out).toContain("0 conflicts");
+    // The round-border top-left corner glyph ╭ (U+256D) proves the frame is gone.
+    expect(out).not.toContain("╭");
+    inst.unmount();
+  });
+});
+
 describe("App height-driven compact overflow (D-13)", () => {
   beforeEach(() => {
     (readAll as unknown as { mockReset: () => void }).mockReset();
