@@ -71,8 +71,14 @@ try {
       ts: new Date().toISOString(),
       tool: payload.tool_name,
     };
+    // CAP-03 (D-01/D-02): route by tool_name. A `Read` lands in the separate
+    // append-only `reads.jsonl` shard; every write tool (Edit/Write/MultiEdit)
+    // stays in the write-only `files.jsonl`, so Phase-3 detectConflicts — which
+    // consumes only write-derived files[] — is untouched and reads can never
+    // mint a conflict. Same TouchEvent line shape for both shards.
+    const shard = payload.tool_name === "Read" ? "reads.jsonl" : "files.jsonl";
     // O_APPEND single-writer-per-file: no cross-writer contention (sharding).
-    appendFileSync(path.join(dir, "files.jsonl"), JSON.stringify(evt) + "\n", { mode: FILE_MODE });
+    appendFileSync(path.join(dir, shard), JSON.stringify(evt) + "\n", { mode: FILE_MODE });
     // D-02 heartbeat: refresh last_seen alongside the touch so the 02-01 reader
     // (resolveLastSeen) sees a current liveness signal. Same FROZEN sidecar
     // contract as on-user-prompt.mjs: file `heartbeat`, content = ISO-8601,
