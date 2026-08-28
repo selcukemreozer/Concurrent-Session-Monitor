@@ -3,9 +3,13 @@ import { describe, it, expect } from "vitest";
 // RED (wave 01-04): Card.tsx exports the SessionCard component and the osc8 helper.
 // RED (wave 02-04): Card.tsx also exports CompactRow and the pure dotColor helper,
 // and SessionCard now renders a 3-state dot + compact uptime + best-effort model.
-import { osc8, SessionCard, CompactRow, dotColor } from "./Card.js";
+// RED (wave 03-02): Card.tsx also exports the ConflictBand component (PANEL-04) —
+// an always-on `⚠` band naming the shared file + every involved session
+// (folder·branch·shortid joined by ↔), null when empty, `+X more` past the cap.
+import { osc8, SessionCard, CompactRow, dotColor, ConflictBand } from "./Card.js";
 import { renderToString } from "ink";
 import type { SessionRow } from "../aggregate.js";
+import type { Conflict } from "../conflicts.js";
 
 const ESC = String.fromCharCode(27); // 0x1B
 
@@ -134,5 +138,66 @@ describe("CompactRow (D-13 one-line overflow row)", () => {
     );
     expect(out).not.toContain("null");
     expect(out).toContain("—");
+  });
+});
+
+/** Minimal Conflict fixture builder for band render assertions. */
+function makeConflict(over: Partial<Conflict> = {}): Conflict {
+  return {
+    realpath: "/abs/path/shared.ts",
+    sessions: [
+      { session_id: "abcdef0123", folder: "folderA", branch: "main", lastTouch: 2 },
+      { session_id: "1234567890", folder: "folderB", branch: "dev", lastTouch: 1 },
+    ],
+    lastActive: 2,
+    ...over,
+  };
+}
+
+describe("ConflictBand (PANEL-04 D-06/D-07/D-09/D-10/D-11)", () => {
+  it("renders nothing (no ⚠) when there are no conflicts (D-07 empty state)", () => {
+    const out = renderToString(<ConflictBand conflicts={[]} />);
+    expect(out).not.toContain("⚠");
+    expect(out.trim()).toBe("");
+  });
+
+  it("names the file basename, the ⚠ glyph, and both folder·branch·shortid labels joined by ↔", () => {
+    const out = renderToString(<ConflictBand conflicts={[makeConflict()]} />);
+    expect(out).toContain("⚠");
+    expect(out).toContain("shared.ts"); // basename only, never the full realpath
+    expect(out).not.toContain("/abs/path/shared.ts");
+    expect(out).toContain("folderA");
+    expect(out).toContain("folderB");
+    expect(out).toContain("abcdef01"); // first 8 chars of the session id
+    expect(out).toContain("12345678");
+    expect(out).toContain("↔"); // labels joined by the swap glyph
+  });
+
+  it("falls back to a dash for a session with an empty branch (Card convention)", () => {
+    const out = renderToString(
+      <ConflictBand
+        conflicts={[
+          makeConflict({
+            sessions: [
+              { session_id: "aaaaaaaa", folder: "folderA", branch: "", lastTouch: 2 },
+              { session_id: "bbbbbbbb", folder: "folderB", branch: "dev", lastTouch: 1 },
+            ],
+          }),
+        ]}
+      />,
+    );
+    expect(out).toContain("—");
+  });
+
+  it("caps at CONFLICT_CAP lines and appends a `+X more` summary past the cap (D-11)", () => {
+    const many: Conflict[] = Array.from({ length: 8 }, (_, i) =>
+      makeConflict({ realpath: `/abs/file-${i}.ts`, lastActive: 8 - i }),
+    );
+    const out = renderToString(<ConflictBand conflicts={many} />);
+    expect(out).toContain("+3 more"); // 8 total - cap of 5 = 3
+    // only the first 5 files render as ⚠ lines
+    expect(out).toContain("file-0.ts");
+    expect(out).toContain("file-4.ts");
+    expect(out).not.toContain("file-5.ts");
   });
 });
