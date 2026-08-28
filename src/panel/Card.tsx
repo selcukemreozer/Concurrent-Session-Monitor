@@ -15,6 +15,21 @@ const ST = ESC + "\\";
 const DOT = "●";
 
 /**
+ * Read-line leading glyph (PANEL-06 D-08): a hollow diamond `◇` (U+25C7). It is
+ * >= 0x00A0 so `sanitize()` preserves it, and it is visually distinct from the
+ * liveness `●`, the conflict `⚠`, the swap `↔`, the filled `◆`, and the link
+ * `↪` — a read must be unmistakable from a write at a glance.
+ */
+const READ_GLYPH = "◇";
+
+/**
+ * Ink color name for read lines (PANEL-06 D-09): `blue` — deliberately NOT red
+ * (conflicts), NOT green/yellow/grey (liveness dots), and NOT cyan (osc8 links +
+ * header border). This keeps reads non-colliding with every existing colored cue.
+ */
+const READ_COLOR = "blue";
+
+/**
  * Wrap a URL + label in an OSC-8 hyperlink escape so terminals like Warp render
  * a clickable go-to-pane affordance (D-06):  ESC ]8;; URL ST label ESC ]8;; ST.
  *
@@ -64,6 +79,9 @@ function shortId(session_id: string): string {
  * unknown), and compact uptime (D-10). A cyan clickable go-to-pane link appears
  * only when Warp supplied a focus_url (D-06). Below the header, each active file
  * path is listed, or a dim "(no active files)" hint when none are in the window.
+ * Below the write lines, each active READ path (`s.reads`, card-only per D-10)
+ * is rendered on its own line with a distinct blue `◇` glyph (PANEL-06 D-08/D-09)
+ * — purely additive, guarded by `s.reads ?? []`, each path sanitized.
  *
  * Every displayed string is passed through `sanitize()` before Ink render,
  * INCLUDING the shortId (T-02-30 / WR-04). `osc8()` is the sole exemption and
@@ -96,6 +114,11 @@ export function SessionCard({ s }: { s: SessionRow }) {
       ) : (
         s.files.map((f) => <Text key={f.file_path}>{"  " + sanitize(f.file_path)}</Text>)
       )}
+      {(s.reads ?? []).map((r) => (
+        <Text key={"r:" + r.file_path} color={READ_COLOR}>
+          {"  " + READ_GLYPH + " " + sanitize(r.file_path)}
+        </Text>
+      ))}
     </Box>
   );
 }
