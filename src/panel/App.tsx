@@ -4,7 +4,8 @@ import { readAll, type SessionRow } from "../aggregate.js";
 import { pruneSession } from "../prune.js";
 import { sanitize } from "../sanitize.js";
 import { numEnv } from "../env.js";
-import { SessionCard, CompactRow } from "./Card.js";
+import { SessionCard, CompactRow, ConflictBand } from "./Card.js";
+import { detectConflicts, type Conflict } from "../conflicts.js";
 
 /** Poll cadence (Claude's Discretion): ~750ms comfortably meets criterion #1
  * ("a touch appears within about a second") without a file watcher. */
@@ -48,6 +49,10 @@ interface Reconciled {
   display: DisplayRow[];
   live: number;
   idle: number;
+  /** Cross-session file conflicts detected this tick (PANEL-04, D-13). Re-derived
+   * every poll from the raw live `rows` (never the grace-ghost `display` list), so
+   * a cleared overlap disappears next tick with no stored conflict state. */
+  conflicts: Conflict[];
 }
 
 /** Per-session memory across ticks: the last row we saw and, once it dies or
@@ -113,7 +118,11 @@ function reconcile(seen: Map<string, SeenEntry>, rows: SessionRow[], now: number
 
   const liveCount = rows.filter((r) => r.alive).length;
   const idleCount = rows.filter((r) => r.dotState === "idle").length;
-  return { display, live: liveCount, idle: idleCount };
+  // Detect on the raw live `rows` (D-12 filters non-live inside), NOT `display`
+  // — a grace-ghost must never contribute a conflict (SC-3). One detection per
+  // tick, re-derived every poll so a cleared overlap auto-clears (D-13, SC-4).
+  const conflicts = detectConflicts(rows, now);
+  return { display, live: liveCount, idle: idleCount, conflicts };
 }
 
 /** First 8 chars of the session id (D-05), sanitized (WR-04). */
@@ -169,7 +178,9 @@ export function App() {
   const capacity = Math.max(1, termRows - HEADER_LINES);
   const compact = state.display.length * CARD_LINES > capacity;
 
-  const summary = sanitize(`${state.live} live · ${state.idle} idle · 0 conflicts`);
+  const nConf = state.conflicts.length;
+  const summaryLead = sanitize(`${state.live} live · ${state.idle} idle · `);
+  const conflictLabel = sanitize(`${nConf} conflicts`);
   const clock = sanitize(fmtClock(Date.now()));
 
   return (
@@ -188,8 +199,14 @@ export function App() {
           </Text>
           <Text dimColor>{clock}</Text>
         </Box>
-        <Text>{summary}</Text>
+        <Text>
+          {summaryLead}
+          <Text color={nConf > 0 ? "red" : undefined} bold={nConf > 0}>
+            {conflictLabel}
+          </Text>
+        </Text>
       </Box>
+      <ConflictBand conflicts={state.conflicts} />
       {state.display.map((d) =>
         d.ended ? (
           <Text key={d.id} dimColor color="grey">
