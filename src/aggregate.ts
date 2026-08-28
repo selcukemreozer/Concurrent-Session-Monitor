@@ -23,6 +23,17 @@ function windowMs(): number {
   return numEnv("CSM_WINDOW_MS", 5 * 60 * 1000);
 }
 
+/**
+ * The SHORT read-activity window (D-04/D-05), config-adjustable via
+ * CSM_READ_WINDOW_MS (default 30s). This is a DISTINCT semantic axis from
+ * `windowMs()` (CSM_WINDOW_MS, the 5-min write window) and from `activeMs()`
+ * (CSM_ACTIVE_MS, the dot-recency window) — a read decays ~10x faster than a
+ * write. Read lazily (not module-const) so tests can flip the env per-case.
+ */
+function readWindowMs(): number {
+  return numEnv("CSM_READ_WINDOW_MS", 30_000);
+}
+
 /** One file a session is actively touching within the window. */
 export interface ActiveFile {
   file_path: string;
@@ -33,6 +44,12 @@ export interface ActiveFile {
 export type SessionRow = SessionState & {
   /** Files touched within the active window, excluding released ones. */
   files: ActiveFile[];
+  /**
+   * Files READ within the short `CSM_READ_WINDOW_MS` window (D-04/D-06),
+   * write-suppressed (D-07: a path in `files[]` is filtered out) and card-only —
+   * reads NEVER drive sort, liveness, or conflict detection (D-02/D-03).
+   */
+  reads: ActiveFile[];
   /** Newest surviving touch ts (ISO-8601), or undefined if no active files. */
   last_active?: string;
   /** Resolved last-seen ts (ISO-8601) from the heartbeat sidecar, when present. */
@@ -111,6 +128,57 @@ function activeFiles(dir: string, now: number): { files: ActiveFile[]; lastActiv
 }
 
 /**
+ * Reduce one session's reads.jsonl into its currently-active reads (D-04/D-06).
+ *
+ * Mirrors {@link activeFiles} exactly — windowed reduce, torn/partial-line skip
+ * (T-03.1-03 self-heal), `released` drop, newest-per-file_path — but keys on the
+ * SHORT `readWindowMs()` window and returns ONLY `ActiveFile[]`: there is no
+ * `lastActive`, because reads must never drive the sort key or liveness (D-02).
+ * Returns `[]` when reads.jsonl does not exist yet.
+ */
+function activeReads(dir: string, now: number): ActiveFile[] {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(path.join(dir, "reads.jsonl"), "utf8");
+  } catch {
+    return [];
+  }
+
+  const threshold = now - readWindowMs();
+  const released = new Set<string>();
+  const newest = new Map<string, number>(); // file_path -> newest ts (ms)
+
+  for (const line of raw.split("\n")) {
+    if (line.trim() === "") continue;
+    let evt: TouchEvent;
+    try {
+      evt = JSON.parse(line) as TouchEvent;
+    } catch {
+      continue; // skip a torn/partial line
+    }
+    if (typeof evt?.file_path !== "string" || typeof evt?.ts !== "string") continue;
+
+    if (evt.released) {
+      released.add(evt.file_path);
+      continue;
+    }
+
+    const tsMs = Date.parse(evt.ts);
+    if (Number.isNaN(tsMs) || tsMs < threshold) continue; // outside the read window
+
+    const prev = newest.get(evt.file_path);
+    if (prev === undefined || tsMs > prev) newest.set(evt.file_path, tsMs);
+  }
+
+  const reads: ActiveFile[] = [];
+  for (const [file_path, tsMs] of newest) {
+    if (released.has(file_path)) continue; // D-04: a released read is not active
+    reads.push({ file_path, ts: new Date(tsMs).toISOString() });
+  }
+  return reads;
+}
+
+/**
  * The sole cross-session view (STATE-02): aggregate every session shard into
  * one array, apply the D-02 active window, and sort most-recently-active
  * first (D-09).
@@ -144,6 +212,13 @@ export function readAll(
     }
 
     const { files, lastActive } = activeFiles(dir, now);
+
+    // Read-side aggregate (D-06), independent of the write window. D-07: a path
+    // in this session's active write set is a WRITE, never also a read — filter
+    // it out. Reads feed only the card, never liveness/sort/conflicts (D-02/D-03).
+    const rawReads = activeReads(dir, now);
+    const writeSet = new Set(files.map((f) => f.file_path));
+    const reads = rawReads.filter((r) => !writeSet.has(r.file_path));
 
     // --- Liveness reduction (D-01/D-06/D-12), pure — NO disk mutation here.
     // last_seen priority: heartbeat sidecar -> newest active touch -> start_time.
@@ -184,6 +259,7 @@ export function readAll(
     rows.push({
       ...state,
       files,
+      reads,
       last_active: lastActive,
       last_seen: heartbeatMs !== undefined ? new Date(heartbeatMs).toISOString() : state.last_seen,
       alive,
