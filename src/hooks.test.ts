@@ -176,3 +176,84 @@ describe("capture hooks", () => {
     expect(state.model).toBe("unknown");
   });
 });
+
+// --- Plan 03.1-01: read capture routes to reads.jsonl, never files.jsonl (CAP-03) ---
+
+describe("read capture routing (CAP-03)", () => {
+  it("read routing: a Read payload appends ONE reads.jsonl line and NO files.jsonl (D-01/D-02)", () => {
+    const payload = JSON.stringify({
+      session_id: "hook-sess",
+      cwd: "/repo",
+      hook_event_name: "PostToolUse",
+      tool_name: "Read",
+      tool_input: { file_path: "/repo/r.ts" },
+    });
+    const res = runHook(onTool, payload, tmp);
+    expect(res.status).toBe(0);
+
+    const readsJsonl = path.join(tmp, "sessions", "hook-sess", "reads.jsonl");
+    const lines = fs.readFileSync(readsJsonl, "utf8").trim().split("\n").filter(Boolean);
+    expect(lines.length).toBe(1);
+    const evt = JSON.parse(lines[0]);
+    expect(evt.file_path).toBe("/repo/r.ts");
+
+    // Write-only invariant: a pure Read must NEVER mint a files.jsonl line.
+    expect(fs.existsSync(path.join(tmp, "sessions", "hook-sess", "files.jsonl"))).toBe(false);
+  });
+
+  it("write still write-only: an Edit payload appends to files.jsonl and leaves reads.jsonl absent (D-02 BACKBONE)", () => {
+    const payload = JSON.stringify({
+      session_id: "hook-sess",
+      cwd: "/repo",
+      hook_event_name: "PostToolUse",
+      tool_name: "Edit",
+      tool_input: { file_path: "/repo/x.ts" },
+    });
+    const res = runHook(onTool, payload, tmp);
+    expect(res.status).toBe(0);
+
+    const filesJsonl = path.join(tmp, "sessions", "hook-sess", "files.jsonl");
+    const lines = fs.readFileSync(filesJsonl, "utf8").trim().split("\n").filter(Boolean);
+    expect(lines.length).toBe(1);
+
+    // The write shard must never bleed into the read shard.
+    expect(fs.existsSync(path.join(tmp, "sessions", "hook-sess", "reads.jsonl"))).toBe(false);
+  });
+
+  it("read heartbeat: a Read payload refreshes the heartbeat sidecar (a read is liveness too, D-02)", () => {
+    const payload = JSON.stringify({
+      session_id: "hook-sess",
+      cwd: "/repo",
+      hook_event_name: "PostToolUse",
+      tool_name: "Read",
+      tool_input: { file_path: "/repo/r.ts" },
+    });
+    const res = runHook(onTool, payload, tmp);
+    expect(res.status).toBe(0);
+
+    const hb = path.join(tmp, "sessions", "hook-sess", "heartbeat");
+    const content = fs.readFileSync(hb, "utf8");
+    expect(Number.isFinite(Date.parse(content.trim()))).toBe(true);
+  });
+
+  it("read passivity: a Read payload with malformed stdin AND against an unwritable dir both exit 0 (D-12)", () => {
+    const malformed = runHook(onTool, "not json{", tmp);
+    expect(malformed.status).toBe(0);
+    expect(malformed.stdout).toBe("");
+
+    const readOnly = path.join(tmp, "readonly");
+    fs.mkdirSync(readOnly, { recursive: true });
+    fs.chmodSync(readOnly, 0o500);
+    const payload = JSON.stringify({
+      session_id: "hook-sess",
+      cwd: "/repo",
+      hook_event_name: "PostToolUse",
+      tool_name: "Read",
+      tool_input: { file_path: "/repo/r.ts" },
+    });
+    const unwritable = runHook(onTool, payload, readOnly);
+    expect(unwritable.status).toBe(0);
+    expect(unwritable.stdout).toBe("");
+    fs.chmodSync(readOnly, 0o700);
+  });
+});
