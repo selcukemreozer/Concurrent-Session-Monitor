@@ -21,8 +21,18 @@ afterEach(() => {
   delete process.env.CSM_WINDOW_MS;
   delete process.env.CSM_STALE_MS;
   delete process.env.CSM_ACTIVE_MS;
+  delete process.env.CSM_READ_WINDOW_MS;
   fs.rmSync(tmp, { recursive: true, force: true });
 });
+
+/**
+ * Append one read event to a session's `reads.jsonl`, mirroring the writer's
+ * O_APPEND shape (do NOT modify store.ts — the read shard is seeded here). Same
+ * `{file_path, ts}` line shape as `appendTouch`.
+ */
+function appendRead(dir: string, evt: { file_path: string; ts: string; released?: boolean }): void {
+  fs.appendFileSync(path.join(dir, "reads.jsonl"), JSON.stringify(evt) + "\n", { mode: 0o600 });
+}
 
 interface SeedOpts {
   pid?: number;
@@ -283,5 +293,60 @@ describe("readAll no-pid sentinel defers to TTL (WR-01)", () => {
     expect(row.alive).toBe(false);
     expect(row.readyToPrune).toBe(true);
     expect(row.dotState).toBe("stale");
+  });
+});
+
+// RED (03.1-02): the read-side aggregate. Every SessionRow must carry a
+// `reads[]` populated from `reads.jsonl` on a SHORT, SEPARATE 30s window
+// (CSM_READ_WINDOW_MS, D-04/D-05), with the D-07 write-suppresses-read de-dup.
+// The write path (files[]/last_active/sort/liveness) stays byte-for-byte
+// unchanged (D-02) — none of these cases touch it.
+describe("activeReads (read window, D-04/D-06/D-07)", () => {
+  it("default window: a read within 30s is IN reads[], one older than 30s is OUT", () => {
+    // CSM_READ_WINDOW_MS unset -> default 30_000ms boundary.
+    const now = Date.now();
+    const dir = seedSession("rd-default", new Date(now).toISOString());
+    appendRead(dir, { file_path: "/repo/fresh-read.ts", ts: new Date(now - 10_000).toISOString() });
+    appendRead(dir, { file_path: "/repo/stale-read.ts", ts: new Date(now - 45_000).toISOString() });
+
+    const row = readAll(now).find((r) => r.session_id === "rd-default")!;
+    const reads = row.reads.map((r) => r.file_path);
+    expect(reads).toContain("/repo/fresh-read.ts");
+    expect(reads).not.toContain("/repo/stale-read.ts");
+  });
+
+  it("override: CSM_READ_WINDOW_MS keeps a now-10s read and drops a now-40s read", () => {
+    process.env.CSM_READ_WINDOW_MS = "30000";
+    const now = Date.now();
+    const dir = seedSession("rd-override", new Date(now).toISOString());
+    appendRead(dir, { file_path: "/repo/keep.ts", ts: new Date(now - 10_000).toISOString() });
+    appendRead(dir, { file_path: "/repo/drop.ts", ts: new Date(now - 40_000).toISOString() });
+
+    const row = readAll(now).find((r) => r.session_id === "rd-override")!;
+    const reads = row.reads.map((r) => r.file_path);
+    expect(reads).toContain("/repo/keep.ts");
+    expect(reads).not.toContain("/repo/drop.ts");
+  });
+
+  it("reads populated + separate axis: a read-only session has the path in reads[], files[] empty", () => {
+    const now = Date.now();
+    const dir = seedSession("rd-only", new Date(now).toISOString());
+    appendRead(dir, { file_path: "/repo/onlyread.ts", ts: new Date(now - 5_000).toISOString() });
+
+    const row = readAll(now).find((r) => r.session_id === "rd-only")!;
+    expect(row.reads.map((r) => r.file_path)).toContain("/repo/onlyread.ts");
+    expect(row.files).toHaveLength(0);
+  });
+
+  it("D-07 write suppresses read: a path both written and read is in files[] but NOT reads[]", () => {
+    const now = Date.now();
+    const dir = seedSession("rd-dedup", new Date(now).toISOString());
+    // Same path present in BOTH shards within both windows.
+    appendTouch(dir, { file_path: "/repo/shared.ts", ts: new Date(now - 5_000).toISOString() });
+    appendRead(dir, { file_path: "/repo/shared.ts", ts: new Date(now - 5_000).toISOString() });
+
+    const row = readAll(now).find((r) => r.session_id === "rd-dedup")!;
+    expect(row.files.map((f) => f.file_path)).toContain("/repo/shared.ts");
+    expect(row.reads.map((r) => r.file_path)).not.toContain("/repo/shared.ts");
   });
 });

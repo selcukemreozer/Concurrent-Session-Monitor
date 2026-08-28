@@ -40,3 +40,18 @@ describe("numEnv (WR-02)", () => {
     expect(numEnv(NAME, 1200)).toBe(1200);
   });
 });
+
+// Traceability (03.1-02, D-04/D-05): pin the CSM_READ_WINDOW_MS default. This is
+// the NEW read-window env, a distinct axis from CSM_ACTIVE_MS / CSM_WINDOW_MS.
+// numEnv is unchanged generic code, so this PASSES immediately — it exists to
+// keep the canonical env default (30_000ms) traceable to a test.
+describe("CSM_READ_WINDOW_MS default (D-04/D-05)", () => {
+  afterEach(() => {
+    delete process.env.CSM_READ_WINDOW_MS;
+  });
+
+  it("defaults to 30_000ms when unset", () => {
+    delete process.env.CSM_READ_WINDOW_MS;
+    expect(numEnv("CSM_READ_WINDOW_MS", 30000)).toBe(30000);
+  });
+});

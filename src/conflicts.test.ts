@@ -146,3 +146,29 @@ describe("detectConflicts (CONF-01 SC-1..SC-4)", () => {
     expect(detectConflicts(rows, now)).toHaveLength(0); // >=2 requires DISTINCT session_ids
   });
 });
+
+// HELD-OUT (D-03): reads must NEVER mint a conflict. `detectConflicts` reads
+// only `SessionRow.files[]`, never `reads[]`; two live sessions reading the
+// SAME realpath with empty `files[]` produce zero conflicts. This pins the
+// write-only invariant (conflicts.ts is unchanged by 03.1-02).
+describe("reads never conflict (D-03 regression)", () => {
+  it("two live sessions reading the same realpath (empty files[]) => detectConflicts === []", () => {
+    const now = Date.now();
+    const shared = path.join(root, "shared-read.ts"); // anchor on root so both resolve identically
+    const rows = [
+      makeRow({
+        session_id: "ra",
+        cwd: root,
+        files: [],
+        reads: [{ file_path: shared, ts: new Date(now).toISOString() }],
+      }),
+      makeRow({
+        session_id: "rb",
+        cwd: root,
+        files: [],
+        reads: [{ file_path: shared, ts: new Date(now).toISOString() }],
+      }),
+    ];
+    expect(detectConflicts(rows, now)).toEqual([]);
+  });
+});
