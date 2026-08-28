@@ -21,12 +21,13 @@ const POLL_MS = 750;
 const CARD_LINES = 4;
 
 /**
- * Vertical lines the framed header box occupies: round border (top + bottom) +
- * two content rows (the title/clock line and the summary line) + its
- * `marginBottom`. Reserved from the terminal height so the overflow-to-compact
- * switch (D-13) accounts for the taller framed header, not a single line.
+ * Vertical lines the borderless header box occupies: two content rows (the
+ * title/clock line and the summary line) + its `marginBottom`. There is no
+ * round border, so no top/bottom border rows are counted. Reserved from the
+ * terminal height so the overflow-to-compact switch (D-13) still accounts for
+ * the header's real height — it feeds `capacity = termRows - HEADER_LINES`.
  */
-const HEADER_LINES = 5;
+const HEADER_LINES = 3;
 
 /** Grace window (D-05, RESEARCH Open Q3): render a dead/vanished session dim-grey
  * as "ended" for ~1.2s (one–two poll ticks) BEFORE pruning it, so the user sees
@@ -187,8 +188,6 @@ export function App() {
     <Box flexDirection="column">
       <Box
         flexDirection="column"
-        borderStyle="round"
-        borderColor="cyan"
         paddingX={1}
         marginBottom={1}
         width={termCols}
