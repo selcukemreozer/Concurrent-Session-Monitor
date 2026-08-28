@@ -195,6 +195,75 @@ describe("App summary header (D-15)", () => {
   });
 });
 
+describe("App conflict surface (PANEL-04 SC-1/SC-3, D-06/D-07)", () => {
+  beforeEach(() => {
+    (readAll as unknown as { mockReset: () => void }).mockReset();
+    (pruneSession as unknown as { mockReset: () => void }).mockReset();
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  /** Two live sessions whose windows both hold the same absolute (non-existent)
+   * path — resolveRealpath degrades a missing file to its lexical absolute, so
+   * both fold to the same realpath and raise one conflict. */
+  function overlappingRows(): SessionRow[] {
+    const ts = new Date().toISOString();
+    return [
+      makeRow({ session_id: "a", folder: "projA", branch: "main", files: [{ file_path: "/abs/shared.ts", ts }] }),
+      makeRow({ session_id: "b", folder: "projB", branch: "dev", files: [{ file_path: "/abs/shared.ts", ts }] }),
+    ];
+  }
+
+  it("renders a real `1 conflicts` counter + the ⚠ band naming the file and both sessions", () => {
+    (readAll as unknown as { mockReturnValue: (v: unknown) => unknown }).mockReturnValue(overlappingRows());
+    const { inst, frame } = renderCapture();
+    const out = frame();
+    expect(out).toContain("1 conflicts");
+    expect(out).toContain("⚠");
+    expect(out).toContain("shared.ts");
+    expect(out).toContain("projA");
+    expect(out).toContain("projB");
+    inst.unmount();
+  });
+
+  it("omits the ⚠ band and shows `0 conflicts` when no path overlaps (D-07)", () => {
+    const ts = new Date().toISOString();
+    (readAll as unknown as { mockReturnValue: (v: unknown) => unknown }).mockReturnValue([
+      makeRow({ session_id: "a", folder: "projA", files: [{ file_path: "/abs/a.ts", ts }] }),
+      makeRow({ session_id: "b", folder: "projB", files: [{ file_path: "/abs/b.ts", ts }] }),
+    ]);
+    const { inst, frame } = renderCapture();
+    const out = frame();
+    expect(out).toContain("0 conflicts");
+    expect(out).not.toContain("⚠");
+    inst.unmount();
+  });
+
+  it("renders the ⚠ band in BOTH compact and card modes (D-07 mode-independence)", () => {
+    (readAll as unknown as { mockReturnValue: (v: unknown) => unknown }).mockReturnValue(overlappingRows());
+    const compact = renderCapture(6, 120);
+    expect(compact.frame()).toContain("⚠");
+    compact.inst.unmount();
+
+    (readAll as unknown as { mockReturnValue: (v: unknown) => unknown }).mockReturnValue(overlappingRows());
+    const card = renderCapture(80, 120);
+    expect(card.frame()).toContain("⚠");
+    card.inst.unmount();
+  });
+
+  it("does NOT raise a conflict from a dead/ghost row sharing the path (SC-3)", () => {
+    const ts = new Date().toISOString();
+    (readAll as unknown as { mockReturnValue: (v: unknown) => unknown }).mockReturnValue([
+      makeRow({ session_id: "live", folder: "projA", files: [{ file_path: "/abs/shared.ts", ts }] }),
+      makeRow({ session_id: "ghost", folder: "projB", alive: false, readyToPrune: true, dotState: "stale", files: [{ file_path: "/abs/shared.ts", ts }] }),
+    ]);
+    const { inst, frame } = renderCapture();
+    const out = frame();
+    expect(out).toContain("0 conflicts");
+    expect(out).not.toContain("⚠");
+    inst.unmount();
+  });
+});
+
 describe("App height-driven compact overflow (D-13)", () => {
   beforeEach(() => {
     (readAll as unknown as { mockReset: () => void }).mockReset();
