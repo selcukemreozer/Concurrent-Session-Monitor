@@ -268,6 +268,80 @@ describe("SessionCard read lines (PANEL-06 D-08/D-09/D-10)", () => {
   });
 });
 
+describe("SessionCard intent line (PANEL-02 D-10/D-11/D-12)", () => {
+  const now = () => new Date().toISOString();
+  const INTENT_GLYPH = "»"; // U+00BB, the card-only intent marker
+
+  it("renders the sanitized intent text above the write and read file lists (D-10)", () => {
+    const out = stripAnsi(
+      renderToString(
+        <SessionCard
+          s={makeRow({
+            intent: "refactor Card",
+            files: [{ file_path: "/repo/w.ts", ts: now() }],
+            reads: [{ file_path: "/repo/r.ts", ts: now() }],
+          })}
+        />,
+      ),
+    );
+    expect(out).toContain("refactor Card");
+    const lines = out.split("\n");
+    const intentIdx = lines.findIndex((l) => l.includes("refactor Card"));
+    const writeIdx = lines.findIndex((l) => l.includes("w.ts"));
+    const readIdx = lines.findIndex((l) => l.includes("r.ts"));
+    expect(intentIdx).toBeGreaterThanOrEqual(0);
+    expect(writeIdx).toBeGreaterThanOrEqual(0);
+    expect(readIdx).toBeGreaterThanOrEqual(0);
+    // D-10: intent sits above BOTH the write and read file lines
+    expect(intentIdx).toBeLessThan(writeIdx);
+    expect(intentIdx).toBeLessThan(readIdx);
+  });
+
+  it("falls back to a dim recent-activity indicator from the newest write when no intent (D-11)", () => {
+    const out = stripAnsi(
+      renderToString(
+        <SessionCard
+          s={makeRow({
+            files: [
+              { file_path: "/repo/Old.tsx", ts: new Date(Date.now() - 60_000).toISOString() },
+              { file_path: "/repo/Card.tsx", ts: now() },
+            ],
+          })}
+        />,
+      ),
+    );
+    // the newest write basename appears in a distinct `~ `-marked recent line
+    expect(out).toContain("~ Card.tsx");
+    // no intent glyph is rendered when there is no intent
+    expect(out).not.toContain(INTENT_GLYPH);
+    // the recent-activity line is never blank
+    const line = out.split("\n").find((l) => l.includes("~ Card.tsx")) ?? "";
+    expect(line.trim().length).toBeGreaterThan(0);
+  });
+
+  it("renders a non-blank dim idle indicator when there is no intent and no files (D-11)", () => {
+    const out = stripAnsi(
+      renderToString(<SessionCard s={makeRow({ intent: undefined, files: [] })} />),
+    );
+    expect(out).not.toContain(INTENT_GLYPH);
+    // never a blank line: a `(idle)` indicator is shown instead
+    expect(out).toContain("(idle)");
+  });
+
+  it("sanitizes an ESC byte embedded in the intent before render (T-04-05)", () => {
+    const out = renderToString(<SessionCard s={makeRow({ intent: "hack" + ESC + "ed" })} />);
+    expect(out).toContain("hacked"); // ESC stripped, text intact
+    const line = out.split("\n").find((l) => l.includes("hacked")) ?? "";
+    expect(line).not.toContain(ESC);
+  });
+
+  it("CompactRow stays intent-free: no intent text, no intent glyph (D-12)", () => {
+    const out = renderToString(<CompactRow s={makeRow({ intent: "secret task" })} />);
+    expect(out).not.toContain("secret task");
+    expect(out).not.toContain(INTENT_GLYPH);
+  });
+});
+
 /** Minimal Conflict fixture builder for band render assertions. */
 function makeConflict(over: Partial<Conflict> = {}): Conflict {
   return {
