@@ -30,6 +30,15 @@ const READ_GLYPH = "◇";
 const READ_COLOR = "blue";
 
 /**
+ * Leading marker for the card's intent line (PANEL-02 D-10): `»` (U+00BB). It is
+ * >= 0x00A0 so `sanitize()` preserves it, and it deliberately avoids every
+ * reserved cue — NOT red (conflicts), NOT green/yellow/grey (liveness dots), NOT
+ * cyan (osc8 links/header), and NOT the blue read diamond `◇`. Intent is a
+ * card-only surface (D-12): this glyph never appears in `CompactRow`.
+ */
+const INTENT_GLYPH = "»";
+
+/**
  * Wrap a URL + label in an OSC-8 hyperlink escape so terminals like Warp render
  * a clickable go-to-pane affordance (D-06):  ESC ]8;; URL ST label ESC ]8;; ST.
  *
@@ -121,6 +130,25 @@ export function SessionCard({ s }: { s: SessionRow }) {
     ...readParts.map((p) => (READ_GLYPH + " " + sanitize(p.name)).length),
   );
 
+  // Intent line (PANEL-02 D-10): drawn immediately under the header and ABOVE
+  // both file lists. When `s.intent` is a non-empty string, render it behind the
+  // INTENT_GLYPH (sanitized — untrusted agent text, T-04-05). Otherwise fall back
+  // so the line is NEVER blank (D-11): a dim `~ <basename>` derived from the
+  // newest active write (max Date.parse(ts)), or a dim `~ (idle)` when there are
+  // no active writes either.
+  const newestWrite = s.files.reduce<SessionRow["files"][number] | undefined>(
+    (best, f) => (best && Date.parse(best.ts) >= Date.parse(f.ts) ? best : f),
+    undefined,
+  );
+  const intentLine =
+    typeof s.intent === "string" && s.intent.length > 0 ? (
+      <Text>{"  " + INTENT_GLYPH + " " + sanitize(s.intent)}</Text>
+    ) : newestWrite ? (
+      <Text dimColor>{"  ~ " + sanitize(splitPath(newestWrite.file_path).name)}</Text>
+    ) : (
+      <Text dimColor>{"  ~ (idle)"}</Text>
+    );
+
   return (
     <Box flexDirection="column" borderStyle="round" paddingX={1} marginBottom={1}>
       <Box>
@@ -140,6 +168,7 @@ export function SessionCard({ s }: { s: SessionRow }) {
           <Text color="cyan">{" · " + osc8(focusUrl, "↪ go to pane")}</Text>
         ) : null}
       </Box>
+      {intentLine}
       {s.files.length === 0 ? (
         <Text dimColor>{"  (no active files)"}</Text>
       ) : (
