@@ -57,6 +57,17 @@ export interface SessionState {
    * `null` otherwise. The panel renders a clickable OSC-8 link from focus_url.
    */
   warp?: { focus_url?: string; session_uuid?: string } | null;
+  /**
+   * The session's declared intent (optional, INT-01). Written to a SEPARATE
+   * `intent.txt` shard by the `/csm-intent` command (scripts/csm-intent.mjs) —
+   * a distinct writer from the SessionStart/heartbeat hooks, preserving the
+   * one-writer-per-file invariant (D-01). Set explicitly only, never derived
+   * from prompts (D-02). Sanitized (control-stripped, single-line, capped) at
+   * write time. Additive optional field — SESSION_SCHEMA_VERSION is NOT bumped.
+   */
+  intent?: string;
+  /** ISO-8601 timestamp the intent was last set (optional, INT-01). */
+  intent_ts?: string;
 }
 
 /**

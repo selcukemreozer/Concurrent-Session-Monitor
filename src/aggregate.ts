@@ -69,6 +69,15 @@ export type SessionRow = SessionState & {
    * "active" (the SC-4 phantom guard at the compute layer).
    */
   dotState: "active" | "idle" | "stale";
+  /**
+   * The session's declared intent (INT-01), surfaced from the `intent.txt`
+   * shard written by `/csm-intent`. Undefined when no intent was set or the
+   * shard is absent/torn (D-11 self-heal) — a purely additive, card-only field
+   * that NEVER drives sort, liveness, or conflict detection.
+   */
+  intent?: string;
+  /** ISO-8601 timestamp the intent was last set, when present (INT-01). */
+  intent_ts?: string;
 };
 
 /**
@@ -179,6 +188,32 @@ function activeReads(dir: string, now: number): ActiveFile[] {
 }
 
 /**
+ * Read one session's declared intent from its `intent.txt` shard (INT-01).
+ *
+ * Mirrors {@link activeFiles}' try/catch self-heal: an absent or torn/partial
+ * intent.txt is the NORMAL case (D-11 handles display), so any read/parse throw
+ * returns `{}` and the session is never dropped from the roster. Returns
+ * `{ intent, intent_ts }` only when the parsed `intent` is a non-empty string;
+ * an empty-string intent is treated as absent. `intent_ts` comes from a string
+ * `ts`, else undefined. This is a card-only read — it feeds neither sort,
+ * liveness, nor conflict detection (D-02/D-03).
+ */
+function readIntent(dir: string): { intent?: string; intent_ts?: string } {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(path.join(dir, "intent.txt"), "utf8"));
+    if (typeof parsed?.intent === "string" && parsed.intent.length > 0) {
+      return {
+        intent: parsed.intent,
+        intent_ts: typeof parsed.ts === "string" ? parsed.ts : undefined,
+      };
+    }
+    return {};
+  } catch {
+    return {}; // absent/torn intent.txt self-heals (D-11)
+  }
+}
+
+/**
  * The sole cross-session view (STATE-02): aggregate every session shard into
  * one array, apply the D-02 active window, and sort most-recently-active
  * first (D-09).
@@ -260,6 +295,7 @@ export function readAll(
       ...state,
       files,
       reads,
+      ...readIntent(dir), // INT-01 additive read-side field (D-01 separate shard)
       last_active: lastActive,
       last_seen: heartbeatMs !== undefined ? new Date(heartbeatMs).toISOString() : state.last_seen,
       alive,
