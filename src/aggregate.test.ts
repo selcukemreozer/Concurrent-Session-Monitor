@@ -350,3 +350,54 @@ describe("activeReads (read window, D-04/D-06/D-07)", () => {
     expect(row.reads.map((r) => r.file_path)).not.toContain("/repo/shared.ts");
   });
 });
+
+// RED (04-01): readAll must surface a per-session intent.txt shard as
+// SessionRow.intent / intent_ts (INT-01). intent.txt is a SEPARATE writer from
+// session.json (D-01), format `{ intent: string, ts: string }`. An absent or
+// torn intent.txt must leave `intent` undefined and NEVER drop the session
+// (D-11 self-heal), mirroring the activeFiles/activeReads try/catch shape.
+describe("readIntent surface (INT-01, D-01/D-11)", () => {
+  function writeIntent(dir: string, snap: { intent?: unknown; ts?: unknown }): void {
+    fs.writeFileSync(path.join(dir, "intent.txt"), JSON.stringify(snap), { mode: 0o600 });
+  }
+
+  it("valid intent.txt: readAll's row carries intent and intent_ts", () => {
+    const now = Date.now();
+    const dir = seedSession("int-ok", new Date(now).toISOString());
+    const ts = new Date(now).toISOString();
+    writeIntent(dir, { intent: "refactor Card", ts });
+
+    const row = readAll(now).find((r) => r.session_id === "int-ok")!;
+    expect(row.intent).toBe("refactor Card");
+    expect(row.intent_ts).toBe(ts);
+  });
+
+  it("torn intent.txt (non-JSON): row still appears with intent undefined (never dropped)", () => {
+    const now = Date.now();
+    const dir = seedSession("int-torn", new Date(now).toISOString());
+    fs.writeFileSync(path.join(dir, "intent.txt"), "{not json", { mode: 0o600 });
+
+    const row = readAll(now).find((r) => r.session_id === "int-torn");
+    expect(row).toBeDefined();
+    expect(row!.intent).toBeUndefined();
+    expect(row!.intent_ts).toBeUndefined();
+  });
+
+  it("absent intent.txt: intent is undefined and the session still appears", () => {
+    const now = Date.now();
+    seedSession("int-absent", new Date(now).toISOString());
+
+    const row = readAll(now).find((r) => r.session_id === "int-absent");
+    expect(row).toBeDefined();
+    expect(row!.intent).toBeUndefined();
+  });
+
+  it("empty-string intent is treated as absent (undefined, not empty)", () => {
+    const now = Date.now();
+    const dir = seedSession("int-empty", new Date(now).toISOString());
+    writeIntent(dir, { intent: "", ts: new Date(now).toISOString() });
+
+    const row = readAll(now).find((r) => r.session_id === "int-empty")!;
+    expect(row.intent).toBeUndefined();
+  });
+});
