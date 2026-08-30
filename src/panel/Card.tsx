@@ -4,6 +4,7 @@ import { sanitize } from "../sanitize.js";
 import { fmtUptime } from "../liveness.js";
 import type { SessionRow } from "../aggregate.js";
 import type { Conflict, ConflictSession } from "../conflicts.js";
+import { livePidMap, attribute, type ScannedPort } from "../ports.js";
 
 // ESC (0x1B) and ST (ESC "\") as raw bytes, built without embedding control
 // characters in source. These frame an OSC-8 hyperlink.
@@ -299,6 +300,149 @@ export function ConflictBand({ conflicts }: { conflicts: Conflict[] }) {
       {more > 0 ? (
         <Text color="red" dimColor>{`  +${more} more`}</Text>
       ) : null}
+    </Box>
+  );
+}
+
+/**
+ * The exposed-port security badge glyph (PORT-05 D-03): `⇅` (U+21C5). It is
+ * >= 0x00A0 so `sanitize()` preserves it, and it is visually distinct from every
+ * reserved cue — the liveness `●`, the read `◇`, the filled `◆`, the conflict
+ * `⚠`, the swap `↔`, the link `↪`, and the intent `»`. Paired with `magenta`
+ * `bold` (a color owned by NO other cue: red=conflict, green/yellow/grey=liveness,
+ * cyan=header/links, blue=reads) so an off-host bind stands out as a warning
+ * WITHOUT colliding with the conflict-red alarm.
+ */
+const EXPOSED_GLYPH = "⇅";
+
+/**
+ * Max port rows the PORTLAR pane renders before collapsing the remainder into a
+ * single dim `+N more` (mirrors CONFLICT_CAP). Bounds the pane's height
+ * regardless of how many listeners the machine has (D-06 shows all ports).
+ */
+export const PORTS_CAP = 6;
+
+/**
+ * Build a port-group heading reusing the `folder · branch · shortid` identity
+ * convention (Card.tsx label()/shortId): each of the three parts is sanitized
+ * SEPARATELY (empty branch collapses to the `—` dash), then — ONLY when a
+ * non-empty intent is set — the sanitized intent is appended behind the same
+ * `»` INTENT_GLYPH the card uses (D-04). When intent is absent the heading ends
+ * at the shortId with NO trailing marker/placeholder (mirrors Card.tsx:143-150).
+ */
+function portHeading(folder: string, branch: string, session_id: string, intent?: string): string {
+  const f = sanitize(folder);
+  const b = sanitize(branch) || "—";
+  const id = sanitize(String(session_id).slice(0, 8));
+  const base = `${f} · ${b} · ${id}`;
+  return typeof intent === "string" && intent.length > 0
+    ? `${base} ${INTENT_GLYPH} ${sanitize(intent)}`
+    : base;
+}
+
+/**
+ * One listening-socket row: `port · command · <badge>`. The port and command
+ * are sanitized SEPARATELY before render (T-04.1-01, process-controlled strings).
+ * The badge is the sole security signal: an exposed bind gets a `magenta` `bold`
+ * `⇅ exposed` (D-03), a local-only bind a dim `local` (no glyph). No reserved
+ * palette color is used for the badge.
+ */
+function PortRow({ p }: { p: ScannedPort }) {
+  return (
+    <Text>
+      {"  " + sanitize(String(p.port)) + " · " + sanitize(p.command) + " · "}
+      {p.exposed ? (
+        <Text color="magenta" bold>{EXPOSED_GLYPH + " exposed"}</Text>
+      ) : (
+        <Text dimColor>{"local"}</Text>
+      )}
+    </Text>
+  );
+}
+
+/**
+ * The LEFT PORTLAR pane (PORT-05): scanned listening ports grouped under the
+ * session that owns them. For each port, the Plan-01 render-time join
+ * (`livePidMap` + `attribute`) walks its pid ancestry to the first live session
+ * (`alive && !readyToPrune`, numeric pid); a match groups the port under that
+ * session's `folder · branch · shortid` heading (intent-enriched, D-04), while an
+ * unattributed port falls to a final `Sen (kullanici)` user bucket rendered LAST
+ * (D-02). The pane flattens to at most `PORTS_CAP` port rows and appends a dim
+ * `+N more` past the cap (mirrors ConflictBand); zero ports render a single dim
+ * `no listening ports` empty state.
+ *
+ * Pure presentation — NO scanning, NO timers, NO keyboard/raw-mode (Phase 04.2).
+ * It is NOT a card: no `borderStyle`, just a column of `<Text>`. Every rendered
+ * field (port, command, heading parts, intent, badge) is routed through
+ * `sanitize()` before Ink render, and the badge glyph `⇅` is >= 0x00A0 so it
+ * survives — a crafted process name cannot inject control bytes (T-04.1-01).
+ */
+export function PortsPane({ ports, rows }: { ports: ScannedPort[]; rows: SessionRow[] }) {
+  if (ports.length === 0) {
+    return (
+      <Box flexDirection="column">
+        <Text dimColor>{"no listening ports"}</Text>
+      </Box>
+    );
+  }
+
+  const live = livePidMap(rows);
+
+  // Group attributed ports by owning session (stable insertion order); collect
+  // unattributed ports into the user bucket.
+  interface Group {
+    key: string;
+    heading: string;
+    ports: ScannedPort[];
+  }
+  const sessionGroups = new Map<string, Group>();
+  const userPorts: ScannedPort[] = [];
+  for (const p of ports) {
+    const row = attribute(p, live);
+    if (row === null) {
+      userPorts.push(p);
+      continue;
+    }
+    let g = sessionGroups.get(row.session_id);
+    if (!g) {
+      g = {
+        key: row.session_id,
+        heading: portHeading(row.folder, row.branch, row.session_id, row.intent),
+        ports: [],
+      };
+      sessionGroups.set(row.session_id, g);
+    }
+    g.ports.push(p);
+  }
+
+  // Session groups first, the user bucket (D-02) LAST.
+  const groups: Group[] = [...sessionGroups.values()];
+  if (userPorts.length > 0) {
+    groups.push({ key: " user", heading: "Sen (kullanici)", ports: userPorts });
+  }
+
+  // Flatten to at most PORTS_CAP port rows across all groups; a group's heading
+  // is shown only if at least one of its rows fits the remaining budget.
+  const total = groups.reduce((n, g) => n + g.ports.length, 0);
+  const more = Math.max(0, total - PORTS_CAP);
+  let budget = PORTS_CAP;
+
+  return (
+    <Box flexDirection="column">
+      {groups.map((g) => {
+        if (budget <= 0) return null;
+        const shown = g.ports.slice(0, budget);
+        budget -= shown.length;
+        return (
+          <React.Fragment key={g.key}>
+            <Text bold>{g.heading}</Text>
+            {shown.map((p) => (
+              <PortRow key={`${g.key}:${p.port}:${p.pid}`} p={p} />
+            ))}
+          </React.Fragment>
+        );
+      })}
+      {more > 0 ? <Text dimColor>{`  +${more} more`}</Text> : null}
     </Box>
   );
 }
