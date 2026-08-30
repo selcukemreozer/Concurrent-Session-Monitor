@@ -6,10 +6,16 @@ import { describe, it, expect } from "vitest";
 // RED (wave 03-02): Card.tsx also exports the ConflictBand component (PANEL-04) —
 // an always-on `⚠` band naming the shared file + every involved session
 // (folder·branch·shortid joined by ↔), null when empty, `+X more` past the cap.
-import { osc8, SessionCard, CompactRow, dotColor, ConflictBand } from "./Card.js";
+// RED (wave 04.1-02): Card.tsx also exports the PortsPane component (PORT-05) —
+// the LEFT PORTLAR pane grouping each scanned port under its owning session's
+// folder·branch·shortid heading (user bucket last), a magenta/bold `⇅ exposed`
+// badge vs dim `local`, intent-enriched headings, PORTS_CAP `+N more`, and a
+// `no listening ports` empty state — every field routed through sanitize().
+import { osc8, SessionCard, CompactRow, dotColor, ConflictBand, PortsPane } from "./Card.js";
 import { renderToString } from "ink";
 import type { SessionRow } from "../aggregate.js";
 import type { Conflict } from "../conflicts.js";
+import type { ScannedPort } from "../ports.js";
 
 const ESC = String.fromCharCode(27); // 0x1B
 
@@ -400,5 +406,98 @@ describe("ConflictBand (PANEL-04 D-06/D-07/D-09/D-10/D-11)", () => {
     expect(out).toContain("file-0.ts");
     expect(out).toContain("file-4.ts");
     expect(out).not.toContain("file-5.ts");
+  });
+});
+
+/** Minimal ScannedPort fixture builder for PortsPane render assertions. */
+function makePort(over: Partial<ScannedPort> = {}): ScannedPort {
+  return {
+    port: 3000,
+    pid: 111,
+    command: "node",
+    exposed: false,
+    ancestryPids: [111],
+    ...over,
+  };
+}
+
+describe("PortsPane (PORT-05 port pane render)", () => {
+  const INTENT_GLYPH = "»"; // U+00BB — the heading intent marker (reused from the card)
+
+  it("groups a port under its owning session's folder·branch·shortid heading (port attribution)", () => {
+    const row = makeRow({ session_id: "abcdef0123456789", folder: "proj-a", branch: "main", pid: 111 });
+    const p = makePort({ pid: 111, ancestryPids: [222, 111], port: 3000, command: "vite" });
+    const out = stripAnsi(renderToString(<PortsPane ports={[p]} rows={[row]} />));
+    // heading identity: folder · branch · first-8 shortid
+    expect(out).toContain("proj-a");
+    expect(out).toContain("main");
+    expect(out).toContain("abcdef01");
+    // the port row itself
+    expect(out).toContain("3000");
+    expect(out).toContain("vite");
+  });
+
+  it("renders unattributed ports under a final 'Sen (kullanici)' user group placed last (port user bucket)", () => {
+    const row = makeRow({ session_id: "abcdef0123456789", folder: "proj-a", branch: "main", pid: 111 });
+    const owned = makePort({ pid: 111, ancestryPids: [111], port: 3000, command: "vite" });
+    const orphan = makePort({ pid: 999, ancestryPids: [999], port: 8080, command: "python" });
+    const out = stripAnsi(renderToString(<PortsPane ports={[owned, orphan]} rows={[row]} />));
+    expect(out).toContain("Sen (kullanici)");
+    const lines = out.split("\n");
+    const sessionIdx = lines.findIndex((l) => l.includes("proj-a"));
+    const userIdx = lines.findIndex((l) => l.includes("Sen (kullanici)"));
+    expect(sessionIdx).toBeGreaterThanOrEqual(0);
+    expect(userIdx).toBeGreaterThan(sessionIdx); // user group renders LAST
+  });
+
+  it("marks an exposed port with the ⇅ glyph and the word exposed (port badge)", () => {
+    const p = makePort({ exposed: true, port: 5000, command: "node" });
+    const out = stripAnsi(renderToString(<PortsPane ports={[p]} rows={[]} />));
+    expect(out).toContain("⇅");
+    expect(out).toContain("exposed");
+  });
+
+  it("marks a local-only port with 'local' and no ⇅ glyph (port badge)", () => {
+    const p = makePort({ exposed: false, port: 5000, command: "node" });
+    const out = stripAnsi(renderToString(<PortsPane ports={[p]} rows={[]} />));
+    expect(out).toContain("local");
+    expect(out).not.toContain("⇅");
+  });
+
+  it("appends the session intent to the group heading when set (port intent heading)", () => {
+    const row = makeRow({ pid: 111, folder: "proj-a", intent: "building auth" });
+    const p = makePort({ pid: 111, ancestryPids: [111] });
+    const out = stripAnsi(renderToString(<PortsPane ports={[p]} rows={[row]} />));
+    expect(out).toContain("building auth");
+    expect(out).toContain(INTENT_GLYPH); // intent marker present when intent is set
+  });
+
+  it("shows no trailing intent marker on the heading when the session has no intent (port intent heading)", () => {
+    const row = makeRow({ pid: 111, folder: "proj-a", intent: undefined });
+    const p = makePort({ pid: 111, ancestryPids: [111] });
+    const out = stripAnsi(renderToString(<PortsPane ports={[p]} rows={[row]} />));
+    expect(out).not.toContain(INTENT_GLYPH); // no placeholder marker when intent absent
+  });
+
+  it("sanitizes an injected control byte in a port command before render (port sanitize)", () => {
+    const p = makePort({ command: "ev" + ESC + "il", port: 3000 });
+    const out = renderToString(<PortsPane ports={[p]} rows={[]} />);
+    expect(out).toContain("evil"); // ESC stripped, name intact
+    const line = out.split("\n").find((l) => l.includes("evil")) ?? "";
+    expect(line).not.toContain(ESC);
+  });
+
+  it("caps at PORTS_CAP rows and appends a `+N more` line past the cap (port cap)", () => {
+    // 9 ports all in the user bucket -> PORTS_CAP (6) rows + a `+3 more` summary
+    const ports = Array.from({ length: 9 }, (_, i) =>
+      makePort({ pid: 999, ancestryPids: [999], port: 3000 + i, command: `svc${i}` }),
+    );
+    const out = stripAnsi(renderToString(<PortsPane ports={ports} rows={[]} />));
+    expect(out).toContain("+3 more"); // 9 total - cap of 6 = 3
+  });
+
+  it("renders the dim 'no listening ports' empty state when there are zero ports (port empty)", () => {
+    const out = stripAnsi(renderToString(<PortsPane ports={[]} rows={[]} />));
+    expect(out).toContain("no listening ports");
   });
 });
