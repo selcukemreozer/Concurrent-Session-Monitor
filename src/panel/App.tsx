@@ -4,8 +4,9 @@ import { readAll, type SessionRow } from "../aggregate.js";
 import { pruneSession } from "../prune.js";
 import { sanitize } from "../sanitize.js";
 import { numEnv } from "../env.js";
-import { SessionCard, CompactRow, ConflictBand } from "./Card.js";
+import { SessionCard, CompactRow, ConflictBand, PortsPane } from "./Card.js";
 import { detectConflicts, type Conflict } from "../conflicts.js";
+import { scanPorts, portScanMs, type ScannedPort } from "../ports.js";
 
 /** Poll cadence (Claude's Discretion): ~750ms comfortably meets criterion #1
  * ("a touch appears within about a second") without a file watcher. */
@@ -28,6 +29,16 @@ const CARD_LINES = 4;
  * the header's real height — it feeds `capacity = termRows - HEADER_LINES`.
  */
 const HEADER_LINES = 3;
+
+/**
+ * Vertical lines the bottom two-column ports/extras shell reserves from the
+ * roster capacity (Pitfall 4). Bounds the LEFT `PortsPane` — at most `PORTS_CAP`
+ * (6) port rows + their group headings + the `marginTop` gap — so the ports
+ * region can never grow enough to push the roster off the alternate screen.
+ * Subtracted from `capacity` alongside `HEADER_LINES` so the overflow-to-compact
+ * switch (D-13) accounts for the shell's real height.
+ */
+const PORTS_LINES = 10;
 
 /** Grace window (D-05, RESEARCH Open Q3): render a dead/vanished session dim-grey
  * as "ended" for ~1.2s (one–two poll ticks) BEFORE pruning it, so the user sees
@@ -175,9 +186,38 @@ export function App() {
     return () => clearInterval(timer);
   }, []);
 
+  // Cached last-good scan result + an in-flight guard so scans never overlap.
+  const [ports, setPorts] = React.useState<ScannedPort[]>([]);
+  const scanning = React.useRef(false);
+
+  // SECOND, slower timer (D-05, PORT-06): spawn scanPorts() asynchronously off
+  // the render thread at portScanMs() cadence — independent of and NEVER inside
+  // the 750ms poll. An in-flight scan is skipped (overlap guard); the resolved
+  // ScannedPort[] is cached in state and rendered between scans. On unmount the
+  // interval is cleared and a late resolve is ignored (alive flag). scanPorts()
+  // never rejects, but the catch still resets to [] defensively.
+  React.useEffect(() => {
+    let alive = true;
+    const tick = () => {
+      if (scanning.current) return; // prior scan still running — skip, no overlap
+      scanning.current = true;
+      scanPorts()
+        .then((p) => { if (alive) setPorts(p); })
+        .catch(() => { if (alive) setPorts([]); })
+        .finally(() => { scanning.current = false; });
+    };
+    tick(); // scan once on mount
+    const t = setInterval(tick, portScanMs());
+    return () => { alive = false; clearInterval(t); };
+  }, []);
+
   const { rows: termRows, columns: termCols } = useWindowSize();
-  const capacity = Math.max(1, termRows - HEADER_LINES);
+  const capacity = Math.max(1, termRows - HEADER_LINES - PORTS_LINES);
   const compact = state.display.length * CARD_LINES > capacity;
+
+  // Live (non-grace) rows feed the PortsPane attribution join so ownership stays
+  // fresh against the 750ms liveness — a grace-ghost never claims a port.
+  const liveRows = state.display.filter((d) => !d.ended).map((d) => d.row);
 
   const nConf = state.conflicts.length;
   const summaryLead = sanitize(`${state.live} live · ${state.idle} idle · `);
@@ -217,6 +257,14 @@ export function App() {
           <SessionCard key={d.id} s={d.row} />
         ),
       )}
+      <Box flexDirection="row" width={termCols} marginTop={1}>
+        <Box flexDirection="column" flexBasis="50%" flexGrow={1} flexShrink={1} paddingX={1}>
+          <PortsPane ports={ports} rows={liveRows} />
+        </Box>
+        <Box flexDirection="column" flexBasis="50%" flexGrow={1} flexShrink={1} paddingX={1}>
+          {/* RIGHT — FAZLAR placeholder reserved for Phase 04.2; renders nothing. */}
+        </Box>
+      </Box>
     </Box>
   );
 }
