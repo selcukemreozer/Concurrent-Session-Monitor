@@ -17,9 +17,27 @@ vi.mock("../aggregate.js", () => ({ readAll: vi.fn(() => []) }));
 // and calls prune.ts pruneSession exactly once after the grace. Mock it so the
 // test asserts the WIRING, not the filesystem rm.
 vi.mock("../prune.js", () => ({ pruneSession: vi.fn() }));
+// RED (wave 04.1-03): App owns the SECOND, slower port-scan timer (PORT-06, D-05).
+// Mock ONLY scanPorts + portScanMs so the test asserts the scan cadence/cache/
+// overlap/unmount WIRING, not a real lsof/ps spawn. Everything else in ports.js
+// (livePidMap/attribute, consumed by Card.tsx's PortsPane) is preserved via the
+// actual module so the LEFT pane still renders the cached ports for real.
+vi.mock("../ports.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../ports.js")>();
+  return {
+    ...actual,
+    scanPorts: vi.fn(async () => []),
+    portScanMs: vi.fn(() => 2500),
+  };
+});
 import { readAll } from "../aggregate.js";
 import { pruneSession } from "../prune.js";
+import { scanPorts, portScanMs } from "../ports.js";
+import type { ScannedPort } from "../ports.js";
 import { App } from "./App.js";
+
+/** The mocked scan cadence (ms) — App arms its 2nd interval at portScanMs(). */
+const PORT_CADENCE = 2500;
 
 /** A non-TTY sink so Ink renders without touching the real terminal. */
 function fakeStdout(rows = 24, columns = 80): NodeJS.WriteStream {
@@ -333,4 +351,123 @@ describe("bin/csm.mjs clean shutdown (D-14, Pitfall 3)", () => {
     fs.rmSync(store, { recursive: true, force: true });
     expect(code).toBe(0);
   }, 15000);
+});
+
+describe("port scan cadence (PORT-06, D-05)", () => {
+  /** A mocked scanned port that lands in the user bucket (no live pid match), so
+   * PortsPane renders `<port> · <command> · local` regardless of the roster. */
+  function makePort(o: Partial<ScannedPort> = {}): ScannedPort {
+    return { port: 5173, pid: 999999, command: "vite", exposed: false, ancestryPids: [999999], ...o };
+  }
+
+  beforeEach(() => {
+    (readAll as unknown as { mockReset: () => void }).mockReset();
+    (readAll as unknown as { mockReturnValue: (v: unknown) => void }).mockReturnValue([]);
+    vi.mocked(scanPorts).mockReset();
+    vi.mocked(scanPorts).mockResolvedValue([]);
+    vi.mocked(portScanMs).mockReturnValue(PORT_CADENCE);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    // restoreAllMocks strips the scanPorts/portScanMs implementations; re-arm the
+    // module mocks so the next describe/test still sees callable stubs.
+    vi.mocked(scanPorts).mockResolvedValue([]);
+    vi.mocked(portScanMs).mockReturnValue(PORT_CADENCE);
+  });
+
+  it("port scan: runs once on mount and arms the 750ms poll independently of the scan timer", () => {
+    vi.useFakeTimers();
+    const setSpy = vi.spyOn(global, "setInterval");
+
+    const { unmount } = render(React.createElement(App), {
+      stdout: fakeStdout(),
+      patchConsole: false,
+      exitOnCtrlC: false,
+    });
+
+    // Mount fires exactly one initial scan.
+    expect(scanPorts).toHaveBeenCalledTimes(1);
+    // Two independent timers armed: the 750ms poll AND the portScanMs scan.
+    expect(setSpy.mock.calls.some((c) => c[1] === 750), "expected a 750ms poll interval").toBe(true);
+    expect(
+      setSpy.mock.calls.some((c) => c[1] === PORT_CADENCE),
+      "expected a portScanMs() scan interval distinct from the poll",
+    ).toBe(true);
+
+    unmount();
+  });
+
+  it("port scan: the cadence tick re-scans but the 750ms poll tick does NOT scan (D-05)", async () => {
+    vi.useFakeTimers();
+    const { unmount } = render(React.createElement(App), {
+      stdout: fakeStdout(),
+      patchConsole: false,
+      exitOnCtrlC: false,
+    });
+
+    expect(scanPorts).toHaveBeenCalledTimes(1); // mount scan
+
+    // A poll tick (750ms) must NOT trigger a scan — the scan is on its own timer.
+    await vi.advanceTimersByTimeAsync(750);
+    expect(scanPorts).toHaveBeenCalledTimes(1);
+
+    // Reaching the cadence boundary triggers the next scan.
+    await vi.advanceTimersByTimeAsync(PORT_CADENCE - 750);
+    expect(scanPorts).toHaveBeenCalledTimes(2);
+
+    unmount();
+  });
+
+  it("port scan: an in-flight scan blocks the next cadence tick (overlap guard)", async () => {
+    vi.useFakeTimers();
+    let release!: (v: ScannedPort[]) => void;
+    // Mount scan stays pending until we release it.
+    vi.mocked(scanPorts).mockReturnValueOnce(new Promise<ScannedPort[]>((r) => { release = r; }));
+
+    const { unmount } = render(React.createElement(App), {
+      stdout: fakeStdout(),
+      patchConsole: false,
+      exitOnCtrlC: false,
+    });
+
+    expect(scanPorts).toHaveBeenCalledTimes(1); // pending mount scan
+
+    // Cadence fires while the prior scan is still in flight — must be skipped.
+    await vi.advanceTimersByTimeAsync(PORT_CADENCE);
+    expect(scanPorts).toHaveBeenCalledTimes(1);
+
+    // Resolve the pending scan; the guard clears and the next cadence scans.
+    release([]);
+    await vi.advanceTimersByTimeAsync(PORT_CADENCE);
+    expect(scanPorts).toHaveBeenCalledTimes(2);
+
+    unmount();
+  });
+
+  it("port scan: caches the resolved ScannedPort[] and renders it in the LEFT pane", async () => {
+    vi.mocked(scanPorts).mockResolvedValue([makePort()]);
+
+    const { inst, frame } = renderCapture();
+    await vi.waitFor(() => expect(frame()).toContain("5173"));
+    expect(frame()).toContain("vite");
+
+    inst.unmount();
+  });
+
+  it("port scan: clears the scan interval on unmount (no scans after unmount)", async () => {
+    vi.useFakeTimers();
+    const { unmount } = render(React.createElement(App), {
+      stdout: fakeStdout(),
+      patchConsole: false,
+      exitOnCtrlC: false,
+    });
+
+    expect(scanPorts).toHaveBeenCalledTimes(1); // mount scan
+    unmount();
+
+    // Well past several cadence boundaries — a cleared interval fires nothing.
+    await vi.advanceTimersByTimeAsync(PORT_CADENCE * 3);
+    expect(scanPorts).toHaveBeenCalledTimes(1);
+  });
 });
