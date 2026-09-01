@@ -500,4 +500,30 @@ describe("PortsPane (PORT-05 port pane render)", () => {
     const out = stripAnsi(renderToString(<PortsPane ports={[]} rows={[]} />));
     expect(out).toContain("no listening ports");
   });
+
+  it("renders the exact approved row format with a trailing dim pid segment (port pid suffix)", () => {
+    const p = makePort({ port: 43117, command: "node", exposed: true, pid: 31235 });
+    const out = stripAnsi(renderToString(<PortsPane ports={[p]} rows={[]} />));
+    const line = out.split("\n").find((l) => l.includes("43117")) ?? "";
+    // approved final format: port · command · badge · pid <pid>
+    expect(line).toContain("43117 · node · ⇅ exposed · pid 31235");
+  });
+
+  it("renders each row's own pid across groups (port pid per row)", () => {
+    const row = makeRow({ session_id: "abcdef0123456789", folder: "proj-a", branch: "main", pid: 111 });
+    const owned = makePort({ pid: 111, ancestryPids: [111], port: 3000, command: "vite" });
+    const orphan = makePort({ pid: 777, ancestryPids: [777], port: 8080, command: "python" });
+    const out = stripAnsi(renderToString(<PortsPane ports={[owned, orphan]} rows={[row]} />));
+    const ownedLine = out.split("\n").find((l) => l.includes("3000")) ?? "";
+    const orphanLine = out.split("\n").find((l) => l.includes("8080")) ?? "";
+    expect(ownedLine).toContain("pid 111");
+    expect(orphanLine).toContain("pid 777");
+  });
+
+  it("places the pid segment AFTER the local badge (port pid after badge)", () => {
+    const p = makePort({ port: 5000, command: "node", exposed: false, pid: 42 });
+    const out = stripAnsi(renderToString(<PortsPane ports={[p]} rows={[]} />));
+    const line = out.split("\n").find((l) => l.includes("5000")) ?? "";
+    expect(line).toContain("local · pid 42");
+  });
 });
