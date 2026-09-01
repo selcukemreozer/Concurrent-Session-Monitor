@@ -341,11 +341,14 @@ function portHeading(folder: string, branch: string, session_id: string, intent?
 }
 
 /**
- * One listening-socket row: `port · command · <badge>`. The port and command
- * are sanitized SEPARATELY before render (T-04.1-01, process-controlled strings).
- * The badge is the sole security signal: an exposed bind gets a `magenta` `bold`
- * `⇅ exposed` (D-03), a local-only bind a dim `local` (no glyph). No reserved
- * palette color is used for the badge.
+ * One listening-socket row: `port · command · <badge> · pid <pid>`. The port,
+ * command, and pid are sanitized SEPARATELY before render (T-04.1-01 / T-qt0-01,
+ * process-controlled strings). The badge is the sole security signal: an exposed
+ * bind gets a `magenta` `bold` `⇅ exposed` (D-03), a local-only bind a dim `local`
+ * (no glyph). No reserved palette color is used for the badge. The trailing dim
+ * `· pid <pid>` segment gives a directly readable `kill <pid>` target (PORT-05):
+ * a numeric pid is inherently injection-safe but still routed through `sanitize()`
+ * so every rendered field stays on the established render-boundary path (T-qt0-01).
  */
 function PortRow({ p }: { p: ScannedPort }) {
   return (
@@ -356,6 +359,7 @@ function PortRow({ p }: { p: ScannedPort }) {
       ) : (
         <Text dimColor>{"local"}</Text>
       )}
+      <Text dimColor>{" · pid " + sanitize(String(p.pid))}</Text>
     </Text>
   );
 }
