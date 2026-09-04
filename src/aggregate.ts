@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { sessionsDir } from "./paths.js";
 import { numEnv } from "./env.js";
-import type { SessionState, TouchEvent } from "./schema.js";
+import type { SessionState, TouchEvent, SkillEvent } from "./schema.js";
 import {
   isProcessAlive,
   resolveLastSeen,
@@ -32,6 +32,17 @@ function windowMs(): number {
  */
 function readWindowMs(): number {
   return numEnv("CSM_READ_WINDOW_MS", 30_000);
+}
+
+/**
+ * The skill-activity decay window (SKILL-03/D-02), config-adjustable via
+ * CSM_SKILL_WINDOW_MS (default 300000ms / 5 min, matching the write window).
+ * A NEW numeric axis, DISTINCT from `windowMs()` and `readWindowMs()`: a skill
+ * older than this leaves `SessionRow.skill` undefined. Read lazily (not
+ * module-const) so tests can flip the env per-case.
+ */
+function skillWindowMs(): number {
+  return numEnv("CSM_SKILL_WINDOW_MS", 5 * 60 * 1000);
 }
 
 /** One file a session is actively touching within the window. */
@@ -78,6 +89,20 @@ export type SessionRow = SessionState & {
   intent?: string;
   /** ISO-8601 timestamp the intent was last set, when present (INT-01). */
   intent_ts?: string;
+  /**
+   * Most-recently model-invoked skill within CSM_SKILL_WINDOW_MS (SKILL-03),
+   * surfaced from the `skill.jsonl` shard. Undefined when no in-window skill or
+   * the shard is absent/torn (T-04.3-03 self-heal) — a purely additive,
+   * card-only field that NEVER drives sort, liveness, or conflict detection.
+   */
+  skill?: string;
+  /** ISO-8601 ts of that skill invocation, when present (SKILL-03). */
+  skill_ts?: string;
+  /**
+   * Owning subagent's friendly agent_type when the skill was subagent-sourced
+   * (SKILL-02); undefined for a main-loop invocation. Card-only passthrough.
+   */
+  skill_subagent?: string;
 };
 
 /**
@@ -214,6 +239,62 @@ function readIntent(dir: string): { intent?: string; intent_ts?: string } {
 }
 
 /**
+ * Reduce one session's `skill.jsonl` shard into the NEWEST in-window skill
+ * (SKILL-03/D-02). Mirrors {@link activeReads}' torn-line-safe reduce — try/catch
+ * read returning `{}` on throw (absent shard self-heals, T-04.3-03), per-line
+ * `JSON.parse` skip (torn trailing line self-heals), `Date.parse` + `< threshold`
+ * window drop — but reduces to a SINGLE newest-wins event on the
+ * `skillWindowMs()` axis rather than a per-file_path map. Returns
+ * `{ skill, skill_ts, skill_subagent }` for the newest event within the window,
+ * where `skill_subagent` is the event's `subagent` only when a non-empty string
+ * (SKILL-02 passthrough), else undefined; `{}` when no in-window event. A
+ * card-only read — it feeds neither sort, liveness, nor conflict detection
+ * (D-02/D-03), exactly like reads/intent.
+ */
+function readSkill(
+  dir: string,
+  now: number,
+): { skill?: string; skill_ts?: string; skill_subagent?: string } {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(path.join(dir, "skill.jsonl"), "utf8");
+  } catch {
+    return {}; // absent shard self-heals (T-04.3-03)
+  }
+
+  const threshold = now - skillWindowMs();
+  let bestMs = -Infinity;
+  let best: SkillEvent | undefined;
+
+  for (const line of raw.split("\n")) {
+    if (line.trim() === "") continue;
+    let e: SkillEvent;
+    try {
+      e = JSON.parse(line) as SkillEvent;
+    } catch {
+      continue; // skip a torn/partial line
+    }
+    if (typeof e?.skill !== "string" || typeof e?.ts !== "string") continue;
+
+    const ms = Date.parse(e.ts);
+    if (Number.isNaN(ms) || ms < threshold) continue; // outside the skill window
+
+    if (ms > bestMs) {
+      bestMs = ms;
+      best = e; // newest-wins
+    }
+  }
+
+  if (!best) return {};
+  return {
+    skill: best.skill,
+    skill_ts: best.ts,
+    skill_subagent:
+      typeof best.subagent === "string" && best.subagent ? best.subagent : undefined,
+  };
+}
+
+/**
  * The sole cross-session view (STATE-02): aggregate every session shard into
  * one array, apply the D-02 active window, and sort most-recently-active
  * first (D-09).
@@ -296,6 +377,7 @@ export function readAll(
       files,
       reads,
       ...readIntent(dir), // INT-01 additive read-side field (D-01 separate shard)
+      ...readSkill(dir, now), // SKILL-03 additive card-only field (D-01 separate shard)
       last_active: lastActive,
       last_seen: heartbeatMs !== undefined ? new Date(heartbeatMs).toISOString() : state.last_seen,
       alive,

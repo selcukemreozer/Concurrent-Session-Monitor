@@ -87,3 +87,26 @@ export interface TouchEvent {
   /** D-04 forward-compat: true marks the file explicitly released. */
   released?: boolean;
 }
+
+/**
+ * One skill-invocation event appended to `skill.jsonl` (SKILL-01/02).
+ *
+ * Written by the passive PostToolUse `scripts/on-skill.mjs` hook — a SEPARATE
+ * one-writer-per-file shard from files.jsonl/reads.jsonl (D-01). A separate
+ * shard read needs no SessionState change, so SESSION_SCHEMA_VERSION is NOT
+ * bumped (exactly as the intent shard, see SessionState.intent above). The
+ * optional `subagent?` follows the same additive convention as
+ * TouchEvent.tool?/released?.
+ */
+export interface SkillEvent {
+  /** The invoked skill name from tool_input.skill. */
+  skill: string;
+  /** ISO-8601 invocation timestamp (Date.parse on the read side; NOT epoch ms). */
+  ts: string;
+  /**
+   * Owning subagent's friendly agent_type when the Skill was invoked inside a
+   * subagent (SKILL-02); absent for main-loop invocations. An empty-string
+   * agent_type is treated as absent at write time and so never appears here.
+   */
+  subagent?: string;
+}
