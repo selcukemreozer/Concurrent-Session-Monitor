@@ -23,6 +23,17 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/on-skill.mjs\"",
+            "async": true,
+            "timeout": 5
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
