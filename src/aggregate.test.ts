@@ -22,6 +22,7 @@ afterEach(() => {
   delete process.env.CSM_STALE_MS;
   delete process.env.CSM_ACTIVE_MS;
   delete process.env.CSM_READ_WINDOW_MS;
+  delete process.env.CSM_SKILL_WINDOW_MS;
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
@@ -32,6 +33,15 @@ afterEach(() => {
  */
 function appendRead(dir: string, evt: { file_path: string; ts: string; released?: boolean }): void {
   fs.appendFileSync(path.join(dir, "reads.jsonl"), JSON.stringify(evt) + "\n", { mode: 0o600 });
+}
+
+/**
+ * Append one skill event to a session's `skill.jsonl`, mirroring the writer's
+ * O_APPEND shape (scripts/on-skill.mjs). Line shape `{ skill, ts, subagent? }`
+ * (SKILL-01/02) — the read shard is seeded here, not via store.ts.
+ */
+function appendSkill(dir: string, evt: { skill: string; ts: string; subagent?: string }): void {
+  fs.appendFileSync(path.join(dir, "skill.jsonl"), JSON.stringify(evt) + "\n", { mode: 0o600 });
 }
 
 interface SeedOpts {
@@ -399,5 +409,129 @@ describe("readIntent surface (INT-01, D-01/D-11)", () => {
 
     const row = readAll(now).find((r) => r.session_id === "int-empty")!;
     expect(row.intent).toBeUndefined();
+  });
+});
+
+// RED (04.3-03): readAll must reduce a per-session skill.jsonl shard into the
+// NEWEST in-window skill as additive card-only SessionRow.skill / skill_ts /
+// skill_subagent (SKILL-03/D-02, SKILL-02 subagent passthrough). skill.jsonl is
+// a SEPARATE writer (scripts/on-skill.mjs, D-01), line shape { skill, ts,
+// subagent? }. Decay is on a NEW CSM_SKILL_WINDOW_MS axis (5-min default). A
+// torn/absent shard leaves skill undefined and NEVER drops the session (D-11
+// self-heal). skill NEVER feeds sort/liveness/conflicts — card-only, like
+// reads/intent.
+describe("readSkill (skill window, SKILL-03/D-02)", () => {
+  it("newest-wins in window: two skill events -> the newer skill/ts wins", () => {
+    const now = Date.now();
+    const dir = seedSession("sk-newest", new Date(now).toISOString());
+    const olderTs = new Date(now - 60_000).toISOString();
+    const newerTs = new Date(now - 5_000).toISOString();
+    appendSkill(dir, { skill: "gsd-fast", ts: olderTs });
+    appendSkill(dir, { skill: "gsd-quick", ts: newerTs });
+
+    const row = readAll(now).find((r) => r.session_id === "sk-newest")!;
+    expect(row.skill).toBe("gsd-quick");
+    expect(row.skill_ts).toBe(newerTs);
+  });
+
+  it("default window: a skill at now-4min is IN, a lone skill at now-6min is OUT (300000ms default)", () => {
+    // CSM_SKILL_WINDOW_MS unset -> default 300_000ms (5-min) boundary.
+    const now = Date.now();
+
+    const inDir = seedSession("sk-def-in", new Date(now).toISOString());
+    appendSkill(inDir, { skill: "gsd-plan-phase", ts: new Date(now - 4 * 60_000).toISOString() });
+    const inRow = readAll(now).find((r) => r.session_id === "sk-def-in")!;
+    expect(inRow.skill).toBe("gsd-plan-phase");
+
+    const outDir = seedSession("sk-def-out", new Date(now).toISOString());
+    appendSkill(outDir, { skill: "gsd-plan-phase", ts: new Date(now - 6 * 60_000).toISOString() });
+    const outRow = readAll(now).find((r) => r.session_id === "sk-def-out")!;
+    expect(outRow.skill).toBeUndefined();
+  });
+
+  it("override decay: CSM_SKILL_WINDOW_MS=30000 keeps a now-10s skill, drops a now-40s skill", () => {
+    process.env.CSM_SKILL_WINDOW_MS = "30000";
+    const now = Date.now();
+
+    const keepDir = seedSession("sk-keep", new Date(now).toISOString());
+    appendSkill(keepDir, { skill: "gsd-quick", ts: new Date(now - 10_000).toISOString() });
+    const keepRow = readAll(now).find((r) => r.session_id === "sk-keep")!;
+    expect(keepRow.skill).toBe("gsd-quick");
+
+    const dropDir = seedSession("sk-drop", new Date(now).toISOString());
+    appendSkill(dropDir, { skill: "gsd-quick", ts: new Date(now - 40_000).toISOString() });
+    const dropRow = readAll(now).find((r) => r.session_id === "sk-drop")!;
+    expect(dropRow.skill).toBeUndefined();
+  });
+
+  it("SKILL-02 subagent passthrough: subagent present -> skill_subagent set; absent/empty -> undefined", () => {
+    const now = Date.now();
+
+    const subDir = seedSession("sk-sub", new Date(now).toISOString());
+    appendSkill(subDir, {
+      skill: "claude-api",
+      ts: new Date(now - 5_000).toISOString(),
+      subagent: "gsd-executor",
+    });
+    const subRow = readAll(now).find((r) => r.session_id === "sk-sub")!;
+    expect(subRow.skill).toBe("claude-api");
+    expect(subRow.skill_subagent).toBe("gsd-executor");
+
+    const mainDir = seedSession("sk-main", new Date(now).toISOString());
+    appendSkill(mainDir, { skill: "claude-api", ts: new Date(now - 5_000).toISOString() });
+    const mainRow = readAll(now).find((r) => r.session_id === "sk-main")!;
+    expect(mainRow.skill).toBe("claude-api");
+    expect(mainRow.skill_subagent).toBeUndefined();
+
+    const emptyDir = seedSession("sk-empty-sub", new Date(now).toISOString());
+    appendSkill(emptyDir, {
+      skill: "claude-api",
+      ts: new Date(now - 5_000).toISOString(),
+      subagent: "",
+    });
+    const emptyRow = readAll(now).find((r) => r.session_id === "sk-empty-sub")!;
+    expect(emptyRow.skill_subagent).toBeUndefined();
+  });
+
+  it("torn-line self-heal: a trailing non-JSON fragment is skipped, the valid skill wins, session retained", () => {
+    const now = Date.now();
+    const dir = seedSession("sk-torn", new Date(now).toISOString());
+    appendSkill(dir, { skill: "gsd-quick", ts: new Date(now - 5_000).toISOString() });
+    // Append a raw half-written trailing line (no newline-completed JSON).
+    fs.appendFileSync(path.join(dir, "skill.jsonl"), '{"skill":"gsd-bro', { mode: 0o600 });
+
+    const row = readAll(now).find((r) => r.session_id === "sk-torn");
+    expect(row).toBeDefined();
+    expect(row!.skill).toBe("gsd-quick");
+  });
+
+  it("absent shard: a session with no skill.jsonl still appears with skill undefined", () => {
+    const now = Date.now();
+    seedSession("sk-absent", new Date(now).toISOString());
+
+    const row = readAll(now).find((r) => r.session_id === "sk-absent");
+    expect(row).toBeDefined();
+    expect(row!.skill).toBeUndefined();
+    expect(row!.skill_ts).toBeUndefined();
+    expect(row!.skill_subagent).toBeUndefined();
+  });
+
+  it("card-only: a skill-only session is NOT hoisted by its skill ts and gets no last_active (D-02)", () => {
+    const now = Date.now();
+    // "older" session with a genuine recent write touch (drives sort/last_active).
+    const older = seedSession("sk-older", new Date(now - 60_000).toISOString());
+    appendTouch(older, { file_path: "/repo/a.ts", ts: new Date(now - 30_000).toISOString() });
+    // "newer" session that ONLY has a very fresh skill event (no files/reads).
+    const newer = seedSession("sk-newer", new Date(now - 60_000).toISOString());
+    appendSkill(newer, { skill: "gsd-quick", ts: new Date(now - 1_000).toISOString() });
+
+    const rows = readAll(now);
+    // The skill-only session must NOT be hoisted above the write-active one by
+    // its (newer) skill ts — sort keys off last_active/start_time only (D-09).
+    expect(rows[0].session_id).toBe("sk-older");
+    // And a skill NEVER sets last_active.
+    const newerRow = rows.find((r) => r.session_id === "sk-newer")!;
+    expect(newerRow.last_active).toBeUndefined();
+    expect(newerRow.skill).toBe("gsd-quick");
   });
 });
