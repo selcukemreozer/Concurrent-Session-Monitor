@@ -348,6 +348,89 @@ describe("SessionCard intent line (PANEL-02 D-10/D-11/D-12)", () => {
   });
 });
 
+describe("SessionCard skill line (SKILL-04/SKILL-02, D-02/D-03/D-04)", () => {
+  const now = () => new Date().toISOString();
+  const SKILL_GLYPH = "⚙"; // U+2699 — the card-only skill marker
+
+  it("renders a main-loop skill as `⚙ <skill>` with no `›` separator and never 'undefined' (SKILL-04/D-03)", () => {
+    const out = stripAnsi(renderToString(<SessionCard s={makeRow({ skill: "gsd-quick" })} />));
+    expect(out).toContain(SKILL_GLYPH);
+    expect(out).toContain("gsd-quick");
+    const line = out.split("\n").find((l) => l.includes(SKILL_GLYPH)) ?? "";
+    expect(line).not.toContain("›"); // no subagent separator for a main-loop skill
+    expect(line).not.toContain("undefined"); // never the literal 'undefined'
+  });
+
+  it("renders a subagent-sourced skill as `<subagent> › <skill>` (SKILL-02/D-03)", () => {
+    const out = stripAnsi(
+      renderToString(<SessionCard s={makeRow({ skill: "claude-api", skill_subagent: "gsd-executor" })} />),
+    );
+    expect(out).toContain("gsd-executor › claude-api"); // U+203A `›` surrounded by single spaces
+  });
+
+  it("places the skill line below the intent » line and above both file lists (D-04)", () => {
+    const out = stripAnsi(
+      renderToString(
+        <SessionCard
+          s={makeRow({
+            intent: "refactor Card",
+            skill: "gsd-quick",
+            files: [{ file_path: "/repo/w.ts", ts: now() }],
+            reads: [{ file_path: "/repo/r.ts", ts: now() }],
+          })}
+        />,
+      ),
+    );
+    const lines = out.split("\n");
+    const intentIdx = lines.findIndex((l) => l.includes("refactor Card"));
+    const skillIdx = lines.findIndex((l) => l.includes("gsd-quick"));
+    const writeIdx = lines.findIndex((l) => l.includes("w.ts"));
+    const readIdx = lines.findIndex((l) => l.includes("r.ts"));
+    expect(intentIdx).toBeGreaterThanOrEqual(0);
+    expect(skillIdx).toBeGreaterThanOrEqual(0);
+    expect(writeIdx).toBeGreaterThanOrEqual(0);
+    expect(readIdx).toBeGreaterThanOrEqual(0);
+    expect(skillIdx).toBeGreaterThan(intentIdx); // below the intent line
+    expect(skillIdx).toBeLessThan(writeIdx); // above the write list
+    expect(skillIdx).toBeLessThan(readIdx); // above the read list
+  });
+
+  it("omits the skill line entirely when no skill is in-window, keeping the card non-blank (D-02/D-11)", () => {
+    const idle = stripAnsi(renderToString(<SessionCard s={makeRow({ skill: undefined, files: [] })} />));
+    expect(idle).not.toContain(SKILL_GLYPH); // no skill glyph
+    expect(idle).toContain("(idle)"); // the existing idle fallback still fills the card
+
+    const recent = stripAnsi(
+      renderToString(
+        <SessionCard
+          s={makeRow({ intent: undefined, skill: undefined, files: [{ file_path: "/repo/Card.tsx", ts: now() }] })}
+        />,
+      ),
+    );
+    expect(recent).not.toContain(SKILL_GLYPH);
+    expect(recent).toContain("~ Card.tsx"); // recent-file fallback still shown
+  });
+
+  it("sanitizes an ESC byte embedded in the skill and subagent before render (T-04.3-02)", () => {
+    const out = renderToString(
+      <SessionCard s={makeRow({ skill: "gsd" + ESC + "quick", skill_subagent: "gsd" + ESC + "exec" })} />,
+    );
+    expect(out).toContain("gsdquick"); // ESC stripped from the skill name
+    expect(out).toContain("gsdexec"); // ESC stripped from the subagent label
+    const line = out.split("\n").find((l) => l.includes("gsdquick")) ?? "";
+    expect(line).not.toContain(ESC);
+  });
+
+  it("CompactRow stays skill-free: no ⚙, no skill name, no subagent (D-04/D-12)", () => {
+    const out = renderToString(
+      <CompactRow s={makeRow({ skill: "gsd-quick", skill_subagent: "gsd-executor" })} />,
+    );
+    expect(out).not.toContain(SKILL_GLYPH);
+    expect(out).not.toContain("gsd-quick");
+    expect(out).not.toContain("gsd-executor");
+  });
+});
+
 /** Minimal Conflict fixture builder for band render assertions. */
 function makeConflict(over: Partial<Conflict> = {}): Conflict {
   return {
