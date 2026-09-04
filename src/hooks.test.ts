@@ -14,6 +14,7 @@ const repoRoot = path.resolve(here, "..");
 const onTool = path.join(repoRoot, "scripts", "on-tool.mjs");
 const onSessionStart = path.join(repoRoot, "scripts", "on-session-start.mjs");
 const onUserPrompt = path.join(repoRoot, "scripts", "on-user-prompt.mjs");
+const onSkill = path.join(repoRoot, "scripts", "on-skill.mjs");
 
 let tmp: string;
 
@@ -255,5 +256,106 @@ describe("read capture routing (CAP-03)", () => {
     expect(unwritable.status).toBe(0);
     expect(unwritable.stdout).toBe("");
     fs.chmodSync(readOnly, 0o700);
+  });
+});
+
+// --- Plan 04.3-02: Skill capture routes to its OWN skill.jsonl shard (SKILL-01/02) ---
+// Payload shape confirmed live by Plan 01's spike:
+//   { session_id, hook_event_name:"PostToolUse", tool_name:"Skill", tool_input:{ skill } }
+//   plus agent_type:<friendly name> ONLY when the Skill call originates in a subagent
+//   (main-loop invocations omit agent_type). session_id is the parent id in BOTH cases.
+
+describe("skill capture (SKILL-01/02)", () => {
+  const skillPayload = (extra: Record<string, unknown> = {}) =>
+    JSON.stringify({
+      session_id: "hook-sess",
+      cwd: "/repo",
+      hook_event_name: "PostToolUse",
+      tool_name: "Skill",
+      tool_input: { skill: "gsd-help" },
+      ...extra,
+    });
+
+  it("(a) SKILL-01 append: a valid Skill payload exits 0 and appends ONE skill.jsonl line with matching skill + parseable ts", () => {
+    const res = runHook(onSkill, skillPayload(), tmp);
+    expect(res.status).toBe(0);
+
+    const jsonl = path.join(tmp, "sessions", "hook-sess", "skill.jsonl");
+    const lines = fs.readFileSync(jsonl, "utf8").trim().split("\n").filter(Boolean);
+    expect(lines.length).toBe(1);
+    const evt = JSON.parse(lines[0]);
+    expect(evt.skill).toBe("gsd-help");
+    expect(typeof evt.ts).toBe("string");
+    expect(Number.isFinite(Date.parse(evt.ts))).toBe(true);
+  });
+
+  it("(b) D-01 shard isolation: a Skill payload creates NEITHER files.jsonl NOR reads.jsonl", () => {
+    const res = runHook(onSkill, skillPayload(), tmp);
+    expect(res.status).toBe(0);
+
+    const dir = path.join(tmp, "sessions", "hook-sess");
+    expect(fs.existsSync(path.join(dir, "files.jsonl"))).toBe(false);
+    expect(fs.existsSync(path.join(dir, "reads.jsonl"))).toBe(false);
+  });
+
+  it("(c) heartbeat: a Skill payload writes a heartbeat sidecar whose content parses as an ISO date", () => {
+    const res = runHook(onSkill, skillPayload(), tmp);
+    expect(res.status).toBe(0);
+
+    const hb = path.join(tmp, "sessions", "hook-sess", "heartbeat");
+    const content = fs.readFileSync(hb, "utf8");
+    expect(Number.isFinite(Date.parse(content.trim()))).toBe(true);
+  });
+
+  it("(d) SKILL-02 subagent present: agent_type on the payload yields line.subagent === agent_type", () => {
+    const res = runHook(onSkill, skillPayload({ agent_type: "gsd-executor" }), tmp);
+    expect(res.status).toBe(0);
+
+    const jsonl = path.join(tmp, "sessions", "hook-sess", "skill.jsonl");
+    const lines = fs.readFileSync(jsonl, "utf8").trim().split("\n").filter(Boolean);
+    expect(lines.length).toBe(1);
+    const evt = JSON.parse(lines[0]);
+    expect(evt.subagent).toBe("gsd-executor");
+  });
+
+  it("(e) SKILL-02 subagent absent: a main-loop payload (no agent_type, and agent_type:'') yields NO subagent key — never the string 'undefined' (Pitfall 2)", () => {
+    // Main loop: no agent_type key at all.
+    const res1 = runHook(onSkill, skillPayload(), tmp);
+    expect(res1.status).toBe(0);
+    const jsonl = path.join(tmp, "sessions", "hook-sess", "skill.jsonl");
+    let lines = fs.readFileSync(jsonl, "utf8").trim().split("\n").filter(Boolean);
+    let evt = JSON.parse(lines[lines.length - 1]);
+    expect("subagent" in evt).toBe(false);
+
+    // Empty-string agent_type must be treated as absent, not persisted verbatim.
+    const res2 = runHook(onSkill, skillPayload({ agent_type: "" }), tmp);
+    expect(res2.status).toBe(0);
+    lines = fs.readFileSync(jsonl, "utf8").trim().split("\n").filter(Boolean);
+    evt = JSON.parse(lines[lines.length - 1]);
+    expect("subagent" in evt).toBe(false);
+  });
+
+  it("(f) D-01b passivity: malformed stdin AND an unwritable store dir both exit 0 with empty stdout", () => {
+    const malformed = runHook(onSkill, "not json{", tmp);
+    expect(malformed.status).toBe(0);
+    expect(malformed.stdout).toBe("");
+
+    const readOnly = path.join(tmp, "readonly");
+    fs.mkdirSync(readOnly, { recursive: true });
+    fs.chmodSync(readOnly, 0o500);
+    const unwritable = runHook(onSkill, skillPayload(), readOnly);
+    expect(unwritable.status).toBe(0);
+    expect(unwritable.stdout).toBe("");
+    fs.chmodSync(readOnly, 0o700);
+  });
+
+  it("(g) T-04.3-01 traversal: a '../evil' session_id writes NOTHING under the store", () => {
+    const res = runHook(onSkill, skillPayload({ session_id: "../evil" }), tmp);
+    expect(res.status).toBe(0);
+
+    // No escape above the sessions dir, and no shard for the crafted id.
+    expect(fs.existsSync(path.join(tmp, "evil"))).toBe(false);
+    expect(fs.existsSync(path.join(tmp, "sessions", "..", "evil"))).toBe(false);
+    expect(fs.existsSync(path.join(tmp, "sessions", "..", "evil", "skill.jsonl"))).toBe(false);
   });
 });
