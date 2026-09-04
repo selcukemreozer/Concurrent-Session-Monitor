@@ -23,17 +23,6 @@
             "timeout": 5
           }
         ]
-      },
-      {
-        "matcher": "Skill",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node -e \"try{const fs=require('node:fs');const d=fs.readFileSync(0,'utf8');fs.appendFileSync((process.env.TMPDIR||'/tmp')+'/csm-skill-spike.jsonl',d+'\\n')}catch(e){}\"",
-            "async": true,
-            "timeout": 5
-          }
-        ]
       }
     ],
     "UserPromptSubmit": [
