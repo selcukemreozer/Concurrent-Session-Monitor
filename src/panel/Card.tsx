@@ -40,6 +40,26 @@ const READ_COLOR = "blue";
 const INTENT_GLYPH = "»";
 
 /**
+ * Leading marker for the card-only skill line (SKILL-04 D-04): `⚙` (U+2699). It
+ * is >= 0x00A0 so `sanitize()` preserves it, and — like `INTENT_GLYPH`/`READ_GLYPH`
+ * — it collides with NO reserved cue: NOT the liveness `●`, the read `◇`, the
+ * filled `◆`, the conflict `⚠`, the swap `↔`, the link `↪`, the intent `»`, or
+ * the exposed-port `⇅`. It renders `dimColor` (neutral) and carries NO reserved
+ * color (not red=conflict, green/yellow/grey=liveness, cyan=header/links,
+ * blue=reads, magenta/bold=exposed) so a skill line can never masquerade as a
+ * conflict/read/port/link (T-04.3-06). Skill is a card-only surface (D-04/D-12):
+ * this glyph never appears in `CompactRow`.
+ */
+const SKILL_GLYPH = "⚙";
+
+/**
+ * The right-angle separator joining a subagent label to its skill (SKILL-02
+ * D-03): `›` (U+203A). It is >= 0x00A0 so `sanitize()` preserves it; it is only
+ * rendered when a subagent sourced the skill.
+ */
+const SKILL_SEP = " › ";
+
+/**
  * Wrap a URL + label in an OSC-8 hyperlink escape so terminals like Warp render
  * a clickable go-to-pane affordance (D-06):  ESC ]8;; URL ST label ESC ]8;; ST.
  *
@@ -170,6 +190,15 @@ export function SessionCard({ s }: { s: SessionRow }) {
         ) : null}
       </Box>
       {intentLine}
+      {typeof s.skill === "string" && s.skill.length > 0 ? (
+        <Text dimColor>
+          {"  " +
+            SKILL_GLYPH +
+            " " +
+            (s.skill_subagent ? sanitize(s.skill_subagent) + SKILL_SEP : "") +
+            sanitize(s.skill)}
+        </Text>
+      ) : null}
       {s.files.length === 0 ? (
         <Text dimColor>{"  (no active files)"}</Text>
       ) : (
