@@ -836,13 +836,59 @@ describe("PhasesPane (PANEL-07 FAZLAR phase table)", () => {
 
   it("truncates an overlong phase name with a single … (U+2026)", () => {
     const progress = makeProgress({
-      phases: [makePhase({ number: "01", name: "verylongphasenamebeyondcap", status: "Pending", plans: 0, summaries: 0 })],
+      phases: [makePhase({ number: "01", name: "verylongphasenamethatgoeswaybeyondthecap", status: "Pending", plans: 0, summaries: 0 })],
     });
     const out = stripAnsi(
       renderToString(<PhasesPane focus={makeFocus()} index={0} count={1} progress={progress} scrollOffset={0} interactive={true} />),
     );
     expect(out).toContain("…"); // U+2026
     expect(out).toContain("verylong"); // a known prefix survives
-    expect(out).not.toContain("verylongphasenamebeyondcap"); // never the full name
+    expect(out).not.toContain("verylongphasenamethatgoeswaybeyondthecap"); // never the full 40-char name
+  });
+
+  it("shows a full-length GSD phase name (up to the 36-char cap) without truncation", () => {
+    const progress = makeProgress({
+      phases: [makePhase({ number: "01", name: "cross session conflict detection", status: "Pending", plans: 0, summaries: 0 })],
+    });
+    const out = stripAnsi(
+      renderToString(<PhasesPane focus={makeFocus()} index={0} count={1} progress={progress} scrollOffset={0} interactive={true} />),
+    );
+    // A real 32-char GSD phase name that WAS truncated under the old cap of 18.
+    expect(out).toContain("cross session conflict detection"); // full name survives at cap 36
+    expect(out).not.toContain("…"); // no truncation glyph
+  });
+
+  it("clamps nameWidth at the 36-char cap: a 36-char name renders in full, a 37-char name truncates", () => {
+    // Render A — a 36-char name renders in full (truncated under the old cap of 18).
+    const outA = stripAnsi(
+      renderToString(
+        <PhasesPane
+          focus={makeFocus()}
+          index={0}
+          count={1}
+          progress={makeProgress({ phases: [makePhase({ number: "01", name: "a".repeat(36), status: "Pending", plans: 0, summaries: 0 })] })}
+          scrollOffset={0}
+          interactive={true}
+        />,
+      ),
+    );
+    expect(outA).toContain("a".repeat(36)); // exactly the cap → full
+    expect(outA).not.toContain("…");
+
+    // Render B — a 37-char name truncates to 35 chars + … (nameWidth clamps at 36).
+    const outB = stripAnsi(
+      renderToString(
+        <PhasesPane
+          focus={makeFocus()}
+          index={0}
+          count={1}
+          progress={makeProgress({ phases: [makePhase({ number: "01", name: "a".repeat(37), status: "Pending", plans: 0, summaries: 0 })] })}
+          scrollOffset={0}
+          interactive={true}
+        />,
+      ),
+    );
+    expect(outB).toContain("…"); // U+2026
+    expect(outB).not.toContain("a".repeat(37)); // never the full 37-char name
   });
 });
