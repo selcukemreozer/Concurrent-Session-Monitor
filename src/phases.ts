@@ -52,11 +52,13 @@ export interface FocusEntry {
 }
 
 /**
- * Shared FAZLAR window size: 1 milestone line + up to 7 phase rows + 1 indicator
- * line stays within PORTS_LINES=10, so FAZLAR never pushes the roster off the
- * alt-screen. Imported by PhasesPane (Plan 02) and App.tsx clamp math (Plan 03).
+ * Shared FAZLAR window size: the pane renders up to 15 phase rows before the
+ * height-bounded scroll window kicks in — most roadmaps (8–15 phases) then show
+ * in full, while larger roadmaps still window + show the ▲/▼ indicator. Imported
+ * by PhasesPane (Plan 02) and App.tsx clamp math (Plan 03), which scale by
+ * reference.
  */
-export const FAZLAR_VISIBLE_ROWS = 7;
+export const FAZLAR_VISIBLE_ROWS = 15;
 
 /**
  * The phase-scan cadence (config-adjustable via `CSM_PHASE_SCAN_MS`), read lazily
