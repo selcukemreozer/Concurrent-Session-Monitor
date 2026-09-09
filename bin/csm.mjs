@@ -13,12 +13,17 @@ import { tsImport } from "tsx/esm/api";
 import { createElement } from "react";
 import { render } from "ink";
 
-// This panel never enters raw mode (no keyboard input), so Ink's exitOnCtrlC —
-// which only fires while reading raw \x03 — will not run. Register the signal
-// handlers ourselves (Pitfall 3), and do it BEFORE the (slow) transpile-on-import
-// below so a SIGINT/SIGTERM that lands mid-boot still exits 0 rather than being
-// killed by the default signal action. `instance?.unmount()` runs Ink's
-// alt-screen exit + showCursor once the panel is up, restoring the normal buffer.
+// D-07 reconciliation: as of Phase 04.2 the panel enters raw mode WHEN A TTY IS
+// PRESENT (App's TTY-guarded FAZLAR keyboard via `useInput`). In that case Ink's
+// default `exitOnCtrlC` (left untouched at the render call below) intercepts the
+// raw \x03 and cleanly unmounts the alt-screen on Ctrl+C. On a non-TTY (piped)
+// run raw mode is never entered, so we still register these manual SIGINT/SIGTERM
+// handlers ourselves (Pitfall 3) — they remain the non-TTY / `kill` fallback and
+// are idempotent with Ink's own unmount. We register BEFORE the (slow)
+// transpile-on-import below so a SIGINT/SIGTERM that lands mid-boot still exits 0
+// rather than being killed by the default signal action. `instance?.unmount()`
+// runs Ink's alt-screen exit + showCursor once the panel is up, restoring the
+// normal buffer.
 let instance;
 const shutdown = () => {
   try {
