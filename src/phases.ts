@@ -90,6 +90,81 @@ export function parseProgress(stdout: string): Progress | null {
   }
 }
 
+/** Opaque status strings shared with Card.tsx's private phaseComplete predicate. */
+const COMPLETED_STATUS = "Complete";
+const PENDING_STATUS = "Pending";
+
+/**
+ * Normalize a phase number for cross-source dedup: strip leading zeros PER
+ * dot-segment while keeping at least one digit, so the zero-padded `query
+ * progress` numbers ("01", "04.1") and the mixed `roadmap.analyze` numbers
+ * ("1", "04.1", "5") compare as equals. "01"→"1", "04.1"→"4.1", "03.1"→"3.1",
+ * "5"→"5"; idempotent on already-normalized input. Uses a per-segment regex (NOT
+ * Number() coercion, which corrupts multi-segment numbers and non-numeric parts).
+ */
+export function normalizePhaseNumber(n: string): string {
+  return String(n)
+    .split(".")
+    .map((seg) => seg.replace(/^0+(?=\d)/, ""))
+    .join(".");
+}
+
+/**
+ * The single reused completion predicate mirroring Card.tsx's private
+ * phaseComplete: a phase is complete when its status is exactly the completed
+ * status string, OR it has at least one plan and every plan has a summary. Reused
+ * by mergeRoadmapPhases for the merged-percent math. (Card.tsx keeps its own
+ * identical private copy — do NOT modify it.)
+ */
+export function phaseIsComplete(p: { status: string; plans: number; summaries: number }): boolean {
+  return p.status === COMPLETED_STATUS || (p.plans > 0 && p.summaries >= p.plans);
+}
+
+/**
+ * PURE, non-throwing merge of `roadmap.analyze` stdout into a dir-based Progress:
+ * append any roadmap phase whose NORMALIZED number is absent from progress as a
+ * neutral Pending row at the END (never reorder/mutate the existing rows), and
+ * recompute percent over the merged list ONLY when >= 1 pending row is appended.
+ * Any parse failure, a missing phases[] array, or nothing-to-append returns
+ * `progress` UNCHANGED (original percent preserved) — the caller then renders the
+ * dir-based table verbatim (T-04.2-04, self-heals next scan).
+ */
+export function mergeRoadmapPhases(progress: Progress, roadmapStdout: string): Progress {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(roadmapStdout);
+  } catch {
+    return progress; // non-JSON → unchanged
+  }
+  const roadmapPhases = (parsed as { phases?: unknown })?.phases;
+  if (!Array.isArray(roadmapPhases)) return progress; // no phases[] → unchanged
+
+  // Membership set of normalized progress numbers; grows as we append so two
+  // roadmap entries normalizing to the same absent number cannot both append.
+  const seen = new Set<string>(progress.phases.map((p) => normalizePhaseNumber(p.number)));
+  const collected: Phase[] = [];
+  for (const rp of roadmapPhases as Array<Record<string, unknown>>) {
+    const norm = normalizePhaseNumber(String(rp.number));
+    if (seen.has(norm)) continue;
+    seen.add(norm);
+    collected.push({
+      number: String(rp.number),
+      name: String(rp.name ?? ""),
+      plans: Number(rp.plan_count) || 0,
+      summaries: Number(rp.summary_count) || 0,
+      status: PENDING_STATUS,
+    });
+  }
+
+  if (collected.length === 0) return progress; // nothing absent → unchanged percent
+
+  const merged = [...progress.phases, ...collected];
+  const completed = merged.filter(phaseIsComplete).length;
+  const total = merged.length;
+  const percent = total > 0 ? Math.round((completed / total) * 100) : progress.percent;
+  return { ...progress, phases: merged, percent };
+}
+
 /**
  * Resolve the (not-on-PATH) `gsd-tools.cjs` shim from a controlled candidate
  * list (T-04.2-02). Honors the `CSM_GSD_TOOLS` absolute-path override first, then
@@ -114,23 +189,44 @@ export function resolveGsdTools(cwd: string = process.cwd()): string | null {
 }
 
 /**
- * Spawn `node <gsdTools> query progress --cwd <root>` passively and non-fatally.
+ * Spawn `node <gsdTools> query progress --cwd <root>` passively and non-fatally,
+ * then ADDITIVELY spawn `query roadmap.analyze` under the IDENTICAL guard and
+ * merge any roadmap-only (no-directory) phase in as a Pending row.
  *
  * Contract:
  *  - execFile with cmd "node" + an args ARRAY (no shell) — T-04.2-01.
  *  - a per-call `{ timeout, maxBuffer }` guard — T-04.2-03.
- *  - ANY rejection (ENOENT / timeout / non-zero exit) resolves null — T-04.2-04.
+ *  - the primary `progress` rejection (ENOENT / timeout / non-zero exit) resolves
+ *    null — T-04.2-04; a null parse also early-returns null (no merge attempted).
+ *  - the secondary `roadmap.analyze` spawn reuses the same execFile-array + bounded
+ *    `{ timeout: 1500, maxBuffer: 1<<20 }` guard; ANY of its failures (reject /
+ *    non-JSON / missing phases[]) is swallowed and the dir-based progress is
+ *    returned UNCHANGED so the panel keeps the directory table (self-heals next
+ *    scan) — T-04.2-04.
  *  - stderr / resolved paths are never surfaced; only a typed Progress or null.
  */
 export async function scanProgress(root: string, gsdTools: string): Promise<Progress | null> {
+  let progress: Progress | null;
   try {
     const { stdout } = await pexec("node", [gsdTools, "query", "progress", "--cwd", root], {
       timeout: 1500,
       maxBuffer: 1 << 20,
     });
-    return parseProgress(stdout);
+    progress = parseProgress(stdout);
   } catch {
     return null; // ENOENT / timeout / non-zero → "no roadmap", never a crash
+  }
+  if (progress === null) return null; // torn/non-JSON primary → unchanged early-return
+
+  try {
+    const { stdout } = await pexec(
+      "node",
+      [gsdTools, "query", "roadmap.analyze", "--cwd", root],
+      { timeout: 1500, maxBuffer: 1 << 20 },
+    );
+    return mergeRoadmapPhases(progress, stdout);
+  } catch {
+    return progress; // roadmap.analyze failure is non-fatal → dir-based table unchanged
   }
 }
 
