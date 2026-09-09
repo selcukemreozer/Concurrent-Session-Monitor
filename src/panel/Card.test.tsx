@@ -645,8 +645,10 @@ function makeFocus(over: Partial<FocusEntry> = {}): FocusEntry {
 
 describe("PhasesPane (PANEL-07 FAZLAR phase table)", () => {
   const CURRENT = "▸"; // U+25B8 — the in-progress marker
-  // Reserved foreground SGR params: red/green/yellow/blue/magenta/cyan/grey.
-  const RESERVED_SGR = ["[31m", "[32m", "[33m", "[34m", "[35m", "[36m", "[90m"];
+  // Reserved foreground SGR params MINUS green `[32m`: red/yellow/blue/magenta/
+  // cyan/grey. Green is a user-directed relaxation of T-04.2-05b — completed
+  // FAZLAR rows are INTENTIONALLY green, so it is excluded from this deny-list.
+  const OTHER_RESERVED_SGR = ["[31m", "[33m", "[34m", "[35m", "[36m", "[90m"];
 
   it("renders a milestone summary line with the name, X/Y phases and Z% (D-05)", () => {
     const out = stripAnsi(
@@ -772,18 +774,63 @@ describe("PhasesPane (PANEL-07 FAZLAR phase table)", () => {
     expect(out).toContain("evil"); // the printable remainder survives
   });
 
-  it("emits no reserved-palette SGR color on the status/emphasis spans (T-04.2-05b)", () => {
+  it("colors completed rows green, keeps the current row bold (not green), pending neutral, and avoids every OTHER reserved color (relaxed T-04.2-05b)", () => {
     const progress = makeProgress({
       phases: [
         makePhase({ number: "01", name: "alpha", status: "Complete", plans: 1, summaries: 1 }),
         makePhase({ number: "02", name: "beta", status: "Pending", plans: 0, summaries: 0 }),
+        makePhase({ number: "03", name: "gamma", status: "Pending", plans: 0, summaries: 0 }),
       ],
     });
     const raw = renderToString(
       <PhasesPane focus={makeFocus()} index={0} count={1} progress={progress} scrollOffset={0} interactive={true} />,
     );
-    for (const code of RESERVED_SGR) {
+    const rawLines = raw.split("\n");
+    const alpha = rawLines.find((l) => stripAnsi(l).includes("alpha")) ?? "";
+    const beta = rawLines.find((l) => stripAnsi(l).includes("beta")) ?? "";
+    const gamma = rawLines.find((l) => stripAnsi(l).includes("gamma")) ?? "";
+
+    // Completed (alpha) → green.
+    expect(alpha).toContain(ESC + "[32m");
+    // Current (beta, first non-complete) → bold, never green.
+    expect(beta).toContain(ESC + "[1m");
+    expect(beta).not.toContain(ESC + "[32m");
+    // Pending non-current (gamma) → neutral (no green, no bold).
+    expect(gamma).not.toContain(ESC + "[32m");
+    expect(gamma).not.toContain(ESC + "[1m");
+
+    // Every OTHER reserved color stays off (T-04.2-05b preserved minus green).
+    for (const code of OTHER_RESERVED_SGR) {
       expect(raw).not.toContain(ESC + code);
     }
+  });
+
+  it("aligns the status column across rows regardless of phase-name length", () => {
+    const progress = makeProgress({
+      phases: [
+        makePhase({ number: "01", name: "x", status: "Sdone", plans: 1, summaries: 1 }),
+        makePhase({ number: "02", name: "yylongername", status: "Spending", plans: 0, summaries: 0 }),
+      ],
+    });
+    const out = stripAnsi(
+      renderToString(<PhasesPane focus={makeFocus()} index={0} count={1} progress={progress} scrollOffset={0} interactive={true} />),
+    );
+    const lines = out.split("\n");
+    const lineA = lines.find((l) => l.includes("Sdone")) ?? "";
+    const lineB = lines.find((l) => l.includes("Spending")) ?? "";
+    // The status column begins at the same horizontal offset on both rows.
+    expect(lineA.indexOf("Sdone")).toBe(lineB.indexOf("Spending"));
+  });
+
+  it("truncates an overlong phase name with a single … (U+2026)", () => {
+    const progress = makeProgress({
+      phases: [makePhase({ number: "01", name: "verylongphasenamebeyondcap", status: "Pending", plans: 0, summaries: 0 })],
+    });
+    const out = stripAnsi(
+      renderToString(<PhasesPane focus={makeFocus()} index={0} count={1} progress={progress} scrollOffset={0} interactive={true} />),
+    );
+    expect(out).toContain("…"); // U+2026
+    expect(out).toContain("verylong"); // a known prefix survives
+    expect(out).not.toContain("verylongphasenamebeyondcap"); // never the full name
   });
 });
