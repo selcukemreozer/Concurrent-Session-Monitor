@@ -11,11 +11,18 @@ import { describe, it, expect } from "vitest";
 // folder·branch·shortid heading (user bucket last), a magenta/bold `⇅ exposed`
 // badge vs dim `local`, intent-enriched headings, PORTS_CAP `+N more`, and a
 // `no listening ports` empty state — every field routed through sanitize().
-import { osc8, SessionCard, CompactRow, dotColor, ConflictBand, PortsPane } from "./Card.js";
+// RED (wave 04.2-02): Card.tsx also exports the PhasesPane component (PANEL-07) —
+// the RIGHT FAZLAR pane rendering the focused project's Progress as a milestone
+// summary line + a height-bounded scroll window of Phase·Name·Plans·Summaries·
+// Status rows with a ▸ current-phase marker + dim-completed styling, a scroll
+// indicator, and the D-03 empty states (`no GSD projects` / `no roadmap`) — every
+// field routed through sanitize(), reserved palette avoided.
+import { osc8, SessionCard, CompactRow, dotColor, ConflictBand, PortsPane, PhasesPane } from "./Card.js";
 import { renderToString } from "ink";
 import type { SessionRow } from "../aggregate.js";
 import type { Conflict } from "../conflicts.js";
 import type { ScannedPort } from "../ports.js";
+import type { Progress, Phase, FocusEntry } from "../phases.js";
 
 const ESC = String.fromCharCode(27); // 0x1B
 
@@ -608,5 +615,175 @@ describe("PortsPane (PORT-05 port pane render)", () => {
     const out = stripAnsi(renderToString(<PortsPane ports={[p]} rows={[]} />));
     const line = out.split("\n").find((l) => l.includes("5000")) ?? "";
     expect(line).toContain("local · pid 42");
+  });
+});
+
+/** Minimal Phase fixture builder for PhasesPane render assertions. */
+function makePhase(over: Partial<Phase> = {}): Phase {
+  return { number: "01", name: "setup", plans: 1, summaries: 1, status: "Complete", ...over };
+}
+
+/** Minimal Progress fixture: milestone `milestone v1.0`, 2 of 3 phases Complete, 67%. */
+function makeProgress(over: Partial<Progress> = {}): Progress {
+  return {
+    milestone_name: "milestone",
+    milestone_version: "v1.0",
+    percent: 67,
+    phases: [
+      makePhase({ number: "01", name: "alpha", plans: 2, summaries: 2, status: "Complete" }),
+      makePhase({ number: "02", name: "beta", plans: 3, summaries: 3, status: "Complete" }),
+      makePhase({ number: "03", name: "gamma", plans: 2, summaries: 0, status: "Pending" }),
+    ],
+    ...over,
+  };
+}
+
+/** Minimal FocusEntry fixture (a focused project root + display name). */
+function makeFocus(over: Partial<FocusEntry> = {}): FocusEntry {
+  return { root: "/repo/proj", name: "proj", ...over };
+}
+
+describe("PhasesPane (PANEL-07 FAZLAR phase table)", () => {
+  const CURRENT = "▸"; // U+25B8 — the in-progress marker
+  // Reserved foreground SGR params: red/green/yellow/blue/magenta/cyan/grey.
+  const RESERVED_SGR = ["[31m", "[32m", "[33m", "[34m", "[35m", "[36m", "[90m"];
+
+  it("renders a milestone summary line with the name, X/Y phases and Z% (D-05)", () => {
+    const out = stripAnsi(
+      renderToString(
+        <PhasesPane focus={makeFocus()} index={0} count={1} progress={makeProgress()} scrollOffset={0} interactive={true} />,
+      ),
+    );
+    const first = out.split("\n").find((l) => l.trim().length > 0) ?? "";
+    expect(first).toContain("milestone"); // milestone name
+    expect(first).toContain("2/3"); // 2 of 3 phases Complete
+    expect(first).toContain("67%"); // percent
+  });
+
+  it("marks the first non-Complete phase with ▸ and leaves the leading Complete phase unmarked (D-05)", () => {
+    const progress = makeProgress({
+      phases: [
+        makePhase({ number: "01", name: "alpha", status: "Complete", plans: 1, summaries: 1 }),
+        makePhase({ number: "02", name: "beta", status: "Pending", plans: 0, summaries: 0 }),
+        makePhase({ number: "03", name: "gamma", status: "Pending", plans: 0, summaries: 0 }),
+      ],
+    });
+    const out = stripAnsi(
+      renderToString(<PhasesPane focus={makeFocus()} index={0} count={1} progress={progress} scrollOffset={0} interactive={true} />),
+    );
+    const lines = out.split("\n");
+    const alpha = lines.find((l) => l.includes("alpha")) ?? "";
+    const beta = lines.find((l) => l.includes("beta")) ?? "";
+    expect(beta).toContain(CURRENT); // first Pending phase is current
+    expect(alpha).not.toContain(CURRENT); // leading Complete phase is not
+  });
+
+  it("renders all five columns per phase: number, name, plans, summaries, status", () => {
+    const progress = makeProgress({
+      phases: [makePhase({ number: "07", name: "widgets", plans: 4, summaries: 2, status: "Active" })],
+    });
+    const out = stripAnsi(
+      renderToString(<PhasesPane focus={makeFocus()} index={0} count={1} progress={progress} scrollOffset={0} interactive={true} />),
+    );
+    const row = out.split("\n").find((l) => l.includes("widgets")) ?? "";
+    expect(row).toContain("07"); // number
+    expect(row).toContain("widgets"); // name
+    expect(row).toContain("4"); // plans
+    expect(row).toContain("2"); // summaries
+    expect(row).toContain("Active"); // status (opaque string, rendered neutrally)
+  });
+
+  it("shows a dim 'no GSD projects' line when no project is focused (D-03 empty A)", () => {
+    const out = stripAnsi(
+      renderToString(<PhasesPane focus={null} index={0} count={0} progress={null} scrollOffset={0} interactive={true} />),
+    );
+    expect(out).toContain("no GSD projects");
+    expect(out).not.toContain("milestone"); // no table when unfocused
+  });
+
+  it("shows a dim 'no roadmap' line when the focused project has null progress (D-03 empty B)", () => {
+    const out = stripAnsi(
+      renderToString(<PhasesPane focus={makeFocus()} index={0} count={1} progress={null} scrollOffset={0} interactive={true} />),
+    );
+    expect(out).toContain("no roadmap");
+  });
+
+  it("shows 'no roadmap' when the focused project has an empty phases array (D-03 empty B)", () => {
+    const out = stripAnsi(
+      renderToString(
+        <PhasesPane focus={makeFocus()} index={0} count={1} progress={makeProgress({ phases: [] })} scrollOffset={0} interactive={true} />,
+      ),
+    );
+    expect(out).toContain("no roadmap");
+  });
+
+  it("renders only the visible window at offset 0 and signals more below (D-04)", () => {
+    const phases = Array.from({ length: 12 }, (_, i) =>
+      makePhase({ number: String(i).padStart(2, "0"), name: `phase-${i}`, status: "Pending", plans: 0, summaries: 0 }),
+    );
+    const out = stripAnsi(
+      renderToString(<PhasesPane focus={makeFocus()} index={0} count={1} progress={makeProgress({ phases })} scrollOffset={0} interactive={true} />),
+    );
+    expect(out).toContain("phase-0");
+    expect(out).toContain("phase-6"); // 7th row = FAZLAR_VISIBLE_ROWS
+    expect(out).not.toContain("phase-7"); // beyond the window
+    expect(out).toContain("▼"); // more-below indicator
+  });
+
+  it("shows the tail slice and signals more above when scrolled to the end (D-04)", () => {
+    const phases = Array.from({ length: 12 }, (_, i) =>
+      makePhase({ number: String(i).padStart(2, "0"), name: `phase-${i}`, status: "Pending", plans: 0, summaries: 0 }),
+    );
+    const out = stripAnsi(
+      renderToString(<PhasesPane focus={makeFocus()} index={0} count={1} progress={makeProgress({ phases })} scrollOffset={5} interactive={true} />),
+    );
+    expect(out).toContain("phase-11"); // last phase visible in the tail slice
+    expect(out).not.toContain("phase-0"); // scrolled past the head
+    expect(out).toContain("▲"); // more-above indicator
+  });
+
+  it("hides the Tab hint and Project i/N indicator when non-interactive, still rendering the table (D-08)", () => {
+    const out = stripAnsi(
+      renderToString(<PhasesPane focus={makeFocus()} index={0} count={3} progress={makeProgress()} scrollOffset={0} interactive={false} />),
+    );
+    expect(out).not.toContain("Tab: switch");
+    expect(out).not.toContain("Project");
+    expect(out).toContain("alpha"); // the focused table still renders statically
+  });
+
+  it("shows the Tab hint and Project i/N indicator when interactive (D-08)", () => {
+    const out = stripAnsi(
+      renderToString(<PhasesPane focus={makeFocus()} index={0} count={3} progress={makeProgress()} scrollOffset={0} interactive={true} />),
+    );
+    expect(out).toContain("Tab: switch");
+    expect(out).toContain("Project 1/3");
+    expect(out).toContain("proj"); // focused project name in the indicator
+  });
+
+  it("sanitizes control bytes in the milestone name and a phase name before render (T-04.2-05)", () => {
+    const progress = makeProgress({
+      milestone_name: "mile" + ESC + "[2Jstone",
+      phases: [makePhase({ number: "01", name: "ev" + ESC + "il", status: "Pending", plans: 0, summaries: 0 })],
+    });
+    const out = renderToString(
+      <PhasesPane focus={makeFocus()} index={0} count={1} progress={progress} scrollOffset={0} interactive={true} />,
+    );
+    expect(out).not.toContain(ESC); // the C0 control byte is stripped everywhere
+    expect(out).toContain("evil"); // the printable remainder survives
+  });
+
+  it("emits no reserved-palette SGR color on the status/emphasis spans (T-04.2-05b)", () => {
+    const progress = makeProgress({
+      phases: [
+        makePhase({ number: "01", name: "alpha", status: "Complete", plans: 1, summaries: 1 }),
+        makePhase({ number: "02", name: "beta", status: "Pending", plans: 0, summaries: 0 }),
+      ],
+    });
+    const raw = renderToString(
+      <PhasesPane focus={makeFocus()} index={0} count={1} progress={progress} scrollOffset={0} interactive={true} />,
+    );
+    for (const code of RESERVED_SGR) {
+      expect(raw).not.toContain(ESC + code);
+    }
   });
 });
