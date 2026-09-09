@@ -19,6 +19,7 @@ import { describe, it, expect } from "vitest";
 // field routed through sanitize(), reserved palette avoided.
 import { osc8, SessionCard, CompactRow, dotColor, ConflictBand, PortsPane, PhasesPane } from "./Card.js";
 import { renderToString } from "ink";
+import chalk from "chalk";
 import type { SessionRow } from "../aggregate.js";
 import type { Conflict } from "../conflicts.js";
 import type { ScannedPort } from "../ports.js";
@@ -782,9 +783,20 @@ describe("PhasesPane (PANEL-07 FAZLAR phase table)", () => {
         makePhase({ number: "03", name: "gamma", status: "Pending", plans: 0, summaries: 0 }),
       ],
     });
-    const raw = renderToString(
-      <PhasesPane focus={makeFocus()} index={0} count={1} progress={progress} scrollOffset={0} interactive={true} />,
-    );
+    // Force a basic color level for this render only: the non-TTY test runner
+    // defaults chalk to level 0 (all SGR stripped), so green/bold would never be
+    // emitted. Scoped here so the T-04.2-05 sanitize test keeps its no-color
+    // default (which asserts the raw output contains no ESC at all).
+    const prevLevel = chalk.level;
+    chalk.level = 1;
+    let raw: string;
+    try {
+      raw = renderToString(
+        <PhasesPane focus={makeFocus()} index={0} count={1} progress={progress} scrollOffset={0} interactive={true} />,
+      );
+    } finally {
+      chalk.level = prevLevel;
+    }
     const rawLines = raw.split("\n");
     const alpha = rawLines.find((l) => stripAnsi(l).includes("alpha")) ?? "";
     const beta = rawLines.find((l) => stripAnsi(l).includes("beta")) ?? "";

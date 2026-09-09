@@ -486,12 +486,15 @@ export function PortsPane({ ports, rows }: { ports: ScannedPort[]; rows: Session
  * D-05): `▸` (U+25B8). It is >= 0x00A0 so `sanitize()` preserves it, and it
  * collides with NO reserved cue — NOT the liveness `●`, read `◇`, filled `◆`,
  * conflict `⚠`, swap `↔`, link `↪`, intent `»`, exposed `⇅`, or skill `⚙`. The
- * current row is emphasized with this marker + `bold`, completed rows render
- * `dimColor`, all other rows render neutral. NO reserved color is ever applied
- * (not red=conflict, green/yellow/grey=liveness, cyan=header/links, blue=reads,
- * magenta/bold=exposed) so a FAZLAR row can never masquerade as another cue
- * (T-04.2-05b). The scroll arrows `▲`/`▼` (U+25B2/U+25BC) and en-dash `–`
- * (U+2013) in the indicator are likewise >= 0x00A0 and reserved-free.
+ * current row is emphasized with this marker + `bold`; completed rows render
+ * green (`color="green"`); all other rows render neutral. Completed phases are
+ * INTENTIONALLY colored green — a user-directed relaxation of T-04.2-05b. Green
+ * is otherwise the liveness-dot color, but FAZLAR rows live in a distinct
+ * pane/region, so the collision is acceptable and deliberate. No OTHER reserved
+ * color is applied (not red=conflict, yellow/grey=liveness, cyan=header/links,
+ * blue=reads, magenta/bold=exposed). The `▸` marker, the scroll arrows `▲`/`▼`
+ * (U+25B2/U+25BC), the en-dash `–` (U+2013), and the truncation `…` (U+2026) are
+ * all >= 0x00A0 and survive `sanitize()`.
  */
 const CURRENT_GLYPH = "▸";
 
@@ -507,24 +510,43 @@ function phaseComplete(p: Phase): boolean {
 }
 
 /**
- * One phase row: `<marker><number> · <name> · <plans>/<summaries> · <status>`.
- * Each of the five fields is passed through `sanitize()` SEPARATELY (T-04.2-05)
- * so a crafted phase name/status cannot inject a control sequence across the
- * whole line. The `current` phase gets the `▸` marker + `bold`; a completed
- * phase renders `dimColor`; every other phase (including unknown status strings)
- * renders neutrally — no reserved color, never a crash. `·` (U+00B7) survives
- * sanitize.
+ * One phase row, rendered as aligned/padded columns:
+ * `<marker><number(padEnd numWidth)> <name(cap+…, padEnd nameWidth)> <plans/summaries(padEnd plansWidth)> <status>`.
+ * The per-column widths are computed in PhasesPane across the FULL phase list so
+ * the status column begins at the same horizontal offset on every row and never
+ * jumps while scrolling. Each of the five fields is passed through `sanitize()`
+ * SEPARATELY (T-04.2-05) so a crafted phase name/status cannot inject a control
+ * sequence across the whole line. An overlong name is truncated to `nameWidth`
+ * with a single `…` (U+2026, survives sanitize). The `current` phase gets the
+ * `▸` marker + `bold`; a completed phase renders green (`color="green"`, a
+ * user-directed relaxation of T-04.2-05b); every other phase (including unknown
+ * status strings) renders neutrally — never a crash.
  */
-function PhaseRow({ phase, current }: { phase: Phase; current: boolean }) {
-  const num = sanitize(String(phase.number));
-  const name = sanitize(String(phase.name));
+function PhaseRow({
+  phase,
+  current,
+  numWidth,
+  nameWidth,
+  plansWidth,
+}: {
+  phase: Phase;
+  current: boolean;
+  numWidth: number;
+  nameWidth: number;
+  plansWidth: number;
+}) {
+  const num = sanitize(String(phase.number)).padEnd(numWidth);
+  let name = sanitize(String(phase.name));
+  if (name.length > nameWidth) name = name.slice(0, nameWidth - 1) + "…";
+  const nameCell = name.padEnd(nameWidth);
   const plans = sanitize(String(phase.plans));
   const summaries = sanitize(String(phase.summaries));
+  const plansCell = `${plans}/${summaries}`.padEnd(plansWidth);
   const status = sanitize(String(phase.status));
   const marker = current ? CURRENT_GLYPH + " " : "  ";
-  const body = `${marker}${num} · ${name} · ${plans}/${summaries} · ${status}`;
+  const body = `${marker}${num} ${nameCell} ${plansCell} ${status}`;
   if (current) return <Text bold>{body}</Text>;
-  if (phaseComplete(phase)) return <Text dimColor>{body}</Text>;
+  if (phaseComplete(phase)) return <Text color="green">{body}</Text>;
   return <Text>{body}</Text>;
 }
 
@@ -548,10 +570,14 @@ function PhaseRow({ phase, current }: { phase: Phase; current: boolean }) {
  *  4. a dim scroll indicator (`▲N`/`▼N` + `i–j/total`) shown only when the phase
  *     count exceeds the window, so no phase is ever hidden behind a hard cap (D-04).
  *
- * Every displayed string passes through `sanitize()` before Ink render (T-04.2-05),
- * and only the `▸` marker + `bold`/`dimColor` carry emphasis — the reserved palette
- * (red/green/yellow/grey/cyan/blue/magenta-bold) is never used (T-04.2-05b). It does
- * NOT touch SessionCard/CompactRow/ConflictBand/PortsPane — additive only (D-06).
+ * Every displayed string passes through `sanitize()` before Ink render (T-04.2-05).
+ * The `▸` marker + `bold` mark the current phase; completed phases render green
+ * (a user-directed relaxation of T-04.2-05b — green is also the liveness dot, but
+ * FAZLAR rows live in a distinct pane); pending phases stay neutral. No OTHER
+ * reserved color (red/yellow/grey/cyan/blue/magenta-bold) is used. Per-column
+ * widths are computed across the FULL phase list (not the scroll window) so the
+ * status column never jumps while scrolling. It does NOT touch
+ * SessionCard/CompactRow/ConflictBand/PortsPane — additive only (D-06).
  */
 export function PhasesPane({
   focus,
@@ -588,6 +614,19 @@ export function PhasesPane({
   const completed = phases.filter(phaseComplete).length;
   const currentIdx = phases.findIndex((p) => !phaseComplete(p)); // -1 when all complete
 
+  // Per-column widths across the FULL phase list (not the scroll window) so the
+  // status column begins at the same offset on every row and never jumps while
+  // scrolling. Fields are sanitized BEFORE measuring so padding aligns the
+  // post-sanitize glyphs (T-04.2-05). The Math.max floors guard the empty-array
+  // spread (phases is non-empty here, but stay defensive); the name cap is 18.
+  const NAME_CAP = 18;
+  const numWidth = Math.max(1, ...phases.map((p) => sanitize(String(p.number)).length));
+  const nameWidth = Math.min(NAME_CAP, Math.max(1, ...phases.map((p) => sanitize(String(p.name)).length)));
+  const plansWidth = Math.max(
+    1,
+    ...phases.map((p) => (sanitize(String(p.plans)) + "/" + sanitize(String(p.summaries))).length),
+  );
+
   const name = sanitize(progress.milestone_name);
   const version = sanitize(progress.milestone_version);
   const pct = sanitize(String(progress.percent));
@@ -609,7 +648,14 @@ export function PhasesPane({
         <Text dimColor>{`Project ${index + 1}/${count} · ${sanitize(focus.name)} · Tab: switch`}</Text>
       ) : null}
       {windowPhases.map((p, i) => (
-        <PhaseRow key={`${p.number}:${start + i}`} phase={p} current={start + i === currentIdx} />
+        <PhaseRow
+          key={`${p.number}:${start + i}`}
+          phase={p}
+          current={start + i === currentIdx}
+          numWidth={numWidth}
+          nameWidth={nameWidth}
+          plansWidth={plansWidth}
+        />
       ))}
       {hasMore ? <Text dimColor>{sanitize(indicator)}</Text> : null}
     </Box>
