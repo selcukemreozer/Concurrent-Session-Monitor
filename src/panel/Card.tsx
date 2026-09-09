@@ -350,7 +350,7 @@ const EXPOSED_GLYPH = "⇅";
  * single dim `+N more` (mirrors CONFLICT_CAP). Bounds the pane's height
  * regardless of how many listeners the machine has (D-06 shows all ports).
  */
-export const PORTS_CAP = 6;
+export const PORTS_CAP = 12;
 
 /**
  * Build a port-group heading reusing the `folder · branch · shortid` identity
