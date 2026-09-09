@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import React from "react";
 import { render } from "ink";
-import { Writable } from "node:stream";
+import { Writable, PassThrough } from "node:stream";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import * as os from "node:os";
@@ -30,14 +30,95 @@ vi.mock("../ports.js", async (importOriginal) => {
     portScanMs: vi.fn(() => 2500),
   };
 });
+// RED (wave 04.2-03): App owns the SECOND, slower phase-scan effect (PANEL-08)
+// AND the sole TTY-guarded `useInput` keyboard handler (PANEL-09). Mock
+// ../phases.js so these tests drive the scan cadence / focus-set / keyboard
+// WIRING without spawning gsd-tools or touching the filesystem — but PRESERVE
+// the pure helpers (buildFocusSet/clampOffset/cycleIndex/parseProgress +
+// FAZLAR_VISIBLE_ROWS) via importOriginal so the render-path focus-set
+// derivation is the real, fs-free one. resolvePlanningRoots returns a fixed
+// Set of roots-with-.planning so buildFocusSet yields a deterministic focus set
+// with ZERO fs probe on the render tick.
+const { PROGRESS_FIXTURE, ROOTS } = vi.hoisted(() => {
+  const phases = Array.from({ length: 10 }, (_, i) => ({
+    number: `0${i}`,
+    name: `phase-${i}`,
+    plans: 1,
+    summaries: i < 3 ? 1 : 0,
+    status: i < 3 ? "Complete" : "Pending",
+  }));
+  return {
+    PROGRESS_FIXTURE: {
+      milestone_name: "MILE",
+      milestone_version: "v1",
+      percent: 30,
+      phases,
+    },
+    ROOTS: ["/projA", "/projB"] as string[],
+  };
+});
+vi.mock("../phases.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../phases.js")>();
+  return {
+    ...actual,
+    scanProgress: vi.fn(async () => PROGRESS_FIXTURE),
+    resolvePlanningRoots: vi.fn(async () => new Set(ROOTS)),
+    phaseScanMs: vi.fn(() => 3000),
+    resolveGsdTools: vi.fn(() => "/dummy/gsd-tools.cjs"),
+  };
+});
 import { readAll } from "../aggregate.js";
 import { pruneSession } from "../prune.js";
 import { scanPorts, portScanMs } from "../ports.js";
 import type { ScannedPort } from "../ports.js";
+import {
+  scanProgress,
+  resolvePlanningRoots,
+  phaseScanMs,
+  resolveGsdTools,
+} from "../phases.js";
 import { App } from "./App.js";
 
 /** The mocked scan cadence (ms) — App arms its 2nd interval at portScanMs(). */
 const PORT_CADENCE = 2500;
+
+/** The mocked phase-scan cadence (ms) — App arms its 3rd interval at phaseScanMs(). */
+const PHASE_CADENCE = 3000;
+
+/**
+ * A minimal fake TTY stdin (Pitfall 1 / Wave 0 Gaps): an in-memory duplex with
+ * `isTTY:true` + a noop `setRawMode` (plus `ref`/`unref`) so Ink's `useInput`
+ * engages raw mode and attaches its `readable` listener WITHOUT a real terminal.
+ * Emitting a keypress is `stdin.write(<escape sequence>)`.
+ */
+function fakeTtyStdin(): NodeJS.ReadStream {
+  const s = new PassThrough() as unknown as NodeJS.ReadStream;
+  (s as unknown as { isTTY: boolean }).isTTY = true;
+  (s as unknown as { setRawMode: (m: boolean) => void }).setRawMode = () => {};
+  (s as unknown as { ref: () => unknown }).ref = () => s;
+  (s as unknown as { unref: () => unknown }).unref = () => s;
+  return s;
+}
+
+/** Terminal escape sequences Ink's parseKeypress resolves to key.{tab,shift,...}. */
+const KEYS = {
+  tab: "\t",
+  shiftTab: "[Z",
+  up: "[A",
+  down: "[B",
+  pageUp: "[5~",
+  pageDown: "[6~",
+} as const;
+
+/** Emit a keypress into a fake TTY stdin. */
+function press(stdin: NodeJS.ReadStream, seq: string): void {
+  (stdin as unknown as { write: (s: string) => void }).write(seq);
+}
+
+/** A live SessionRow carrying a cwd so buildFocusSet + the .planning/ probe pair it. */
+function makeFocusRow(id: string, folder: string, cwd: string): SessionRow {
+  return makeRow({ session_id: id, folder, alive: true, dotState: "active", cwd } as Partial<SessionRow>);
+}
 
 /** A non-TTY sink so Ink renders without touching the real terminal. */
 function fakeStdout(rows = 24, columns = 80): NodeJS.WriteStream {
@@ -54,18 +135,23 @@ function fakeStdout(rows = 24, columns = 80): NodeJS.WriteStream {
  * text — no async flush needed. `useWindowSize` reads the injected stdout's
  * rows/columns, so passing a small `rows` drives the height-overflow switch.
  */
-function renderCapture(rows = 24, columns = 80) {
+function renderCapture(rows = 24, columns = 80, stdin?: NodeJS.ReadStream) {
   let buf = "";
   const out = new Writable({ write(c, _e, cb) { buf += c.toString(); cb(); } }) as unknown as NodeJS.WriteStream;
   (out as unknown as { columns: number }).columns = columns;
   (out as unknown as { rows: number }).rows = rows;
-  const inst = render(React.createElement(App), {
+  const opts: Parameters<typeof render>[1] = {
     stdout: out,
     debug: true,
     patchConsole: false,
     exitOnCtrlC: false,
-  });
-  return { inst, frame: () => buf };
+  };
+  // Inject a fake-TTY stdin so the App's guarded useInput engages raw mode for
+  // keyboard tests; omit it to exercise the non-TTY (isRawModeSupported false)
+  // static-degrade path.
+  if (stdin) (opts as { stdin?: NodeJS.ReadStream }).stdin = stdin;
+  const inst = render(React.createElement(App), opts);
+  return { inst, frame: () => buf, clear: () => { buf = ""; } };
 }
 
 /** A minimal-but-complete SessionRow for render/lifecycle assertions. */
@@ -84,6 +170,18 @@ function makeRow(overrides: Partial<SessionRow> = {}): SessionRow {
     ...overrides,
   } as SessionRow;
 }
+
+// After GREEN, App imports ../phases.js, so its phase-scan effect runs in EVERY
+// test. Re-arm the phases mocks before each test (a prior describe's
+// restoreAllMocks strips vi.fn implementations) so App never calls an
+// undefined-returning scanProgress()/resolvePlanningRoots() and crashes. Tests
+// that need to assert on these override/clear them in their own beforeEach.
+beforeEach(() => {
+  vi.mocked(scanProgress).mockResolvedValue(PROGRESS_FIXTURE);
+  vi.mocked(resolvePlanningRoots).mockResolvedValue(new Set(ROOTS));
+  vi.mocked(phaseScanMs).mockReturnValue(PHASE_CADENCE);
+  vi.mocked(resolveGsdTools).mockReturnValue("/dummy/gsd-tools.cjs");
+});
 
 describe("App poll loop (PANEL-05 live refresh, Pitfall 4 full re-read)", () => {
   beforeEach(() => {
@@ -469,5 +567,107 @@ describe("port scan cadence (PORT-06, D-05)", () => {
     // Well past several cadence boundaries — a cleared interval fires nothing.
     await vi.advanceTimersByTimeAsync(PORT_CADENCE * 3);
     expect(scanPorts).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("App FAZLAR pane wiring (PANEL-08/09, D-01/D-02/D-04/D-07/D-08)", () => {
+  const rows = () => [
+    makeFocusRow("a", "projA", "/projA"),
+    makeFocusRow("b", "projB", "/projB"),
+  ];
+
+  beforeEach(() => {
+    (readAll as unknown as { mockReset: () => void }).mockReset();
+    (pruneSession as unknown as { mockReset: () => void }).mockReset();
+    (readAll as unknown as { mockReturnValue: (v: unknown) => void }).mockReturnValue(rows());
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("non-TTY: renders the focused project statically, no Tab hint / no i·N indicator, never throws (D-08)", async () => {
+    let cap!: ReturnType<typeof renderCapture>;
+    expect(() => { cap = renderCapture(24, 80); }).not.toThrow(); // no stdin => non-TTY
+    // The phase-scan effect still runs off the render tick and caches Progress.
+    await vi.waitFor(() => expect(cap.frame()).toContain("MILE"));
+    expect(cap.frame()).not.toContain("Tab: switch"); // hint hidden when non-interactive
+    expect(cap.frame()).not.toContain("Project 1/"); // i/N indicator hidden too
+    cap.inst.unmount();
+  });
+
+  it("Tab cycles the focused project forward; Shift+Tab reverses (D-01/D-02)", async () => {
+    const stdin = fakeTtyStdin();
+    const cap = renderCapture(24, 80, stdin);
+    await vi.waitFor(() => expect(cap.frame()).toContain("Project 1/2"));
+    expect(cap.frame()).toContain("projA"); // D-02: most-recently-active default focus
+
+    cap.clear();
+    press(stdin, KEYS.tab);
+    await vi.waitFor(() => expect(cap.frame()).toContain("Project 2/2"));
+    expect(cap.frame()).toContain("projB");
+
+    cap.clear();
+    press(stdin, KEYS.shiftTab);
+    await vi.waitFor(() => expect(cap.frame()).toContain("Project 1/2"));
+    expect(cap.frame()).toContain("projA");
+    cap.inst.unmount();
+  });
+
+  it("arrow keys scroll the FAZLAR window; up clamps at the top; Tab resets the offset (D-04)", async () => {
+    const stdin = fakeTtyStdin();
+    const cap = renderCapture(40, 100, stdin);
+    // Fixture has 10 phases; the 7-row window shows phase-0..phase-6 at offset 0.
+    await vi.waitFor(() => expect(cap.frame()).toContain("phase-0"));
+    expect(cap.frame()).not.toContain("phase-7"); // below the window at offset 0
+
+    cap.clear();
+    press(stdin, KEYS.down); // offset -> 1: window is phase-1..phase-7
+    await vi.waitFor(() => expect(cap.frame()).toContain("phase-7"));
+
+    cap.clear();
+    press(stdin, KEYS.up); // back to offset 0
+    await vi.waitFor(() => expect(cap.frame()).toContain("phase-0"));
+    cap.clear();
+    press(stdin, KEYS.up); // up at the top clamps — still offset 0
+    await vi.waitFor(() => expect(cap.frame()).toContain("phase-0"));
+    expect(cap.frame()).not.toContain("phase-7");
+
+    // Scroll down, then Tab to another project — the offset resets to the top.
+    cap.clear();
+    press(stdin, KEYS.down);
+    await vi.waitFor(() => expect(cap.frame()).toContain("phase-7"));
+    cap.clear();
+    press(stdin, KEYS.tab);
+    await vi.waitFor(() => expect(cap.frame()).toContain("phase-0"));
+    expect(cap.frame()).not.toContain("phase-7"); // offset reset on focus change
+    cap.inst.unmount();
+  });
+
+  it("arms a SECOND phase-scan interval at phaseScanMs cadence, distinct from the 750 poll, calling resolvePlanningRoots + scanProgress (PANEL-08)", async () => {
+    const setSpy = vi.spyOn(global, "setInterval");
+    const stdin = fakeTtyStdin();
+    const cap = renderCapture(24, 80, stdin);
+
+    await vi.waitFor(() => {
+      expect(resolvePlanningRoots).toHaveBeenCalled(); // the sole .planning/ probe
+      expect(scanProgress).toHaveBeenCalled(); // scans the focused project
+    });
+
+    // A dedicated cadence timer, separate from the 750ms poll (never inside it).
+    expect(
+      setSpy.mock.calls.some((c) => c[1] === PHASE_CADENCE),
+      "expected a phaseScanMs() interval distinct from the 750ms poll",
+    ).toBe(true);
+    expect(setSpy.mock.calls.some((c) => c[1] === 750)).toBe(true);
+    cap.inst.unmount();
+  });
+
+  it("clean shutdown: unmounts with raw mode engaged without throwing (D-07)", async () => {
+    const stdin = fakeTtyStdin();
+    const cap = renderCapture(24, 80, stdin);
+    // The interactive hint proves raw mode engaged via the guarded useInput.
+    await vi.waitFor(() => expect(cap.frame()).toContain("Tab: switch"));
+    expect(() => cap.inst.unmount()).not.toThrow(); // no double-teardown
   });
 });
