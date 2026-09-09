@@ -721,26 +721,26 @@ describe("PhasesPane (PANEL-07 FAZLAR phase table)", () => {
   });
 
   it("renders only the visible window at offset 0 and signals more below (D-04)", () => {
-    const phases = Array.from({ length: 12 }, (_, i) =>
+    const phases = Array.from({ length: 20 }, (_, i) =>
       makePhase({ number: String(i).padStart(2, "0"), name: `phase-${i}`, status: "Pending", plans: 0, summaries: 0 }),
     );
     const out = stripAnsi(
       renderToString(<PhasesPane focus={makeFocus()} index={0} count={1} progress={makeProgress({ phases })} scrollOffset={0} interactive={true} />),
     );
     expect(out).toContain("phase-0");
-    expect(out).toContain("phase-6"); // 7th row = FAZLAR_VISIBLE_ROWS
-    expect(out).not.toContain("phase-7"); // beyond the window
+    expect(out).toContain("phase-14"); // 15th row = FAZLAR_VISIBLE_ROWS
+    expect(out).not.toContain("phase-15"); // beyond the window
     expect(out).toContain("▼"); // more-below indicator
   });
 
   it("shows the tail slice and signals more above when scrolled to the end (D-04)", () => {
-    const phases = Array.from({ length: 12 }, (_, i) =>
+    const phases = Array.from({ length: 20 }, (_, i) =>
       makePhase({ number: String(i).padStart(2, "0"), name: `phase-${i}`, status: "Pending", plans: 0, summaries: 0 }),
     );
     const out = stripAnsi(
       renderToString(<PhasesPane focus={makeFocus()} index={0} count={1} progress={makeProgress({ phases })} scrollOffset={5} interactive={true} />),
     );
-    expect(out).toContain("phase-11"); // last phase visible in the tail slice
+    expect(out).toContain("phase-19"); // last phase visible in the tail slice
     expect(out).not.toContain("phase-0"); // scrolled past the head
     expect(out).toContain("▲"); // more-above indicator
   });

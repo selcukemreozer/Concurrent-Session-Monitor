@@ -40,8 +40,8 @@ vi.mock("../ports.js", async (importOriginal) => {
 // Set of roots-with-.planning so buildFocusSet yields a deterministic focus set
 // with ZERO fs probe on the render tick.
 const { PROGRESS_FIXTURE, ROOTS } = vi.hoisted(() => {
-  const phases = Array.from({ length: 10 }, (_, i) => ({
-    number: `0${i}`,
+  const phases = Array.from({ length: 20 }, (_, i) => ({
+    number: String(i).padStart(2, "0"),
     name: `phase-${i}`,
     plans: 1,
     summaries: i < 3 ? 1 : 0,
@@ -617,13 +617,13 @@ describe("App FAZLAR pane wiring (PANEL-08/09, D-01/D-02/D-04/D-07/D-08)", () =>
   it("arrow keys scroll the FAZLAR window; up clamps at the top; Tab resets the offset (D-04)", async () => {
     const stdin = fakeTtyStdin();
     const cap = renderCapture(40, 100, stdin);
-    // Fixture has 10 phases; the 7-row window shows phase-0..phase-6 at offset 0.
+    // Fixture has 20 phases; the 15-row window shows phase-0..phase-14 at offset 0.
     await vi.waitFor(() => expect(cap.frame()).toContain("phase-0"));
-    expect(cap.frame()).not.toContain("phase-7"); // below the window at offset 0
+    expect(cap.frame()).not.toContain("phase-15"); // below the window at offset 0
 
     cap.clear();
-    press(stdin, KEYS.down); // offset -> 1: window is phase-1..phase-7
-    await vi.waitFor(() => expect(cap.frame()).toContain("phase-7"));
+    press(stdin, KEYS.down); // offset -> 1: window is phase-1..phase-15
+    await vi.waitFor(() => expect(cap.frame()).toContain("phase-15"));
 
     cap.clear();
     press(stdin, KEYS.up); // back to offset 0
@@ -631,16 +631,16 @@ describe("App FAZLAR pane wiring (PANEL-08/09, D-01/D-02/D-04/D-07/D-08)", () =>
     cap.clear();
     press(stdin, KEYS.up); // up at the top clamps — still offset 0
     await vi.waitFor(() => expect(cap.frame()).toContain("phase-0"));
-    expect(cap.frame()).not.toContain("phase-7");
+    expect(cap.frame()).not.toContain("phase-15");
 
     // Scroll down, then Tab to another project — the offset resets to the top.
     cap.clear();
     press(stdin, KEYS.down);
-    await vi.waitFor(() => expect(cap.frame()).toContain("phase-7"));
+    await vi.waitFor(() => expect(cap.frame()).toContain("phase-15"));
     cap.clear();
     press(stdin, KEYS.tab);
     await vi.waitFor(() => expect(cap.frame()).toContain("phase-0"));
-    expect(cap.frame()).not.toContain("phase-7"); // offset reset on focus change
+    expect(cap.frame()).not.toContain("phase-15"); // offset reset on focus change
     cap.inst.unmount();
   });
 
