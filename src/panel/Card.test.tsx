@@ -579,12 +579,14 @@ describe("PortsPane (PORT-05 port pane render)", () => {
   });
 
   it("caps at PORTS_CAP rows and appends a `+N more` line past the cap (port cap)", () => {
-    // 9 ports all in the user bucket -> PORTS_CAP (6) rows + a `+3 more` summary
-    const ports = Array.from({ length: 9 }, (_, i) =>
+    // 15 ports all in the user bucket -> PORTS_CAP (12) rows + a `+3 more` summary
+    const ports = Array.from({ length: 15 }, (_, i) =>
       makePort({ pid: 999, ancestryPids: [999], port: 3000 + i, command: `svc${i}` }),
     );
     const out = stripAnsi(renderToString(<PortsPane ports={ports} rows={[]} />));
-    expect(out).toContain("+3 more"); // 9 total - cap of 6 = 3
+    expect(out).toContain("+3 more"); // 15 total - cap of 12 = 3
+    expect(out).toContain("svc11"); // the 12th row (index 11) IS shown under the cap
+    expect(out).not.toContain("svc12"); // the 13th row (index 12) is collapsed past the cap
   });
 
   it("renders the dim 'no listening ports' empty state when there are zero ports (port empty)", () => {
