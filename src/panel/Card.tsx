@@ -618,8 +618,8 @@ export function PhasesPane({
   // status column begins at the same offset on every row and never jumps while
   // scrolling. Fields are sanitized BEFORE measuring so padding aligns the
   // post-sanitize glyphs (T-04.2-05). The Math.max floors guard the empty-array
-  // spread (phases is non-empty here, but stay defensive); the name cap is 18.
-  const NAME_CAP = 18;
+  // spread (phases is non-empty here, but stay defensive); the name cap is 36.
+  const NAME_CAP = 36;
   const numWidth = Math.max(1, ...phases.map((p) => sanitize(String(p.number)).length));
   const nameWidth = Math.min(NAME_CAP, Math.max(1, ...phases.map((p) => sanitize(String(p.name)).length)));
   const plansWidth = Math.max(
