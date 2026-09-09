@@ -5,6 +5,7 @@ import { fmtUptime } from "../liveness.js";
 import type { SessionRow } from "../aggregate.js";
 import type { Conflict, ConflictSession } from "../conflicts.js";
 import { livePidMap, attribute, type ScannedPort } from "../ports.js";
+import { FAZLAR_VISIBLE_ROWS, type Progress, type Phase, type FocusEntry } from "../phases.js";
 
 // ESC (0x1B) and ST (ESC "\") as raw bytes, built without embedding control
 // characters in source. These frame an OSC-8 hyperlink.
@@ -476,6 +477,141 @@ export function PortsPane({ ports, rows }: { ports: ScannedPort[]; rows: Session
         );
       })}
       {more > 0 ? <Text dimColor>{`  +${more} more`}</Text> : null}
+    </Box>
+  );
+}
+
+/**
+ * Leading marker for the in-progress phase row in the FAZLAR pane (PANEL-07
+ * D-05): `▸` (U+25B8). It is >= 0x00A0 so `sanitize()` preserves it, and it
+ * collides with NO reserved cue — NOT the liveness `●`, read `◇`, filled `◆`,
+ * conflict `⚠`, swap `↔`, link `↪`, intent `»`, exposed `⇅`, or skill `⚙`. The
+ * current row is emphasized with this marker + `bold`, completed rows render
+ * `dimColor`, all other rows render neutral. NO reserved color is ever applied
+ * (not red=conflict, green/yellow/grey=liveness, cyan=header/links, blue=reads,
+ * magenta/bold=exposed) so a FAZLAR row can never masquerade as another cue
+ * (T-04.2-05b). The scroll arrows `▲`/`▼` (U+25B2/U+25BC) and en-dash `–`
+ * (U+2013) in the indicator are likewise >= 0x00A0 and reserved-free.
+ */
+const CURRENT_GLYPH = "▸";
+
+/**
+ * True when a phase counts as complete for emphasis/summary math (PANEL-07). A
+ * phase is complete when its (opaque) status string is exactly `Complete`, OR —
+ * robustly, for unknown status strings (RESEARCH Pitfall 5) — when it has plans
+ * and every plan has a summary (`plans > 0 && summaries >= plans`). The current
+ * phase is then the FIRST phase that is NOT complete.
+ */
+function phaseComplete(p: Phase): boolean {
+  return p.status === "Complete" || (p.plans > 0 && p.summaries >= p.plans);
+}
+
+/**
+ * One phase row: `<marker><number> · <name> · <plans>/<summaries> · <status>`.
+ * Each of the five fields is passed through `sanitize()` SEPARATELY (T-04.2-05)
+ * so a crafted phase name/status cannot inject a control sequence across the
+ * whole line. The `current` phase gets the `▸` marker + `bold`; a completed
+ * phase renders `dimColor`; every other phase (including unknown status strings)
+ * renders neutrally — no reserved color, never a crash. `·` (U+00B7) survives
+ * sanitize.
+ */
+function PhaseRow({ phase, current }: { phase: Phase; current: boolean }) {
+  const num = sanitize(String(phase.number));
+  const name = sanitize(String(phase.name));
+  const plans = sanitize(String(phase.plans));
+  const summaries = sanitize(String(phase.summaries));
+  const status = sanitize(String(phase.status));
+  const marker = current ? CURRENT_GLYPH + " " : "  ";
+  const body = `${marker}${num} · ${name} · ${plans}/${summaries} · ${status}`;
+  if (current) return <Text bold>{body}</Text>;
+  if (phaseComplete(phase)) return <Text dimColor>{body}</Text>;
+  return <Text>{body}</Text>;
+}
+
+/**
+ * The RIGHT FAZLAR pane (PANEL-07): the Tab-focused project's GSD phase table.
+ *
+ * Pure presentation — NO scanning, NO timers, NO keyboard/raw-mode (those live in
+ * App.tsx, Plan 03). It is NOT a card: no `borderStyle`, just a column of `<Text>`.
+ *
+ * Empty states (D-03), never a crash and never a blank pane:
+ *  - `focus === null` (no live GSD project) → a single dim `no GSD projects` line.
+ *  - focus set but `progress` null / empty phases (query error/empty) → dim `no roadmap`.
+ *
+ * Otherwise it renders (D-04/D-05/D-08):
+ *  1. a bold milestone summary line `<name> <version> · X/Y phases · Z%` where
+ *     X = completed phases, Y = total, Z = `progress.percent` — every part sanitized;
+ *  2. when `interactive`, a dim `Project i/N · <name> · Tab: switch` indicator —
+ *     BOTH the i/N indicator and the hint are hidden when `interactive` is false (D-08);
+ *  3. the height-bounded window `phases.slice(offset, offset + FAZLAR_VISIBLE_ROWS)`
+ *     mapped to `PhaseRow`, marking the first non-complete phase as current;
+ *  4. a dim scroll indicator (`▲N`/`▼N` + `i–j/total`) shown only when the phase
+ *     count exceeds the window, so no phase is ever hidden behind a hard cap (D-04).
+ *
+ * Every displayed string passes through `sanitize()` before Ink render (T-04.2-05),
+ * and only the `▸` marker + `bold`/`dimColor` carry emphasis — the reserved palette
+ * (red/green/yellow/grey/cyan/blue/magenta-bold) is never used (T-04.2-05b). It does
+ * NOT touch SessionCard/CompactRow/ConflictBand/PortsPane — additive only (D-06).
+ */
+export function PhasesPane({
+  focus,
+  index,
+  count,
+  progress,
+  scrollOffset,
+  interactive,
+}: {
+  focus: FocusEntry | null;
+  index: number;
+  count: number;
+  progress: Progress | null;
+  scrollOffset: number;
+  interactive: boolean;
+}) {
+  if (focus === null) {
+    return (
+      <Box flexDirection="column">
+        <Text dimColor>{"no GSD projects"}</Text>
+      </Box>
+    );
+  }
+  if (progress === null || progress.phases.length === 0) {
+    return (
+      <Box flexDirection="column">
+        <Text dimColor>{"no roadmap"}</Text>
+      </Box>
+    );
+  }
+
+  const phases = progress.phases;
+  const total = phases.length;
+  const completed = phases.filter(phaseComplete).length;
+  const currentIdx = phases.findIndex((p) => !phaseComplete(p)); // -1 when all complete
+
+  const name = sanitize(progress.milestone_name);
+  const version = sanitize(progress.milestone_version);
+  const pct = sanitize(String(progress.percent));
+  const milestoneLine = `${name}${version ? " " + version : ""} · ${completed}/${total} phases · ${pct}%`;
+
+  // The height-bounded scroll window (D-04): clamp the offset defensively even
+  // though App.tsx (Plan 03) already clamps it, so PhasesPane never over-slices.
+  const start = Math.min(Math.max(0, scrollOffset), Math.max(0, total - FAZLAR_VISIBLE_ROWS));
+  const windowPhases = phases.slice(start, start + FAZLAR_VISIBLE_ROWS);
+  const above = start;
+  const below = total - (start + windowPhases.length);
+  const hasMore = total > FAZLAR_VISIBLE_ROWS;
+  const indicator = `  ${above > 0 ? "▲" + above + " " : ""}${below > 0 ? "▼" + below + " " : ""}${start + 1}–${start + windowPhases.length}/${total}`;
+
+  return (
+    <Box flexDirection="column">
+      <Text bold>{sanitize(milestoneLine)}</Text>
+      {interactive ? (
+        <Text dimColor>{`Project ${index + 1}/${count} · ${sanitize(focus.name)} · Tab: switch`}</Text>
+      ) : null}
+      {windowPhases.map((p, i) => (
+        <PhaseRow key={`${p.number}:${start + i}`} phase={p} current={start + i === currentIdx} />
+      ))}
+      {hasMore ? <Text dimColor>{sanitize(indicator)}</Text> : null}
     </Box>
   );
 }
