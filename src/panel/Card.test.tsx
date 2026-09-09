@@ -619,6 +619,76 @@ describe("PortsPane (PORT-05 port pane render)", () => {
     const line = out.split("\n").find((l) => l.includes("5000")) ?? "";
     expect(line).toContain("local · pid 42");
   });
+
+  it("aligns the ` · ` middots across port rows of differing port/command/badge widths", () => {
+    // Three user-bucket ports (rows=[]) chosen so port, command, AND badge widths
+    // all differ — the only thing that can line the middots up is per-column
+    // padEnd padding computed across the full ports array.
+    const ports = [
+      makePort({ port: 80, command: "a", exposed: true, pid: 111 }), // badge "⇅ exposed" (9)
+      makePort({ port: 43117, command: "longcommand", exposed: false, pid: 111 }), // badge "local" (5)
+      makePort({ port: 3000, command: "srv", exposed: false, pid: 111 }),
+    ];
+    const out = stripAnsi(renderToString(<PortsPane ports={ports} rows={[]} />));
+
+    // Every column index of the middot "·" in a line.
+    const dotCols = (line: string): number[] => {
+      const cols: number[] = [];
+      let from = 0;
+      for (;;) {
+        const idx = line.indexOf("·", from);
+        if (idx === -1) break;
+        cols.push(idx);
+        from = idx + 1;
+      }
+      return cols;
+    };
+
+    // Keep only PORT-info lines (each has a "pid " segment) — excludes the
+    // `Sen (kullanici)` heading (no middots) and any `+N more`.
+    const portLines = out.split("\n").filter((l) => l.includes("pid "));
+    expect(portLines.length).toBe(3);
+    for (const l of portLines) {
+      expect(dotCols(l).length).toBe(3); // port·command, command·badge, badge·pid
+    }
+    // All three rows share the IDENTICAL middot-index array → the ` · `
+    // separators stack vertically like the FAZLAR pane.
+    expect(new Set(portLines.map((l) => JSON.stringify(dotCols(l)))).size).toBe(1);
+  });
+
+  it("keeps the exposed badge magenta+bold and the local badge dim after padding", () => {
+    // The non-TTY runner defaults chalk.level to 0 (SGR stripped); force level 1
+    // for this render only so the badge colors are actually emitted, restore in
+    // finally (mirrors the FAZLAR green test).
+    const prevLevel = chalk.level;
+    chalk.level = 1;
+    let raw: string;
+    try {
+      raw = renderToString(
+        <PortsPane
+          ports={[
+            makePort({ command: "node", port: 5000, exposed: true, pid: 42 }),
+            makePort({ command: "srv", port: 80, exposed: false, pid: 43 }),
+          ]}
+          rows={[]}
+        />,
+      );
+    } finally {
+      chalk.level = prevLevel;
+    }
+    const rawLines = raw.split("\n");
+    const exposedLine = rawLines.find((l) => stripAnsi(l).includes("exposed")) ?? "";
+    const localLine = rawLines.find((l) => stripAnsi(l).includes("local")) ?? "";
+
+    // Exposed badge keeps magenta + bold.
+    expect(exposedLine).toContain(ESC + "[35m"); // magenta
+    expect(exposedLine).toContain(ESC + "[1m"); // bold
+    // Local badge keeps dim.
+    expect(localLine).toContain(ESC + "[2m"); // dim
+    // Padding sits OUTSIDE the colored badge — the `· pid` separator survives.
+    expect(stripAnsi(exposedLine)).toContain("· pid ");
+    expect(stripAnsi(localLine)).toContain("· pid ");
+  });
 });
 
 /** Minimal Phase fixture builder for PhasesPane render assertions. */
