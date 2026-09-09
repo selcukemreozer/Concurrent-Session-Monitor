@@ -1,12 +1,23 @@
 import React from "react";
-import { Box, Text, useWindowSize } from "ink";
+import { Box, Text, useWindowSize, useInput, useStdin } from "ink";
 import { readAll, type SessionRow } from "../aggregate.js";
 import { pruneSession } from "../prune.js";
 import { sanitize } from "../sanitize.js";
 import { numEnv } from "../env.js";
-import { SessionCard, CompactRow, ConflictBand, PortsPane } from "./Card.js";
+import { SessionCard, CompactRow, ConflictBand, PortsPane, PhasesPane } from "./Card.js";
 import { detectConflicts, type Conflict } from "../conflicts.js";
 import { scanPorts, portScanMs, type ScannedPort } from "../ports.js";
+import {
+  scanProgress,
+  phaseScanMs,
+  resolveGsdTools,
+  resolvePlanningRoots,
+  buildFocusSet,
+  clampOffset,
+  cycleIndex,
+  FAZLAR_VISIBLE_ROWS,
+  type Progress,
+} from "../phases.js";
 
 /** Poll cadence (Claude's Discretion): ~750ms comfortably meets criterion #1
  * ("a touch appears within about a second") without a file watcher. */
@@ -169,9 +180,44 @@ function fmtClock(now: number): string {
  * `pruneSession(id)` exactly once (SC-3). A summary header reports live/idle
  * counts and a Phase-3 conflicts placeholder (D-15). When the roster would
  * overflow the terminal height, every row collapses to a one-line `CompactRow`
- * (D-13) via Ink's built-in `useWindowSize`. No raw-mode keyboard input — the
- * panel is read-only; the launcher owns SIGINT/SIGTERM shutdown.
+ * (D-13) via Ink's built-in `useWindowSize`.
+ *
+ * The RIGHT bottom slot holds the interactive FAZLAR pane (PANEL-07/08/09): a
+ * SECOND, slower env-gated scan effect (`phaseScanMs`) resolves `.planning/`
+ * roots OFF the render tick (`resolvePlanningRoots`) and spawns `scanProgress`
+ * for the focused project, while a TTY-guarded `useInput`
+ * (`isActive: isRawModeSupported`) drives Tab/Shift+Tab project cycling and
+ * arrow/PageUp/PageDown FAZLAR scrolling. Raw mode is entered ONLY when a TTY is
+ * present, so Ink's default `exitOnCtrlC` cleanly unmounts the alt-screen on
+ * Ctrl+C, reconciled with the launcher's idempotent SIGINT/SIGTERM handlers
+ * (D-07); on a non-TTY the handler is inert and the pane degrades to static
+ * (D-08). The render tick itself does ZERO filesystem IO — `buildFocusSet` is a
+ * pure derivation over the pre-resolved `planningRoots` set.
  */
+/**
+ * The FAZLAR keyboard handler (PANEL-09), isolated into its own component so
+ * `useInput` — which enters raw mode and takes over `process.stdin` — is invoked
+ * ONLY when App mounts it (i.e. on a TTY). Tab/Shift+Tab cycle the focused
+ * project; arrows nudge the scroll window by one row; PageUp/PageDown by a full
+ * window. Ctrl+C is left to Ink's default `exitOnCtrlC` (D-07). Renders nothing.
+ */
+function FazlarKeyboard({
+  onCycle,
+  onScroll,
+}: {
+  onCycle: (dir: 1 | -1) => void;
+  onScroll: (delta: number) => void;
+}) {
+  useInput((_input, key) => {
+    if (key.tab) onCycle(key.shift ? -1 : 1);
+    else if (key.upArrow) onScroll(-1);
+    else if (key.downArrow) onScroll(1);
+    else if (key.pageUp) onScroll(-FAZLAR_VISIBLE_ROWS);
+    else if (key.pageDown) onScroll(FAZLAR_VISIBLE_ROWS);
+  });
+  return null;
+}
+
 export function App() {
   const seen = React.useRef<Map<string, SeenEntry>>(new Map());
   const [state, setState] = React.useState<Reconciled>(() =>
@@ -219,6 +265,110 @@ export function App() {
   // fresh against the 750ms liveness — a grace-ghost never claims a port.
   const liveRows = state.display.filter((d) => !d.ended).map((d) => d.row);
 
+  // ── FAZLAR (RIGHT pane) state ──────────────────────────────────────────────
+  // Cached per-root Progress + the async-resolved planningRoots set (the ONLY
+  // place `.planning/` existence is probed, off the render tick), plus the Tab
+  // focus index and the FAZLAR scroll offset. `scanningPhases` is the overlap
+  // guard; `shimRef` caches the resolved gsd-tools shim (resolved once).
+  const [progress, setProgress] = React.useState<Map<string, Progress>>(() => new Map());
+  const [planningRoots, setPlanningRoots] = React.useState<Set<string>>(() => new Set());
+  const [focusedIndex, setFocusedIndex] = React.useState(0);
+  const [scrollOffset, setScrollOffset] = React.useState(0);
+  const scanningPhases = React.useRef(false);
+  const shimRef = React.useRef<string | null | undefined>(undefined);
+  if (shimRef.current === undefined) shimRef.current = resolveGsdTools();
+
+  // Component-lifetime "mounted" flag so a late scan resolve is dropped only on a
+  // REAL unmount — NOT when the reconciler re-runs the (focus-keyed) scan effect
+  // or dev-double-invokes passive effects. A per-effect `let alive` closure would
+  // be flipped false by that teardown and silently swallow the first scan; this
+  // `[]`-scoped ref settles back true after any remount, so the async result
+  // reaches the live component's stable state setters.
+  const mounted = React.useRef(false);
+  React.useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  // PURE, fs-free render-path derivation (D-01): the switchable focus set is just
+  // buildFocusSet over the pre-resolved planningRoots — NO existsSync/statSync on
+  // the Ink render tick. idx is the clamped focus; focusRoot the current root.
+  const focusSet = buildFocusSet(liveRows, planningRoots);
+  const idx = focusSet.length ? focusedIndex % focusSet.length : 0;
+  const focusRoot = focusSet.length ? focusSet[idx].root : null;
+  const focusProgress = focusRoot ? progress.get(focusRoot) ?? null : null;
+  const totalPhases = focusProgress ? focusProgress.phases.length : 0;
+
+  // Refs so the slow scan interval reads the freshest liveRows / focus index
+  // without re-arming every 750ms render (avoids stale closures, Pattern 1).
+  const liveRowsRef = React.useRef(liveRows);
+  liveRowsRef.current = liveRows;
+  const focusedIndexRef = React.useRef(focusedIndex);
+  focusedIndexRef.current = focusedIndex;
+
+  // SECOND, slower scan timer (PANEL-08) — a sibling of the port-scan effect,
+  // NEVER inside the 750ms poll. Each non-overlapping tick FIRST resolves the
+  // `.planning/` roots off the render tick (setPlanningRoots), THEN — using the
+  // just-resolved roots so a fresh focus is scanned immediately — spawns
+  // scanProgress for the focused project and caches it under its root. Always
+  // non-fatal; re-runs on a focus change (dep on focusedIndex) so Tab surfaces
+  // the newly-focused project's progress promptly. Cleared on unmount.
+  React.useEffect(() => {
+    const tick = () => {
+      if (scanningPhases.current) return; // prior scan still running — no overlap
+      scanningPhases.current = true;
+      resolvePlanningRoots(liveRowsRef.current)
+        .then((roots) => {
+          if (!mounted.current) return undefined;
+          setPlanningRoots(roots);
+          const fs = buildFocusSet(liveRowsRef.current, roots);
+          const i = fs.length ? focusedIndexRef.current % fs.length : 0;
+          const root = fs.length ? fs[i].root : null;
+          const shim = shimRef.current;
+          if (shim && root) {
+            return scanProgress(root, shim).then((p) => {
+              if (mounted.current && p) setProgress((prev) => new Map(prev).set(root, p));
+            });
+          }
+          return undefined;
+        })
+        .catch(() => {
+          /* non-fatal: a scan/probe failure just leaves the last-good cache */
+        })
+        .finally(() => {
+          scanningPhases.current = false;
+        });
+    };
+    tick(); // run once on mount so planningRoots populates near-immediately
+    const t = setInterval(tick, phaseScanMs());
+    return () => {
+      // Release the overlap guard on teardown so a re-armed effect (focus change
+      // or dev re-invoke) is never dead-locked by an in-flight scan's stale flag.
+      scanningPhases.current = false;
+      clearInterval(t);
+    };
+  }, [focusedIndex]);
+
+  // Reset the FAZLAR scroll window to the top whenever the focused project
+  // changes (D-04) — a fresh project always starts at its first phase.
+  React.useEffect(() => {
+    setScrollOffset(0);
+  }, [idx]);
+
+  // Raw-mode is entered ONLY on a TTY (D-08, Pitfall 1). Rather than call
+  // `useInput` with `{isActive:false}` on a non-TTY — which still makes Ink
+  // reference/handle `process.stdin` and perturbs render/timer scheduling in a
+  // piped run — the keyboard handler lives in a child (`FazlarKeyboard`) that is
+  // mounted ONLY when `isRawModeSupported`. On a non-TTY the child never mounts,
+  // so `useInput` is never called and the panel degrades to a pure, inert render.
+  const { isRawModeSupported } = useStdin();
+  const onCycle = (dir: 1 | -1) =>
+    setFocusedIndex((i) => cycleIndex(i, focusSet.length, dir));
+  const onScroll = (delta: number) =>
+    setScrollOffset((o) => clampOffset(o + delta, totalPhases, FAZLAR_VISIBLE_ROWS));
+
   const nConf = state.conflicts.length;
   const summaryLead = sanitize(`${state.live} live · ${state.idle} idle · `);
   const conflictLabel = sanitize(`${nConf} conflicts`);
@@ -226,6 +376,9 @@ export function App() {
 
   return (
     <Box flexDirection="column">
+      {isRawModeSupported ? (
+        <FazlarKeyboard onCycle={onCycle} onScroll={onScroll} />
+      ) : null}
       <Box
         flexDirection="column"
         paddingX={1}
@@ -262,7 +415,15 @@ export function App() {
           <PortsPane ports={ports} rows={liveRows} />
         </Box>
         <Box flexDirection="column" flexBasis="50%" flexGrow={1} flexShrink={1} paddingX={1}>
-          {/* RIGHT — FAZLAR placeholder reserved for Phase 04.2; renders nothing. */}
+          {/* RIGHT — FAZLAR: the Tab-focused project's GSD phase progress (04.2). */}
+          <PhasesPane
+            focus={focusSet.length ? focusSet[idx] : null}
+            index={idx}
+            count={focusSet.length}
+            progress={focusProgress}
+            scrollOffset={scrollOffset}
+            interactive={isRawModeSupported}
+          />
         </Box>
       </Box>
     </Box>
