@@ -371,24 +371,45 @@ function portHeading(folder: string, branch: string, session_id: string, intent?
 }
 
 /**
- * One listening-socket row: `port · command · <badge> · pid <pid>`. The port,
- * command, and pid are sanitized SEPARATELY before render (T-04.1-01 / T-qt0-01,
- * process-controlled strings). The badge is the sole security signal: an exposed
- * bind gets a `magenta` `bold` `⇅ exposed` (D-03), a local-only bind a dim `local`
- * (no glyph). No reserved palette color is used for the badge. The trailing dim
- * `· pid <pid>` segment gives a directly readable `kill <pid>` target (PORT-05):
- * a numeric pid is inherently injection-safe but still routed through `sanitize()`
- * so every rendered field stays on the established render-boundary path (T-qt0-01).
+ * One listening-socket row: `port · command · <badge> · pid <pid>`, column
+ * -aligned so the ` · ` middots stack vertically across rows (the direct analogue
+ * of the FAZLAR PhaseRow). The port and command cells are padded with `padEnd` to
+ * the per-column widths (`portW`/`commandW`) that PortsPane measures across the
+ * FULL ports array, and the badge is padded by its VISIBLE text length via a
+ * SEPARATE plain space node rendered OUTSIDE the colored badge `<Text>` — never by
+ * the length of an ANSI-wrapped string — so the following separator/pid are not
+ * tinted. The port, command, and pid are sanitized SEPARATELY before render
+ * (T-04.1-01 / T-qt0-01, process-controlled strings). The badge is the sole
+ * security signal: an exposed bind gets a `magenta` `bold` `⇅ exposed` (D-03), a
+ * local-only bind a dim `local` (no glyph); it is a constant literal (not
+ * process-controlled) so it is not sanitized. No reserved palette color is used
+ * for the badge. The trailing dim `· pid <pid>` segment gives a directly readable
+ * `kill <pid>` target (PORT-05): a numeric pid is inherently injection-safe but
+ * still routed through `sanitize()` so every rendered field stays on the
+ * established render-boundary path (T-qt0-01).
  */
-function PortRow({ p }: { p: ScannedPort }) {
+function PortRow({
+  p,
+  portW,
+  commandW,
+  badgeW,
+}: {
+  p: ScannedPort;
+  portW: number;
+  commandW: number;
+  badgeW: number;
+}) {
+  const badgeText = p.exposed ? EXPOSED_GLYPH + " exposed" : "local";
+  const badgePad = " ".repeat(Math.max(0, badgeW - badgeText.length));
   return (
     <Text>
-      {"  " + sanitize(String(p.port)) + " · " + sanitize(p.command) + " · "}
+      {"  " + sanitize(String(p.port)).padEnd(portW) + " · " + sanitize(p.command).padEnd(commandW) + " · "}
       {p.exposed ? (
-        <Text color="magenta" bold>{EXPOSED_GLYPH + " exposed"}</Text>
+        <Text color="magenta" bold>{badgeText}</Text>
       ) : (
-        <Text dimColor>{"local"}</Text>
+        <Text dimColor>{badgeText}</Text>
       )}
+      {badgePad}
       <Text dimColor>{" · pid " + sanitize(String(p.pid))}</Text>
     </Text>
   );
@@ -410,6 +431,12 @@ function PortRow({ p }: { p: ScannedPort }) {
  * field (port, command, heading parts, intent, badge) is routed through
  * `sanitize()` before Ink render, and the badge glyph `⇅` is >= 0x00A0 so it
  * survives — a crafted process name cannot inject control bytes (T-04.1-01).
+ *
+ * Per-column widths (`portW`/`commandW`/`badgeW`) are measured across the FULL
+ * ports array (not the shown window) and passed to PortRow so the ` · ` middots
+ * on the port-info rows line up vertically regardless of which rows fit the
+ * PORTS_CAP budget. Only the port-info rows are aligned — the group headings are
+ * NOT padded.
  */
 export function PortsPane({ ports, rows }: { ports: ScannedPort[]; rows: SessionRow[] }) {
   if (ports.length === 0) {
@@ -419,6 +446,18 @@ export function PortsPane({ ports, rows }: { ports: ScannedPort[]; rows: Session
       </Box>
     );
   }
+
+  // Per-column widths across the FULL ports array (not the shown window) so the
+  // ` · ` middots align regardless of the PORTS_CAP budget. Fields are sanitized
+  // BEFORE measuring so padding aligns the post-sanitize glyphs; the badge width
+  // uses the constant literal's VISIBLE length. Math.max(1, ...) floors guard the
+  // empty-array spread defensively (ports is non-empty here).
+  const portW = Math.max(1, ...ports.map((p) => sanitize(String(p.port)).length));
+  const commandW = Math.max(1, ...ports.map((p) => sanitize(p.command).length));
+  const badgeW = Math.max(
+    1,
+    ...ports.map((p) => (p.exposed ? EXPOSED_GLYPH + " exposed" : "local").length),
+  );
 
   const live = livePidMap(rows);
 
@@ -471,7 +510,13 @@ export function PortsPane({ ports, rows }: { ports: ScannedPort[]; rows: Session
           <React.Fragment key={g.key}>
             <Text bold>{g.heading}</Text>
             {shown.map((p) => (
-              <PortRow key={`${g.key}:${p.port}:${p.pid}`} p={p} />
+              <PortRow
+                key={`${g.key}:${p.port}:${p.pid}`}
+                p={p}
+                portW={portW}
+                commandW={commandW}
+                badgeW={badgeW}
+              />
             ))}
           </React.Fragment>
         );
