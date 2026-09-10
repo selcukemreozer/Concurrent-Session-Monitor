@@ -826,6 +826,17 @@ describe("PhasesPane (PANEL-07 FAZLAR phase table)", () => {
     expect(out).toContain("alpha"); // the focused table still renders statically
   });
 
+  it("shows a dim non-TTY keyboard-off notice when non-interactive, still rendering the table (PANEL-07 D-08 relaxation)", () => {
+    const out = stripAnsi(
+      renderToString(<PhasesPane focus={makeFocus()} index={0} count={3} progress={makeProgress()} scrollOffset={0} interactive={false} />),
+    );
+    expect(out).toContain("keys off"); // the non-TTY notice renders
+    expect(out).toContain("without a TTY"); // ...and explains why keys are inert
+    expect(out).toContain("alpha"); // the focused table still renders statically
+    expect(out).not.toContain("Tab: switch"); // notice must not reintroduce the interactive hint
+    expect(out).not.toContain("Project"); // ...nor the Project i/N indicator
+  });
+
   it("shows the Tab hint and Project i/N indicator when interactive (D-08)", () => {
     const out = stripAnsi(
       renderToString(<PhasesPane focus={makeFocus()} index={0} count={3} progress={makeProgress()} scrollOffset={0} interactive={true} />),
@@ -833,6 +844,7 @@ describe("PhasesPane (PANEL-07 FAZLAR phase table)", () => {
     expect(out).toContain("Tab: switch");
     expect(out).toContain("Project 1/3");
     expect(out).toContain("proj"); // focused project name in the indicator
+    expect(out).not.toContain("keys off"); // no-leak guard: the non-TTY notice must not appear on the TTY path
   });
 
   it("sanitizes control bytes in the milestone name and a phase name before render (T-04.2-05)", () => {
