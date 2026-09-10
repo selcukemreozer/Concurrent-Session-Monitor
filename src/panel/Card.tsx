@@ -610,6 +610,9 @@ function PhaseRow({
  *     X = completed phases, Y = total, Z = `progress.percent` — every part sanitized;
  *  2. when `interactive`, a dim `Project i/N · <name> · Tab: switch` indicator —
  *     BOTH the i/N indicator and the hint are hidden when `interactive` is false (D-08);
+ *     in the non-`interactive` (non-TTY) case that slot instead shows a dim
+ *     `⌨ keys off — ... without a TTY ...` notice explaining WHY keyboard nav is
+ *     inert and how to fix it (D-08 relaxation), rather than rendering nothing;
  *  3. the height-bounded window `phases.slice(offset, offset + FAZLAR_VISIBLE_ROWS)`
  *     mapped to `PhaseRow`, marking the first non-complete phase as current;
  *  4. a dim scroll indicator (`▲N`/`▼N` + `i–j/total`) shown only when the phase
@@ -691,7 +694,9 @@ export function PhasesPane({
       <Text bold>{sanitize(milestoneLine)}</Text>
       {interactive ? (
         <Text dimColor>{`Project ${index + 1}/${count} · ${sanitize(focus.name)} · Tab: switch`}</Text>
-      ) : null}
+      ) : (
+        <Text dimColor>{sanitize("⌨ keys off — panel started without a TTY (run directly in a terminal, not via pipe/background)")}</Text>
+      )}
       {windowPhases.map((p, i) => (
         <PhaseRow
           key={`${p.number}:${start + i}`}
