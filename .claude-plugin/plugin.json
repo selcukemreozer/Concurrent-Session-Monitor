@@ -1,6 +1,6 @@
 {
   "name": "concurrent-session-monitor",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Real-time terminal panel showing which files each parallel Claude Code session is touching, to catch overlapping edits before they collide.",
   "author": {
     "name": "Selcuk Emre Ozer",
