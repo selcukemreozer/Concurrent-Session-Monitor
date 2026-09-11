@@ -50,6 +50,12 @@ interface SeedOpts {
   reads?: string[];
   /** Declared intent written to intent.txt; omitted => no intent shard. */
   intent?: string;
+  /**
+   * Numeric pid written into the session.json `state` object. Used ONLY for
+   * port-ancestry attribution (liveness comes from the fresh heartbeat, not pid).
+   * Omitted => no `pid` key is written (the 8 pre-existing tests are unaffected).
+   */
+  pid?: number;
 }
 
 /** Seed one session shard directly on disk (no src/ import — self-contained). */
@@ -65,6 +71,7 @@ function seed(storeDir: string, id: string, opts: SeedOpts = {}): void {
     model: "unknown",
     start_time: opts.start_time ?? nowIso,
     ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
+    ...(opts.pid !== undefined ? { pid: opts.pid } : {}),
   };
   fs.writeFileSync(path.join(dir, "session.json"), JSON.stringify(state), { mode: 0o600 });
   fs.writeFileSync(path.join(dir, "heartbeat"), opts.heartbeat ?? nowIso, { mode: 0o600 });
@@ -88,6 +95,23 @@ function seed(storeDir: string, id: string, opts: SeedOpts = {}): void {
 /** The stdout line that mentions a session's first-8 shortId. */
 function lineFor(stdout: string, id: string): string | undefined {
   return stdout.split("\n").find((l) => l.includes(id.slice(0, 8)));
+}
+
+/**
+ * Write an executable POSIX shell fixture (`/bin/sh`) that ignores its args and
+ * emits `body` verbatim as stdout (or `exit 1` to surrogate an lsof/ps failure).
+ * The reader is pointed at it via CSM_LSOF_CMD / CSM_PS_CMD. Returns its abs path.
+ */
+function writeFixture(dir: string, name: string, body: string): string {
+  const p = path.join(dir, name);
+  fs.writeFileSync(p, `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+  fs.chmodSync(p, 0o755);
+  return p;
+}
+
+/** A `/bin/sh` script that prints `stdout` verbatim (canned lsof/ps output). */
+function cannedOut(dir: string, name: string, stdout: string): string {
+  return writeFixture(dir, name, `cat <<'CSM_FIXTURE_EOF'\n${stdout}\nCSM_FIXTURE_EOF`);
 }
 
 describe("csm-status reader (INT-02, D-04/D-05)", () => {
@@ -219,5 +243,105 @@ describe("csm-status reader (INT-02, D-04/D-05)", () => {
     const res = runStatus("whoever", empty);
     expect(res.status).toBe(0);
     expect(res.stderr).not.toMatch(/Error|throw|ENOENT/);
+  });
+});
+
+describe("csm-status reader — Ports: block (INT-02, PORT-05)", () => {
+  it("attribution: a LISTEN port whose pid ancestry reaches a live session groups under it with port, command, pid", () => {
+    // Live session with pid 4242; the listening socket is owned by pid 4242.
+    seed(tmp, "alpha111-aaaa", { folder: "projAlpha", branch: "feature-x", pid: 4242, writes: ["/repo/a.ts"] });
+    const lsof = cannedOut(tmp, "lsof.sh", ["p4242", "cnode", "Luser", "f5", "n*:3000"].join("\n"));
+    const ps = cannedOut(tmp, "ps.sh", ["  PID  PPID USER     COMMAND", " 4242     1 user     node server.js"].join("\n"));
+
+    const res = runStatus("alpha111-aaaa", tmp, { CSM_LSOF_CMD: lsof, CSM_PS_CMD: ps });
+    expect(res.status).toBe(0);
+    expect(res.stdout).toContain("Ports:");
+    // Grouped under the session's folder · branch · shortid heading.
+    expect(res.stdout).toContain("projAlpha · feature-x · alpha111");
+    // Row carries the port, command, and pid.
+    expect(res.stdout).toContain("3000");
+    expect(res.stdout).toContain("node");
+    expect(res.stdout).toContain("pid 4242");
+  });
+
+  it("exposed vs local: a 0.0.0.0 bind renders the exposed marker; a 127.0.0.1 bind renders local", () => {
+    seed(tmp, "alpha111-aaaa", { folder: "projAlpha", pid: 4242, writes: ["/repo/a.ts"] });
+    const lsof = cannedOut(
+      tmp,
+      "lsof.sh",
+      ["p4242", "cnode", "Luser", "f5", "n0.0.0.0:3000", "f6", "n127.0.0.1:4000"].join("\n"),
+    );
+    const ps = cannedOut(tmp, "ps.sh", ["  PID  PPID USER     COMMAND", " 4242     1 user     node"].join("\n"));
+
+    const res = runStatus("alpha111-aaaa", tmp, { CSM_LSOF_CMD: lsof, CSM_PS_CMD: ps });
+    expect(res.status).toBe(0);
+    // The exposed 0.0.0.0:3000 row carries the ⇅ exposed badge.
+    const line3000 = res.stdout.split("\n").find((l) => l.includes("3000"));
+    const line4000 = res.stdout.split("\n").find((l) => l.includes("4000"));
+    expect(line3000).toBeDefined();
+    expect(line4000).toBeDefined();
+    expect(line3000).toContain("⇅ exposed");
+    expect(line4000).toContain("local");
+    expect(line4000).not.toContain("⇅ exposed");
+  });
+
+  it("user bucket: a port whose ancestry matches no live session falls under 'Sen (kullanici)' rendered LAST", () => {
+    // Live session owns pid 4242 (port 3000); port 5000 is owned by orphan pid 7777.
+    seed(tmp, "alpha111-aaaa", { folder: "projAlpha", pid: 4242, writes: ["/repo/a.ts"] });
+    const lsof = cannedOut(
+      tmp,
+      "lsof.sh",
+      ["p4242", "cnode", "Luser", "f5", "n*:3000", "p7777", "cstray", "Luser", "f6", "n*:5000"].join("\n"),
+    );
+    const ps = cannedOut(
+      tmp,
+      "ps.sh",
+      ["  PID  PPID USER     COMMAND", " 4242     1 user     node", " 7777     1 user     stray"].join("\n"),
+    );
+
+    const res = runStatus("alpha111-aaaa", tmp, { CSM_LSOF_CMD: lsof, CSM_PS_CMD: ps });
+    expect(res.status).toBe(0);
+    expect(res.stdout).toContain("Sen (kullanici)");
+    // The user bucket appears AFTER the per-session group in the Ports: block.
+    const idxSession = res.stdout.indexOf("projAlpha · main · alpha111");
+    const idxBucket = res.stdout.indexOf("Sen (kullanici)");
+    expect(idxSession).toBeGreaterThanOrEqual(0);
+    expect(idxBucket).toBeGreaterThan(idxSession);
+    // The orphan port renders in the user bucket.
+    expect(res.stdout).toContain("5000");
+  });
+
+  it("passivity: lsof failure/timeout yields 'no listening ports', exits 0, and never throws", () => {
+    seed(tmp, "alpha111-aaaa", { folder: "projAlpha", pid: 4242, writes: ["/repo/a.ts"] });
+    const lsofFail = writeFixture(tmp, "lsof-fail.sh", "exit 1");
+    const ps = cannedOut(tmp, "ps.sh", ["  PID  PPID USER     COMMAND", " 4242     1 user     node"].join("\n"));
+
+    const res = runStatus("alpha111-aaaa", tmp, { CSM_LSOF_CMD: lsofFail, CSM_PS_CMD: ps });
+    expect(res.status).toBe(0);
+    expect(res.stdout).toContain("no listening ports");
+    expect(res.stderr).not.toMatch(/Error|throw|ENOENT/);
+  });
+
+  it("denylist: an Apple background-agent command is excluded while a genuine dev-server port renders", () => {
+    seed(tmp, "alpha111-aaaa", { folder: "projAlpha", pid: 4242, writes: ["/repo/a.ts"] });
+    const lsof = cannedOut(
+      tmp,
+      "lsof.sh",
+      ["p4242", "cnode", "Luser", "f5", "n*:3000", "p5555", "crapportd", "Luser", "f6", "n*:7000"].join("\n"),
+    );
+    const ps = cannedOut(
+      tmp,
+      "ps.sh",
+      ["  PID  PPID USER     COMMAND", " 4242     1 user     node", " 5555     1 user     rapportd"].join("\n"),
+    );
+
+    const res = runStatus("alpha111-aaaa", tmp, { CSM_LSOF_CMD: lsof, CSM_PS_CMD: ps });
+    expect(res.status).toBe(0);
+    // Genuine dev server renders.
+    expect(res.stdout).toContain("3000");
+    expect(res.stdout).toContain("node");
+    // Denylisted Apple agent (rapportd / port 7000) is excluded.
+    expect(res.stdout).not.toContain("rapportd");
+    expect(res.stdout).not.toContain("7000");
   });
 });
