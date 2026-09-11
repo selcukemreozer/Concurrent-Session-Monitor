@@ -3,3 +3,4 @@ session-conflict-tracker-handoff.md
 node_modules/
 dist/*
 !dist/panel.mjs
+assets/.DS_Store
