@@ -90,3 +90,25 @@ describe("storeRoot store-location seam (D-01b)", () => {
     expect(evt.file_path).toBe("/repo/x.ts");
   });
 });
+
+describe("D-06 bundle store parity (SC-3 reconciliation)", () => {
+  // SC-3's LITERAL wording ("shared store under the plugin-data dir") is
+  // intentionally NOT met, and that is CORRECT, not a miss: the store is the
+  // fixed machine-global ~/.claude/csm (override CSM_STORE_DIR). The plugin-data
+  // env tier is deliberately unused because it is set only for the CC-spawned
+  // hook processes, NOT for the standalone panel (`csm`) — honoring it would
+  // split the writer (hooks) from the reader (panel). We therefore read SC-3 as
+  // "a fixed, machine-global, update-surviving store path," which ~/.claude/csm
+  // satisfies. This test machine-checks that reconciliation at the SHIPPED-BUNDLE
+  // level: the committed dist/panel.mjs must never read the plugin-data env var,
+  // so the standalone panel resolves the exact same root as the writers.
+  // <!-- planner-discipline-allow: CLAUDE_PLUGIN_DATA -->
+  it("the committed dist/panel.mjs never references the plugin-data env var", () => {
+    const bundle = path.join(repoRoot, "dist", "panel.mjs");
+    const src = fs.readFileSync(bundle, "utf8");
+    // Plain substring check (NOT `grep -c`): the shipped bundle must not name the
+    // hook-only plugin-data env tier anywhere in its module graph.
+    const pluginDataEnv = "CLAUDE_PLUGIN_DATA";
+    expect(src.indexOf(pluginDataEnv)).toBe(-1);
+  });
+});
