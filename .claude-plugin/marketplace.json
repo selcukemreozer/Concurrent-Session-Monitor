@@ -1,0 +1,14 @@
+{
+  "name": "concurrent-session-monitor",
+  "owner": {
+    "name": "Selcuk Emre Ozer"
+  },
+  "description": "Single-plugin marketplace for Concurrent Session Monitor: real-time cross-session file/activity visibility for parallel Claude Code sessions.",
+  "plugins": [
+    {
+      "name": "concurrent-session-monitor",
+      "source": "./",
+      "description": "Real-time cross-session file/activity monitor for parallel Claude Code sessions."
+    }
+  ]
+}

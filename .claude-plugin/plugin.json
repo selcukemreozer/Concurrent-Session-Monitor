@@ -1,5 +1,13 @@
 {
   "name": "concurrent-session-monitor",
-  "version": "0.1.0",
-  "description": "Real-time terminal panel showing which files each parallel Claude Code session is touching, to catch overlapping edits before they collide."
+  "version": "1.0.0",
+  "description": "Real-time terminal panel showing which files each parallel Claude Code session is touching, to catch overlapping edits before they collide.",
+  "author": {
+    "name": "Selcuk Emre Ozer",
+    "email": "ozeremre550@gmail.com"
+  },
+  "homepage": "https://github.com/selcukemreozer/Concurrent-Session-Monitor",
+  "repository": "https://github.com/selcukemreozer/Concurrent-Session-Monitor",
+  "license": "MIT",
+  "keywords": ["claude-code", "plugin", "sessions", "monitor", "tui", "ink"]
 }
