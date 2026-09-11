@@ -12,9 +12,22 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const pexec = promisify(execFile);
 
 // T-04-07: allowlist the untrusted caller session id before any path/(you) use.
 const SAFE_ID = /^[A-Za-z0-9._-]{1,128}$/;
+
+// Internal TEST-ONLY seams (NOT documented — analogous to CSM_TEST_NUM). Let a
+// spawnSync-based test point the port scan at fixture scripts (default lsof/ps).
+function lsofCmd() {
+  return process.env.CSM_LSOF_CMD || "lsof";
+}
+function psCmd() {
+  return process.env.CSM_PS_CMD || "ps";
+}
 
 /**
  * D-01b store-location seam — identical precedence to src/paths.ts: 1)
@@ -176,7 +189,203 @@ function resolveRealpath(file_path, cwd) {
   }
 }
 
-function main() {
+// ---- Port scan (PORT-05 mirror of src/ports.ts; stdlib only, T-1-SC) --------
+
+/** Max port rows rendered before collapsing the remainder into `+N more`. */
+const PORTS_CAP = 12;
+/** Exposed-bind security badge glyph (U+21C5); >= 0x00A0 so sanitize keeps it. */
+const EXPOSED_GLYPH = "⇅";
+/** User-bucket heading literal (mirror Card.tsx:494 / D-02) — ASCII, constant. */
+const USER_BUCKET = "Sen (kullanici)";
+
+/** Curated Apple background-agent command names to exclude (mirror src/ports.ts D-01). */
+const APPLE_AGENT_DENYLIST = new Set([
+  "rapportd",
+  "ControlCenter",
+  "sharingd",
+  "AirPlayXPCHelper",
+  "identityservicesd",
+  "remoted",
+]);
+
+/** Parse `lsof -nP -iTCP -sTCP:LISTEN -FpcLn` field-mode output into raw sockets. */
+function parseLsofF(stdout) {
+  const out = [];
+  let pid = 0;
+  let command = "";
+  for (const line of stdout.split("\n")) {
+    if (line === "") continue;
+    const tag = line[0];
+    const val = line.slice(1);
+    if (tag === "p") {
+      pid = Number(val) || 0;
+      command = "";
+    } else if (tag === "c") {
+      command = val; // untruncated in -F mode
+    } else if (tag === "n") {
+      out.push({ pid, command, name: val });
+    }
+    // `f` (fd), `L` (login), and any other tag are ignored.
+  }
+  return out;
+}
+
+/** Build a pid -> ppid map from `ps -axo pid,ppid,user,command` (skip header). */
+function parsePpidMap(stdout) {
+  const m = new Map();
+  const lines = stdout.split("\n");
+  for (let i = 1; i < lines.length; i++) {
+    const t = lines[i].trim().split(/\s+/);
+    if (t.length < 2) continue;
+    const pid = Number(t[0]);
+    const ppid = Number(t[1]);
+    if (Number.isInteger(pid) && Number.isInteger(ppid)) m.set(pid, ppid);
+  }
+  return m;
+}
+
+/** Walk a listening pid to the process root, seen-guarded against cycles. */
+function ancestryChain(pid, ppid) {
+  const chain = [];
+  const seen = new Set();
+  let cur = pid;
+  while (cur !== undefined && cur > 1 && !seen.has(cur)) {
+    chain.push(cur);
+    seen.add(cur);
+    cur = ppid.get(cur);
+  }
+  return chain;
+}
+
+/** Split a lsof NAME field into host + numeric port (IPv6 bracket vs last colon). */
+function splitHostPort(name) {
+  if (name.startsWith("[")) {
+    const rb = name.lastIndexOf("]");
+    const host = name.slice(1, rb);
+    const port = Number(name.slice(rb + 2)); // skip "]:"
+    return { host, port };
+  }
+  const c = name.lastIndexOf(":");
+  return { host: name.slice(0, c), port: Number(name.slice(c + 1)) };
+}
+
+const LOCAL_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
+
+/** Classify a bind host as exposed (off-host reachable) vs local-only. */
+function isExposed(host) {
+  if (host === "*" || host === "0.0.0.0" || host === "::") return true;
+  if (LOCAL_HOSTS.has(host)) return false;
+  if (host.startsWith("127.")) return false;
+  return true;
+}
+
+/**
+ * Passive, non-fatal LISTEN-TCP scan (mirror src/ports.ts scanPorts). Runs lsof
+ * and ps CONCURRENTLY; ANY lsof failure/timeout resolves to [] and a ps failure
+ * yields an empty ancestry map (every port then falls to the user bucket). Never
+ * throws. Each entry: { port, pid, command, exposed, ancestryPids }.
+ */
+async function scanPorts(uid = process.getuid?.()) {
+  try {
+    const lsofArgs = ["-nP", "-iTCP", "-sTCP:LISTEN", "-FpcLn"];
+    if (uid !== undefined) lsofArgs.push("-a", "-u", String(uid)); // D-01 user filter
+    const [lsofOut, psOut] = await Promise.all([
+      pexec(lsofCmd(), lsofArgs, { timeout: 1500, maxBuffer: 1 << 20 }).then(
+        (r) => r.stdout,
+        () => null, // exit 1 (no match) / spawn failure / timeout -> sentinel
+      ),
+      pexec(psCmd(), ["-axo", "pid,ppid,user,command"], { timeout: 1500, maxBuffer: 1 << 21 }).then(
+        (r) => r.stdout,
+        () => "", // no ancestry snapshot -> every port to the user bucket
+      ),
+    ]);
+    if (lsofOut === null) return []; // lsof unusable -> no ports (passive)
+
+    const ppid = parsePpidMap(psOut);
+    const socks = parseLsofF(lsofOut);
+    const byKey = new Map(); // (port,pid) de-dup across IPv4/IPv6 twins
+    for (const s of socks) {
+      if (APPLE_AGENT_DENYLIST.has(s.command)) continue; // D-01 Apple-agent exclusion
+      const { host, port } = splitHostPort(s.name);
+      if (!Number.isInteger(port)) continue;
+      const key = `${port} ${s.pid}`;
+      const exposed = isExposed(host);
+      const prev = byKey.get(key);
+      if (prev) {
+        prev.exposed = prev.exposed || exposed; // twin -> exposed if either is
+        continue;
+      }
+      byKey.set(key, { port, pid: s.pid, command: s.command, exposed, ancestryPids: ancestryChain(s.pid, ppid) });
+    }
+    return [...byKey.values()];
+  } catch {
+    return []; // belt-and-suspenders: the scan NEVER throws (passivity)
+  }
+}
+
+/**
+ * Render the "Ports:" block: group each scanned port under the first live session
+ * along its ancestry chain (folder · branch · shortid), unattributed ports under
+ * the `Sen (kullanici)` bucket LAST. Total rows capped at PORTS_CAP with `+N more`.
+ * Returns the block string (leading newline). `rows` carry a numeric `pid`.
+ */
+function renderPorts(ports, rows) {
+  if (ports.length === 0) return "\nPorts:\n  no listening ports\n";
+
+  // Live pid -> owning row (attribution join); only rows with a numeric pid.
+  const live = new Map();
+  for (const r of rows) {
+    if (typeof r.pid === "number") live.set(r.pid, r);
+  }
+
+  // Group attributed ports by owning session (stable insertion order); the rest
+  // collect into the user bucket.
+  const sessionGroups = new Map(); // session_id -> { heading, ports:[] }
+  const userPorts = [];
+  for (const p of ports) {
+    let owner = null;
+    for (const pid of p.ancestryPids) {
+      const r = live.get(pid);
+      if (r) {
+        owner = r;
+        break;
+      }
+    }
+    if (owner === null) {
+      userPorts.push(p);
+      continue;
+    }
+    let g = sessionGroups.get(owner.session_id);
+    if (!g) {
+      const heading = `${sanitize(owner.folder ?? "")} · ${sanitize(owner.branch ?? "") || "—"} · ${sanitize(String(owner.session_id).slice(0, 8))}`;
+      g = { heading, ports: [] };
+      sessionGroups.set(owner.session_id, g);
+    }
+    g.ports.push(p);
+  }
+
+  const groups = [...sessionGroups.values()];
+  if (userPorts.length > 0) groups.push({ heading: USER_BUCKET, ports: userPorts });
+
+  const total = ports.length;
+  const more = Math.max(0, total - PORTS_CAP);
+  let budget = PORTS_CAP;
+  const lines = [];
+  for (const g of groups) {
+    if (budget <= 0) break;
+    const shown = g.ports.slice(0, budget);
+    budget -= shown.length;
+    lines.push(g.heading);
+    for (const p of shown) {
+      const badge = p.exposed ? `${EXPOSED_GLYPH} exposed` : "local";
+      lines.push(`  ${sanitize(String(p.port))} · ${sanitize(p.command)} · ${badge} · pid ${sanitize(String(p.pid))}`);
+    }
+  }
+  if (more > 0) lines.push(`  +${more} more`);
+  return "\nPorts:\n" + lines.join("\n") + "\n";
+}
+
+async function main() {
   const now = Date.now();
 
   // Caller session id (argv[2]); gate through SAFE_ID before any (you) compare.
@@ -222,6 +431,8 @@ function main() {
       session_id: typeof state.session_id === "string" ? state.session_id : id,
       folder: state.folder,
       branch: state.branch,
+      // Numeric pid used ONLY for port-ancestry attribution (not liveness).
+      pid: typeof state.pid === "number" ? state.pid : undefined,
       cwd: typeof state.cwd === "string" ? state.cwd : undefined,
       intent: readIntent(dir),
       files, // [{file_path, tsMs}]
@@ -306,11 +517,15 @@ function main() {
   process.stdout.write(out.join("\n") + "\n");
   process.stdout.write("\nConflicts relevant to you:\n");
   process.stdout.write(conflictLines.length > 0 ? conflictLines.join("\n") + "\n" : "  none\n");
+
+  // ---- Ports (PORT-05): LISTEN TCP grouped under the owning live session -----
+  // scanPorts() never throws (passive); render after the conflicts block.
+  const ports = await scanPorts();
+  process.stdout.write(renderPorts(ports, rows));
 }
 
-try {
-  main();
-} catch {
-  // Never throw into the caller's context (T-04-07); always exit 0.
-}
-process.exit(0);
+// Async invocation: swallow any rejection and ALWAYS exit 0 (passivity, T-04-07);
+// the reader never throws into the caller's context and writes no file.
+main()
+  .catch(() => {})
+  .finally(() => process.exit(0));

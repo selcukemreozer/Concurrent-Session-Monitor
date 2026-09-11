@@ -6,7 +6,11 @@ allowed-tools: Bash(node ${CLAUDE_PLUGIN_ROOT}/scripts/csm-status.mjs *)
 <!--
   INT-02 cross-session status query (D-04: plain text, read-only, never Ink).
   The `!` line runs the bundled reader at command-expansion time and inlines its
-  stdout (a terse live roster + a "conflicts relevant to you" block) into context.
+  stdout into context: a terse live roster, a "conflicts relevant to you" block,
+  and a "Ports:" block (PORT-05) listing the machine's LISTEN TCP ports grouped
+  under the live session that owns them (with an exposed/local marker and pid),
+  mirroring the panel's ports pane on this plain-text agent surface. Ports whose
+  owner is not a live session fall under a "Sen (kullanici)" bucket rendered last.
   Substitution resolves first:
     argv[2] = ${CLAUDE_SESSION_ID}  (caller session id — re-gated by SAFE_ID; marks (you))
   Only the session id is passed — the caller args placeholder is intentionally
