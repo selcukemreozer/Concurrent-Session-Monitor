@@ -1,4 +1,18 @@
-# Concurrent Session Monitor
+<p align="center">
+  <img src="assets/logo.png" alt="Concurrent Session Monitor logo" width="200">
+</p>
+
+<h1 align="center">Concurrent Session Monitor</h1>
+
+<p align="center"><em>The watch never sleeps.</em></p>
+
+<p align="center">
+  <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-2f5d3f?style=flat-square">
+  <img alt="platform: macOS" src="https://img.shields.io/badge/platform-macOS-2f5d3f?style=flat-square">
+  <img alt="node &gt;= 22" src="https://img.shields.io/badge/node-%3E%3D22-2f5d3f?style=flat-square">
+  <img alt="version 1.0.0" src="https://img.shields.io/badge/version-1.0.0-2f5d3f?style=flat-square">
+  <img alt="license: MIT" src="https://img.shields.io/badge/license-MIT-2f5d3f?style=flat-square">
+</p>
 
 A Claude Code plugin that gives you real-time visibility into multiple parallel
 Claude Code sessions. Hooks silently record which files each session is touching,
@@ -10,7 +24,14 @@ hitting file conflicts: when sessions run in parallel, everyone can see **who is
 touching which files and what work is being done**, so overlapping edits are
 noticed before they collide.
 
-## Install
+## ✨ Highlights
+
+- 🗂️ **Live file map** — every file each session is touching, updated within about a second, with no manual refresh.
+- ⚠️ **Conflict warnings** — the instant two sessions claim the same file, the panel flags it — before the edits collide.
+- 🧭 **Session context** — per-session uptime, model, current intent, listening ports, and GSD-phase progress at a glance.
+- 🪶 **Zero-config & non-intrusive** — capture hooks are async and never slow your tools; there is nothing to configure.
+
+## 📦 Install
 
 Install directly from the git repository in two steps, run inside Claude Code:
 
@@ -30,7 +51,7 @@ Install directly from the git repository in two steps, run inside Claude Code:
 That's it — no build step. The panel ships as a committed, self-contained bundle,
 and the file-touch hooks start capturing automatically once the plugin is enabled.
 
-## Enable the global `csm` command
+## ⚡ Enable the global `csm` command
 
 Run this once inside Claude Code:
 
@@ -43,7 +64,7 @@ non-clobbering — it never overwrites an existing file or a symlink it did not
 create). If `~/.local/bin` is not on your `PATH`, the command tells you exactly
 what line to add to your shell profile.
 
-## Launch the panel
+## 🖥️ Launch the panel
 
 Open a **separate terminal** (not the one running Claude Code) and run the bare
 command:
@@ -58,7 +79,7 @@ This opens a live, full-screen panel that redraws as sessions come and go. Press
 Keep the panel running in its own terminal while you work in one or more Claude
 Code sessions elsewhere.
 
-## Slash commands
+## 💬 Slash commands
 
 Use these from inside any Claude Code session:
 
@@ -69,7 +90,7 @@ Use these from inside any Claude Code session:
 - `/csm-status` — print the live cross-session roster plus any conflicts relevant
   to you, as plain text, right in the conversation.
 
-## Configuration
+## ⚙️ Configuration
 
 Everything works with zero configuration. For tuning, the panel and hooks read
 these environment variables. Each is optional; an unset or invalid value falls
@@ -89,7 +110,7 @@ back to the default. Times are in milliseconds.
 | `CSM_PHASE_SCAN_MS` | `4000` (4 s) | Cadence of the GSD phase-progress scan feeding the FAZLAR pane. |
 | `CSM_GSD_TOOLS` | auto-detected | Absolute path to the `gsd-tools` binary used by the phases pane. Set it to override auto-detection. |
 
-## Platform & caveats
+## ⚠️ Platform & caveats
 
 - **macOS is the primary, supported platform.** The panel expects a standard
   terminal emulator. Other Unix-likes may work but are not the target.
