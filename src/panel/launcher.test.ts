@@ -2,37 +2,46 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-// Source-level regression guard for the dual-ink-instance launcher bug.
+// Source-level regression guard for the single-ink-instance invariant, now
+// re-pointed at the BUNDLED architecture (Phase 5, D-01).
 //
-// `node bin/csm.mjs` boots through Node's native ESM loader while App.tsx is
-// pulled in by tsx's loader — two DIFFERENT loaders, so importing ink/react in
-// BOTH the launcher and the tsx graph instantiates ink TWICE. render()'s
-// StdinContext provider then comes from one ink copy while App's
-// useStdin()/useInput() read the other copy's (unprovided) context, so
-// isRawModeSupported collapses to false and the FAZLAR keyboard dies on every
-// TTY. The fix: render() must live ONLY inside the tsx-loaded src/panel/main.tsx
-// (one ink instance), and the launcher must import nothing from ink or react.
-//
-// This bug is loader-specific and cannot be reproduced inside vitest's
-// single-instance transform, so we guard the invariant at the SOURCE text level
-// (stdlib fs + url only — no PTY, no extra deps).
+// Before Phase 5 `bin/csm.mjs` transpiled main.tsx on import via tsx while App
+// was pulled in through tsx's loader — two loaders, so importing ink/react in
+// both the launcher and the tsx graph instantiated ink TWICE, isRawModeSupported
+// collapsed to false, and the FAZLAR keyboard died on every TTY. After Phase 5
+// the launcher imports one pre-bundled dist/panel.mjs (one ink instance, no tsx
+// at runtime), so that bug class is structurally impossible. The invariant we
+// still guard at the SOURCE-text level (stdlib fs + url only — no PTY, no deps):
+//   - bin/csm.mjs imports ONLY the bundle — nothing from ink/react/tsx.
+//   - src/panel/entry.ts (the bundle entry) imports run() from main and awaits
+//     waitUntilExit — it is NOT itself a render() site.
+//   - src/panel/main.tsx exports run() and is the SOLE render() call site.
 
 /** Read a source file resolved relative to THIS test file. */
 function readRel(rel: string): string {
   return readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
 }
 
-describe("launcher single-ink-instance invariant (dual-loader regression)", () => {
-  it("bin/csm.mjs imports nothing directly from ink or react", () => {
+describe("launcher single-ink-instance invariant (bundled architecture)", () => {
+  it("bin/csm.mjs imports nothing directly from ink, react, or tsx", () => {
     const bin = readRel("../../bin/csm.mjs");
     expect(bin).not.toMatch(/from\s+['"]ink['"]/);
     expect(bin).not.toMatch(/from\s+['"]react['"]/);
+    expect(bin).not.toMatch(/tsx\/esm\/api/);
   });
 
-  it("bin/csm.mjs obtains the instance from main.tsx via the exported run()", () => {
+  it("bin/csm.mjs boots by importing the committed bundle dist/panel.mjs", () => {
     const bin = readRel("../../bin/csm.mjs");
-    expect(bin).toMatch(/main\.(tsx|js)/);
-    expect(bin).toContain("run(");
+    expect(bin).toMatch(/dist\/panel\.mjs/);
+  });
+
+  it("src/panel/entry.ts imports run() from main and awaits waitUntilExit (no render call)", () => {
+    const entry = readRel("./entry.ts");
+    expect(entry).toMatch(
+      /import\s*\{\s*run\s*\}\s*from\s+['"]\.\/main(\.js)?['"]/,
+    );
+    expect(entry).toContain("waitUntilExit");
+    expect(entry).not.toMatch(/render\(/);
   });
 
   it("src/panel/main.tsx exports run() and is the sole render() call site", () => {

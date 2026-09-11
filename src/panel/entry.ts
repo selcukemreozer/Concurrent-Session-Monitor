@@ -1,13 +1,13 @@
 // csm bundle entry — compiled by esbuild into dist/panel.mjs.
 //
 // This module owns the process lifecycle (signals + waitUntilExit) that used to
-// live in bin/csm.mjs. render() still lives ONLY inside main.tsx (the sole
-// render() call site), and this entry imports run() from there — so after
-// bundling there is exactly ONE ink instance in one module graph. tsx is gone
-// from the runtime path, so the historical dual-loader / dual-ink bug class is
-// structurally impossible. entry.ts must NOT call render() itself.
+// live in bin/csm.mjs. The sole rendering call still lives ONLY inside main.tsx,
+// and this entry imports run() from there — so after bundling there is exactly
+// ONE ink instance in one module graph. tsx is gone from the runtime path, so
+// the historical dual-loader / dual-ink bug class is structurally impossible.
+// This entry never mounts ink itself; it only drives run() + the signal exit.
 import type { Instance } from "ink";
-import { run } from "./main.js"; // sole render() site stays in main.tsx
+import { run } from "./main.js"; // the sole rendering call site stays in main.tsx
 
 // D-07 reconciliation: as of Phase 04.2 the panel enters raw mode WHEN A TTY IS
 // PRESENT (App's TTY-guarded FAZLAR keyboard via useInput). In that case Ink's
