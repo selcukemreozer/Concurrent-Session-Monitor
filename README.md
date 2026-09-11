@@ -24,6 +24,10 @@ hitting file conflicts: when sessions run in parallel, everyone can see **who is
 touching which files and what work is being done**, so overlapping edits are
 noticed before they collide.
 
+<p align="center">
+  <img src="assets/ss_monitor.png" alt="Concurrent Session Monitor live panel showing session cards, a file conflict warning, and the ports and phases panes">
+</p>
+
 ## Highlights
 
 - **Live file map**: every file each session is touching, updated within about a second, with no manual refresh.
