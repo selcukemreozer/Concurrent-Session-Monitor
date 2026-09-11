@@ -46,9 +46,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 describe("Root (csm splash → panel switch)", () => {
   it("mounts the panel immediately when the splash is disabled", () => {
-    const { inst, frame } = renderCapture(
-      React.createElement(Root, { enableSplash: false }),
-    );
+    const { inst, frame } = renderCapture(<Root enableSplash={false} />);
     expect(frame()).toContain("PANEL_STUB");
     expect(frame()).not.toContain("CONCURRENT");
     inst.unmount();
@@ -56,7 +54,7 @@ describe("Root (csm splash → panel switch)", () => {
 
   it("shows the splash first, then transitions to the panel", async () => {
     const { inst, frame, clear } = renderCapture(
-      React.createElement(Root, { enableSplash: true, splashMs: 30 }),
+      <Root enableSplash={true} splashMs={30} />,
     );
     // Phase 1 — splash.
     expect(frame()).toContain("CONCURRENT");

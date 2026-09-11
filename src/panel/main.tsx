@@ -1,6 +1,6 @@
 import { createElement } from "react";
 import { render, type Instance } from "ink";
-import { App } from "./App.js";
+import { Root } from "./Root.js";
 
 /**
  * Mount the live panel and return its Ink {@link Instance}.
@@ -25,5 +25,7 @@ import { App } from "./App.js";
  * degrades cleanly to inline output.
  */
 export function run(): Instance {
-  return render(createElement(App), { alternateScreen: true });
+  // Root shows the TTY-only launch Splash briefly, then swaps to App — both live in
+  // THIS tsx-loaded graph, so the single-ink-instance invariant above still holds.
+  return render(createElement(Root), { alternateScreen: true });
 }

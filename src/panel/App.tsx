@@ -386,7 +386,7 @@ export function App() {
         width={termCols}
       >
         <Box justifyContent="space-between">
-          <Text bold color="cyan">
+          <Text bold color="green">
             {"◆ Concurrent Session Monitor"}
           </Text>
           <Text dimColor>{clock}</Text>
