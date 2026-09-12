@@ -10,7 +10,7 @@
   <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-2f5d3f?style=flat-square">
   <img alt="platform: macOS" src="https://img.shields.io/badge/platform-macOS-2f5d3f?style=flat-square">
   <img alt="node &gt;= 22" src="https://img.shields.io/badge/node-%3E%3D22-2f5d3f?style=flat-square">
-  <img alt="version 1.0.1" src="https://img.shields.io/badge/version-1.0.1-2f5d3f?style=flat-square">
+  <img alt="version 1.0.2" src="https://img.shields.io/badge/version-1.0.2-2f5d3f?style=flat-square">
   <img alt="license: MIT" src="https://img.shields.io/badge/license-MIT-2f5d3f?style=flat-square">
 </p>
 

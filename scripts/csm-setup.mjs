@@ -12,8 +12,12 @@
 //   - target ABSENT            -> create the symlink.
 //   - target is the CORRECT    -> idempotent no-op ("already set up").
 //     symlink already
+//   - target is OUR OWN stale  -> refresh it to the current launcher (a version
+//     self-link (a previous       bump moves the launcher to a sibling cache dir,
+//     plugin version's            so the old symlink would otherwise keep running
+//     bin/csm.mjs)                old code). See isStaleSelfLink().
 //   - target is a real file or -> DO NOT overwrite; print an actionable warning
-//     a foreign symlink            telling the user to remove it manually.
+//     a FOREIGN symlink            telling the user to remove it manually.
 // It acts only on the two fixed, trusted paths (${CLAUDE_PLUGIN_ROOT}/bin/csm.mjs
 // and ~/.local/bin/csm) and takes no untrusted arguments.
 //
@@ -29,9 +33,26 @@ import {
   lstatSync,
   readlinkSync,
   symlinkSync,
+  unlinkSync,
 } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+
+// Is `linkTarget` our OWN launcher from a different version of THIS plugin?
+// CLAUDE_PLUGIN_ROOT is version-pinned (.../cache/<mp>/<plugin>/<version>), so a
+// bump moves the launcher to a sibling version dir while the old symlink lingers.
+// Such a target is `<family>/<oldver>/bin/csm.mjs` where <family> === the parent
+// of the current pluginRoot. Matching all three shape checks means it is a stale
+// self-link (safe to refresh) — a truly foreign symlink lives outside <family>
+// and never matches, so it is still refused.
+function isStaleSelfLink(linkTarget, pluginRoot) {
+  const family = path.dirname(pluginRoot);
+  return (
+    path.basename(linkTarget) === "csm.mjs" &&
+    path.basename(path.dirname(linkTarget)) === "bin" &&
+    path.dirname(path.dirname(path.dirname(linkTarget))) === family
+  );
+}
 
 function main() {
   const home = os.homedir();
@@ -76,6 +97,18 @@ function main() {
     // CORRECT symlink already present: idempotent no-op.
     console.log(
       `csm: already set up — ${target} already points at the plugin launcher.`,
+    );
+  } else if (
+    existing.isSymbolicLink() &&
+    isStaleSelfLink(readlinkSync(target), pluginRoot)
+  ) {
+    // OUR OWN symlink from a previous plugin version (version-pinned cache path):
+    // refresh it to the current launcher so bare `csm` stops running old code.
+    const stale = readlinkSync(target);
+    unlinkSync(target);
+    symlinkSync(launcher, target);
+    console.log(
+      `csm: refreshed ${target} -> ${launcher} (was a stale link to ${stale}).`,
     );
   } else {
     // FOREIGN real file or foreign symlink: never clobber. Warn and abort.

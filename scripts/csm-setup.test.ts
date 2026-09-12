@@ -100,4 +100,37 @@ describe("csm-setup symlink helper (D-02, idempotent + non-clobbering)", () => {
     expect(fs.readlinkSync(target)).toBe(elsewhere);
     expect((res.stdout + res.stderr).toLowerCase()).toMatch(/warn|remove|manual/);
   });
+
+  // Version-pinned CLAUDE_PLUGIN_ROOT means each bump moves the launcher to a
+  // sibling version dir. A symlink left over from a PREVIOUS version of THIS same
+  // plugin (same cache family, `<family>/<oldver>/bin/csm.mjs`) is our own stale
+  // link, not a foreign one — /csm-setup must auto-refresh it to the current
+  // launcher so bare `csm` stops running old code after an update.
+  it("auto-refreshes a stale self-symlink from a previous plugin version (repoints, exit 0)", () => {
+    // family/  holds versioned plugin roots side by side (mirrors the cache layout).
+    const family = path.join(dirs.base, "cache", "csm", "csm");
+    const oldRoot = path.join(family, "1.0.0");
+    const newRoot = path.join(family, "1.0.1");
+    for (const root of [oldRoot, newRoot]) {
+      fs.mkdirSync(path.join(root, "bin"), { recursive: true });
+      fs.writeFileSync(
+        path.join(root, "bin", "csm.mjs"),
+        "#!/usr/bin/env node\n// fake launcher\n",
+      );
+    }
+    const oldLauncher = path.join(oldRoot, "bin", "csm.mjs");
+    const newLauncher = path.join(newRoot, "bin", "csm.mjs");
+
+    const localBin = path.join(dirs.home, ".local", "bin");
+    fs.mkdirSync(localBin, { recursive: true });
+    const target = path.join(localBin, "csm");
+    fs.symlinkSync(oldLauncher, target); // stale link from the previous version
+
+    // Run /csm-setup as the NEW version.
+    const res = run(dirs.home, newRoot);
+    expect(res.status).toBe(0);
+    expect(fs.lstatSync(target).isSymbolicLink()).toBe(true);
+    expect(fs.readlinkSync(target)).toBe(newLauncher); // repointed to current
+    expect(res.stdout.toLowerCase()).toContain("refresh");
+  });
 });
