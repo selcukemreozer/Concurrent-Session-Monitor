@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -401,5 +401,100 @@ describe("csm-status reader — Ports: block (INT-02, PORT-05)", () => {
     // Denylisted Apple agent (rapportd / port 7000) is excluded.
     expect(res.stdout).not.toContain("rapportd");
     expect(res.stdout).not.toContain("7000");
+  });
+});
+
+/** True when a usable `git` is on PATH (the macOS target ships one). */
+function gitAvailable(): boolean {
+  try {
+    execFileSync("git", ["--version"], { stdio: ["ignore", "ignore", "ignore"] });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const HAVE_GIT = gitAvailable();
+
+/**
+ * Create a real temp git repo checked out on `feature-x` (over an initial `main`)
+ * so the reader's synchronous `git rev-parse --abbrev-ref HEAD` derivation resolves
+ * a LIVE branch distinct from any seeded snapshot. Returns the realpath'd repo dir;
+ * caller registers cleanup.
+ */
+function makeGitRepo(): string {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "csm-status-repo-")));
+  const run = (args: string[]) =>
+    execFileSync("git", ["-C", dir, ...args], { stdio: ["ignore", "ignore", "ignore"] });
+  execFileSync("git", ["init", "-b", "main", dir], { stdio: ["ignore", "ignore", "ignore"] });
+  run(["config", "user.email", "csm@example.com"]);
+  run(["config", "user.name", "CSM Test"]);
+  run(["commit", "--allow-empty", "-m", "init"]);
+  run(["checkout", "-b", "feature-x"]);
+  return dir;
+}
+
+describe.runIf(HAVE_GIT)("csm-status reader — LIVE branch derivation (LB-03)", () => {
+  const BRANCH_GLYPH = "⎇"; // U+2387
+  const NEQ_GLYPH = "≠"; // U+2260
+
+  let repo: string;
+  beforeEach(() => {
+    repo = makeGitRepo();
+  });
+  afterEach(() => {
+    fs.rmSync(repo, { recursive: true, force: true });
+  });
+
+  it("derives the LIVE branch from cwd: target equals the live checkout -> shows it, NO ≠ flag", () => {
+    // Snapshot says "main" but the repo is actually on "feature-x"; the declared
+    // target is "feature-x". If the reader used the SNAPSHOT the flag would fire
+    // (feature-x != main); its ABSENCE proves the flag rebased onto the LIVE branch.
+    seed(tmp, "alpha111-aaaa", {
+      folder: "projAlpha",
+      branch: "main",
+      cwd: repo,
+      target_branch: "feature-x",
+      writes: ["/repo/a.ts"],
+    });
+
+    const res = runStatus("alpha111-aaaa", tmp);
+    expect(res.status).toBe(0);
+    const line = lineFor(res.stdout, "alpha111-aaaa");
+    expect(line).toBeDefined();
+    expect(line).toContain("feature-x"); // the LIVE checkout, not the "main" snapshot
+    expect(line).toContain(BRANCH_GLYPH);
+    expect(line).not.toContain(NEQ_GLYPH); // target == live branch -> no mismatch
+  });
+
+  it("derives the LIVE branch from cwd: target differs from the live checkout -> shows it WITH the ≠ flag", () => {
+    // Snapshot "main", live "feature-x", target "main". Against the live branch the
+    // target differs -> the flag fires. If the reader used the snapshot ("main"),
+    // target "main" would MATCH and no flag would show; the flag proves live wins.
+    seed(tmp, "beta2222-bbbb", {
+      folder: "projBeta",
+      branch: "main",
+      cwd: repo,
+      target_branch: "main",
+      writes: ["/repo/b.ts"],
+    });
+
+    const res = runStatus("beta2222-bbbb", tmp);
+    expect(res.status).toBe(0);
+    const line = lineFor(res.stdout, "beta2222-bbbb");
+    expect(line).toBeDefined();
+    expect(line).toContain("feature-x"); // live checkout shown
+    expect(line).toContain(NEQ_GLYPH); // live feature-x drifts from declared target main
+  });
+
+  it("falls back to the snapshot branch when cwd is absent/non-repo, never crashing (exit 0)", () => {
+    // No cwd at all -> no derivation possible -> snapshot "main" stands in.
+    seed(tmp, "gamma333-cccc", { folder: "projGamma", branch: "main", writes: ["/repo/c.ts"] });
+
+    const res = runStatus("gamma333-cccc", tmp);
+    expect(res.status).toBe(0);
+    const line = lineFor(res.stdout, "gamma333-cccc");
+    expect(line).toBeDefined();
+    expect(line).toContain("main"); // snapshot fallback
   });
 });

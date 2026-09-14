@@ -12,10 +12,46 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 
 const pexec = promisify(execFile);
+
+/**
+ * Per-run cache for deriveLiveBranch — cwd -> derived live branch (or the snapshot
+ * fallback). Deduped so repeated cwds spawn `git` at most once per distinct dir in
+ * a single reader invocation (T-LB-03). The process runs once and exits, so a
+ * module-level Map is the run scope.
+ */
+const branchCache = new Map();
+
+/**
+ * Derive a session's CURRENT git branch synchronously from its cwd (LB-03,
+ * D-LB-05), mirroring the SessionStart hook's git invocation
+ * (scripts/on-session-start.mjs): `git -C <cwd> rev-parse --abbrev-ref HEAD` via
+ * execFileSync with an args ARRAY (NO shell — a crafted cwd can never inject a
+ * command, T-LB-01), a 1000ms timeout, and stderr ignored. Returns the trimmed
+ * live branch when non-empty, else the SessionStart `snapshot` on ANY throw
+ * (non-repo / git-absent / timeout) or empty output. When cwd is absent, returns
+ * the snapshot. Deduped by cwd within the run so git spawns once per distinct dir.
+ */
+function deriveLiveBranch(cwd, snapshot) {
+  if (typeof cwd !== "string" || cwd.length === 0) return snapshot;
+  if (branchCache.has(cwd)) return branchCache.get(cwd);
+  let branch = snapshot;
+  try {
+    const out = execFileSync("git", ["-C", cwd, "rev-parse", "--abbrev-ref", "HEAD"], {
+      timeout: 1000,
+      stdio: ["ignore", "pipe", "ignore"],
+      encoding: "utf8",
+    }).trim();
+    if (out.length > 0) branch = out;
+  } catch {
+    // non-repo / git-absent / timeout -> snapshot fallback (never throws)
+  }
+  branchCache.set(cwd, branch);
+  return branch;
+}
 
 // T-04-07: allowlist the untrusted caller session id before any path/(you) use.
 const SAFE_ID = /^[A-Za-z0-9._-]{1,128}$/;
@@ -445,7 +481,11 @@ async function main() {
     rows.push({
       session_id: typeof state.session_id === "string" ? state.session_id : id,
       folder: state.folder,
-      branch: state.branch,
+      // LIVE branch derived from the session's cwd (LB-03), falling back to the
+      // SessionStart snapshot. Because the roster heading, the target-mismatch
+      // token (sanitize(target) vs sanitize(r.branch)), and the conflict labels
+      // all read r.branch, this single swap makes every one reflect the live checkout.
+      branch: deriveLiveBranch(state.cwd, state.branch),
       // Numeric pid used ONLY for port-ancestry attribution (not liveness).
       pid: typeof state.pid === "number" ? state.pid : undefined,
       cwd: typeof state.cwd === "string" ? state.cwd : undefined,
