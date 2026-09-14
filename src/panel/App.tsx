@@ -7,6 +7,7 @@ import { numEnv } from "../env.js";
 import { SessionCard, CompactRow, ConflictBand, PortsPane, PhasesPane } from "./Card.js";
 import { detectConflicts, type Conflict } from "../conflicts.js";
 import { scanPorts, portScanMs, type ScannedPort } from "../ports.js";
+import { scanBranches, branchScanMs, liveBranch } from "../branch.js";
 import {
   scanProgress,
   phaseScanMs,
@@ -257,6 +258,33 @@ export function App() {
     return () => { alive = false; clearInterval(t); };
   }, []);
 
+  // Cached live-branch map (cwd -> current checkout) + an in-flight overlap guard.
+  const [branches, setBranches] = React.useState<Map<string, string>>(() => new Map());
+  const scanningBranches = React.useRef(false);
+
+  // THIRD, slow scan effect (LB-02, D-LB-04): a sibling of the port-scan effect,
+  // NEVER inside the 750ms poll. Each non-overlapping tick derives each LIVE
+  // (non-grace) session's CURRENT git branch from its cwd off the render thread at
+  // branchScanMs() cadence, caches the resolved Map in state, and merges it into
+  // the rows via liveBranch(). It reads liveRowsRef.current (declared below, the
+  // freshest live rows) so it never re-arms every render. scanBranches() never
+  // rejects, but the catch still resets to an empty Map defensively; on unmount
+  // the interval is cleared and a late resolve is ignored (alive flag).
+  React.useEffect(() => {
+    let alive = true;
+    const tick = () => {
+      if (scanningBranches.current) return; // prior scan still running — skip, no overlap
+      scanningBranches.current = true;
+      scanBranches(liveRowsRef.current)
+        .then((m) => { if (alive) setBranches(m); })
+        .catch(() => { if (alive) setBranches(new Map()); })
+        .finally(() => { scanningBranches.current = false; });
+    };
+    tick(); // scan once on mount
+    const t = setInterval(tick, branchScanMs());
+    return () => { alive = false; clearInterval(t); };
+  }, []);
+
   const { rows: termRows, columns: termCols } = useWindowSize();
   const capacity = Math.max(1, termRows - HEADER_LINES - PORTS_LINES);
   const compact = state.display.length * CARD_LINES > capacity;
@@ -374,6 +402,19 @@ export function App() {
   const conflictLabel = sanitize(`${nConf} conflicts`);
   const clock = sanitize(fmtClock(Date.now()));
 
+  // Merge the live-derived branch into each roster row (D-LB-03): App overrides
+  // the `branch` field so SessionCard's `s.branch` display AND its 260914-507
+  // target-mismatch flag (which compares target_branch vs s.branch) both operate
+  // on the LIVE checkout automatically — Card.tsx is intentionally unchanged. Falls
+  // back to the session-start snapshot until/unless the scan resolves (liveBranch).
+  // Identity-preserving: an unchanged branch returns the same row reference. NOTE:
+  // PortsPane/ConflictBand stay on the snapshot row — live-branch merge is scoped
+  // to the roster display here and out of scope for those panes.
+  const withLiveBranch = (row: SessionRow): SessionRow => {
+    const b = liveBranch(row, branches);
+    return b === row.branch ? row : { ...row, branch: b };
+  };
+
   return (
     <Box flexDirection="column">
       {isRawModeSupported ? (
@@ -405,9 +446,9 @@ export function App() {
             {`● ${sanitize(d.row.folder)} · ${shortId(d.id)} · ended`}
           </Text>
         ) : compact ? (
-          <CompactRow key={d.id} s={d.row} />
+          <CompactRow key={d.id} s={withLiveBranch(d.row)} />
         ) : (
-          <SessionCard key={d.id} s={d.row} />
+          <SessionCard key={d.id} s={withLiveBranch(d.row)} />
         ),
       )}
       <Box flexDirection="row" width={termCols} marginTop={1}>

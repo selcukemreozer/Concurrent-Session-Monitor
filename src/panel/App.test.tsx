@@ -67,6 +67,20 @@ vi.mock("../phases.js", async (importOriginal) => {
     resolveGsdTools: vi.fn(() => "/dummy/gsd-tools.cjs"),
   };
 });
+// RED (wave 260914-ovb-01): App owns a THIRD, slower branch-scan effect (LB-02,
+// D-LB-04) that derives each live session's current git branch off the render
+// tick and merges it into the row it hands SessionCard/CompactRow. Mock ONLY
+// scanBranches + branchScanMs so these tests drive the scan cadence/overlap/merge
+// WIRING without spawning real `git` — but PRESERVE the pure `liveBranch`
+// fallback via importOriginal so App's merge uses the real live-vs-snapshot rule.
+vi.mock("../branch.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../branch.js")>();
+  return {
+    ...actual,
+    scanBranches: vi.fn(async () => new Map<string, string>()),
+    branchScanMs: vi.fn(() => 1700),
+  };
+});
 import { readAll } from "../aggregate.js";
 import { pruneSession } from "../prune.js";
 import { scanPorts, portScanMs } from "../ports.js";
@@ -77,6 +91,7 @@ import {
   phaseScanMs,
   resolveGsdTools,
 } from "../phases.js";
+import { scanBranches, branchScanMs } from "../branch.js";
 import { App } from "./App.js";
 
 /** The mocked scan cadence (ms) — App arms its 2nd interval at portScanMs(). */
@@ -84,6 +99,9 @@ const PORT_CADENCE = 2500;
 
 /** The mocked phase-scan cadence (ms) — App arms its 3rd interval at phaseScanMs(). */
 const PHASE_CADENCE = 3000;
+
+/** The mocked branch-scan cadence (ms) — App arms its 4th interval at branchScanMs(). */
+const BRANCH_CADENCE = 1700;
 
 /**
  * A minimal fake TTY stdin (Pitfall 1 / Wave 0 Gaps): an in-memory duplex with
@@ -181,6 +199,12 @@ beforeEach(() => {
   vi.mocked(resolvePlanningRoots).mockResolvedValue(new Set(ROOTS));
   vi.mocked(phaseScanMs).mockReturnValue(PHASE_CADENCE);
   vi.mocked(resolveGsdTools).mockReturnValue("/dummy/gsd-tools.cjs");
+  // After GREEN, App imports ../branch.js, so its branch-scan effect runs in EVERY
+  // test. Re-arm the branch mocks (a prior describe's restoreAllMocks strips vi.fn
+  // implementations) so App never calls an undefined-returning scanBranches() and
+  // crashes. Tests that assert on these override them in their own beforeEach.
+  vi.mocked(scanBranches).mockResolvedValue(new Map<string, string>());
+  vi.mocked(branchScanMs).mockReturnValue(BRANCH_CADENCE);
 });
 
 describe("App poll loop (PANEL-05 live refresh, Pitfall 4 full re-read)", () => {
@@ -669,5 +693,79 @@ describe("App FAZLAR pane wiring (PANEL-08/09, D-01/D-02/D-04/D-07/D-08)", () =>
     // The interactive hint proves raw mode engaged via the guarded useInput.
     await vi.waitFor(() => expect(cap.frame()).toContain("Tab: switch"));
     expect(() => cap.inst.unmount()).not.toThrow(); // no double-teardown
+  });
+});
+
+describe("App live-branch scan + merge (LB-02, D-LB-04)", () => {
+  beforeEach(() => {
+    (readAll as unknown as { mockReset: () => void }).mockReset();
+    (readAll as unknown as { mockReturnValue: (v: unknown) => void }).mockReturnValue([]);
+    vi.mocked(scanBranches).mockReset();
+    vi.mocked(scanBranches).mockResolvedValue(new Map<string, string>());
+    vi.mocked(branchScanMs).mockReturnValue(BRANCH_CADENCE);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    // restoreAllMocks strips the branch mock implementations; re-arm so the next
+    // describe/test still sees callable stubs (mirrors the port-scan describe).
+    vi.mocked(scanBranches).mockResolvedValue(new Map<string, string>());
+    vi.mocked(branchScanMs).mockReturnValue(BRANCH_CADENCE);
+  });
+
+  it("merges the LIVE branch into the card, overriding the session-start snapshot", async () => {
+    vi.mocked(scanBranches).mockResolvedValue(new Map([["/repo/x", "feature-live"]]));
+    (readAll as unknown as { mockReturnValue: (v: unknown) => void }).mockReturnValue([
+      makeRow({ session_id: "s1", cwd: "/repo/x", branch: "snapshot-main" } as Partial<SessionRow>),
+    ]);
+
+    const { inst, frame } = renderCapture(80, 120);
+    // The async scan resolves and setBranches re-renders the card with the live branch.
+    await vi.waitFor(() => expect(frame()).toContain("feature-live"));
+    inst.unmount();
+  });
+
+  it("falls back to the snapshot branch when the scan resolves WITHOUT the cwd (no regression)", async () => {
+    vi.mocked(scanBranches).mockResolvedValue(new Map<string, string>()); // empty -> fallback
+    (readAll as unknown as { mockReturnValue: (v: unknown) => void }).mockReturnValue([
+      makeRow({ session_id: "s1", cwd: "/repo/x", branch: "snapshot-main" } as Partial<SessionRow>),
+    ]);
+
+    const { inst, frame } = renderCapture(80, 120);
+    await vi.waitFor(() => expect(frame()).toContain("snapshot-main"));
+    inst.unmount();
+  });
+
+  it("arms a branch-scan interval at branchScanMs cadence distinct from the 750 poll; an in-flight scan is overlap-guarded", async () => {
+    vi.useFakeTimers();
+    const setSpy = vi.spyOn(global, "setInterval");
+    let release!: (v: Map<string, string>) => void;
+    // Keep the mount scan pending so the next cadence tick must be skipped.
+    vi.mocked(scanBranches).mockReturnValueOnce(new Promise<Map<string, string>>((r) => { release = r; }));
+
+    const { unmount } = render(React.createElement(App), {
+      stdout: fakeStdout(),
+      patchConsole: false,
+      exitOnCtrlC: false,
+    });
+
+    expect(scanBranches).toHaveBeenCalledTimes(1); // one scan on mount
+    // A dedicated cadence timer, separate from the 750ms poll (never inside it).
+    expect(
+      setSpy.mock.calls.some((c) => c[1] === BRANCH_CADENCE),
+      "expected a branchScanMs() interval distinct from the 750ms poll",
+    ).toBe(true);
+    expect(setSpy.mock.calls.some((c) => c[1] === 750)).toBe(true);
+
+    // Cadence fires while the mount scan is still in flight — must be skipped.
+    await vi.advanceTimersByTimeAsync(BRANCH_CADENCE);
+    expect(scanBranches).toHaveBeenCalledTimes(1);
+
+    // Resolve the pending scan; the guard clears and the next cadence scans again.
+    release(new Map<string, string>());
+    await vi.advanceTimersByTimeAsync(BRANCH_CADENCE);
+    expect(scanBranches).toHaveBeenCalledTimes(2);
+
+    unmount();
   });
 });

@@ -38917,6 +38917,40 @@ function detectConflicts(rows, now = Date.now()) {
   return out;
 }
 
+// src/branch.ts
+import { execFile as execFile3 } from "node:child_process";
+import { promisify as promisify3 } from "node:util";
+var pexec3 = promisify3(execFile3);
+function branchScanMs() {
+  return numEnv("CSM_BRANCH_SCAN_MS", 1500);
+}
+async function scanBranches(rows) {
+  const cwds = /* @__PURE__ */ new Set();
+  for (const r of rows) {
+    if (typeof r.cwd === "string" && r.cwd.length > 0) cwds.add(r.cwd);
+  }
+  const out = /* @__PURE__ */ new Map();
+  await Promise.all(
+    [...cwds].map(async (cwd2) => {
+      try {
+        const { stdout } = await pexec3(
+          "git",
+          ["-C", cwd2, "rev-parse", "--abbrev-ref", "HEAD"],
+          { timeout: 1e3, maxBuffer: 1 << 20 }
+        );
+        const branch = stdout.trim();
+        if (branch.length > 0) out.set(cwd2, branch);
+      } catch {
+      }
+    })
+  );
+  return out;
+}
+function liveBranch(row, branches) {
+  const live = typeof row.cwd === "string" ? branches.get(row.cwd) : void 0;
+  return typeof live === "string" && live.length > 0 ? live : row.branch;
+}
+
 // src/panel/App.tsx
 var import_jsx_runtime2 = __toESM(require_jsx_runtime(), 1);
 var POLL_MS = 750;
@@ -39015,6 +39049,28 @@ function App2() {
       clearInterval(t);
     };
   }, []);
+  const [branches, setBranches] = import_react35.default.useState(() => /* @__PURE__ */ new Map());
+  const scanningBranches = import_react35.default.useRef(false);
+  import_react35.default.useEffect(() => {
+    let alive = true;
+    const tick = () => {
+      if (scanningBranches.current) return;
+      scanningBranches.current = true;
+      scanBranches(liveRowsRef.current).then((m) => {
+        if (alive) setBranches(m);
+      }).catch(() => {
+        if (alive) setBranches(/* @__PURE__ */ new Map());
+      }).finally(() => {
+        scanningBranches.current = false;
+      });
+    };
+    tick();
+    const t = setInterval(tick, branchScanMs());
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, []);
   const { rows: termRows, columns: termCols } = use_window_size_default();
   const capacity = Math.max(1, termRows - HEADER_LINES - PORTS_LINES);
   const compact = state.display.length * CARD_LINES > capacity;
@@ -39081,6 +39137,10 @@ function App2() {
   const summaryLead = sanitize(`${state.live} live \xB7 ${state.idle} idle \xB7 `);
   const conflictLabel = sanitize(`${nConf} conflicts`);
   const clock = sanitize(fmtClock(Date.now()));
+  const withLiveBranch = (row) => {
+    const b = liveBranch(row, branches);
+    return b === row.branch ? row : { ...row, branch: b };
+  };
   return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Box_default, { flexDirection: "column", children: [
     isRawModeSupported ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(FazlarKeyboard, { onCycle, onScroll }) : null,
     /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
@@ -39104,7 +39164,7 @@ function App2() {
     ),
     /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(ConflictBand, { conflicts: state.conflicts }),
     state.display.map(
-      (d) => d.ended ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { dimColor: true, color: "grey", children: `\u25CF ${sanitize(d.row.folder)} \xB7 ${shortId2(d.id)} \xB7 ended` }, d.id) : compact ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(CompactRow, { s: d.row }, d.id) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(SessionCard, { s: d.row }, d.id)
+      (d) => d.ended ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { dimColor: true, color: "grey", children: `\u25CF ${sanitize(d.row.folder)} \xB7 ${shortId2(d.id)} \xB7 ended` }, d.id) : compact ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(CompactRow, { s: withLiveBranch(d.row) }, d.id) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(SessionCard, { s: withLiveBranch(d.row) }, d.id)
     ),
     /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Box_default, { flexDirection: "row", width: termCols, marginTop: 1, children: [
       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Box_default, { flexDirection: "column", flexBasis: "50%", flexGrow: 1, flexShrink: 1, paddingX: 1, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(PortsPane, { ports, rows: liveRows }) }),

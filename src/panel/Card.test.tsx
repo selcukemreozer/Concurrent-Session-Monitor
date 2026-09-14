@@ -483,6 +483,27 @@ describe("SessionCard target branch (mismatch flag) (TB-03, D-BR-03/D-BR-05)", (
     expect(out).not.toContain("feature-x");
     expect(out).not.toContain(NEQ_GLYPH);
   });
+
+  // Merge contract (260914-ovb, D-LB-03): App feeds SessionCard a row whose `branch`
+  // field is the LIVE-derived checkout (via liveBranch), so the mismatch flag must
+  // compare target_branch against that live `branch` — NOT any snapshot. Card.tsx is
+  // unchanged; these lock that the flag rebases onto whatever `branch` App supplies.
+  it("no ≠ flag when target equals the LIVE branch App merged into the row (flag rebases onto live)", () => {
+    const out = stripAnsi(
+      renderToString(<SessionCard s={makeRow({ branch: "feature-x", target_branch: "feature-x" })} />),
+    );
+    expect(out).toContain(BRANCH_GLYPH);
+    expect(out).not.toContain(NEQ_GLYPH); // target matches the live checkout -> no drift
+  });
+
+  it("renders the ≠ flag when target differs from the LIVE branch App merged into the row", () => {
+    const out = stripAnsi(
+      renderToString(<SessionCard s={makeRow({ branch: "main", target_branch: "feature-x" })} />),
+    );
+    expect(out).toContain(BRANCH_GLYPH);
+    expect(out).toContain("feature-x");
+    expect(out).toContain(NEQ_GLYPH); // live checkout drifts from the declared target
+  });
 });
 
 /** Minimal Conflict fixture builder for band render assertions. */
