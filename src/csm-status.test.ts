@@ -50,6 +50,8 @@ interface SeedOpts {
   reads?: string[];
   /** Declared intent written to intent.txt; omitted => no intent shard. */
   intent?: string;
+  /** Declared target branch written to target-branch.txt; omitted => no shard (TB-03). */
+  target_branch?: string;
   /**
    * Numeric pid written into the session.json `state` object. Used ONLY for
    * port-ancestry attribution (liveness comes from the fresh heartbeat, not pid).
@@ -89,6 +91,13 @@ function seed(storeDir: string, id: string, opts: SeedOpts = {}): void {
     fs.writeFileSync(path.join(dir, "intent.txt"), JSON.stringify({ intent: opts.intent, ts: nowIso }), {
       mode: 0o600,
     });
+  }
+  if (opts.target_branch !== undefined) {
+    fs.writeFileSync(
+      path.join(dir, "target-branch.txt"),
+      JSON.stringify({ target_branch: opts.target_branch, ts: nowIso }),
+      { mode: 0o600 },
+    );
   }
 }
 
@@ -243,6 +252,55 @@ describe("csm-status reader (INT-02, D-04/D-05)", () => {
     const res = runStatus("whoever", empty);
     expect(res.status).toBe(0);
     expect(res.stderr).not.toMatch(/Error|throw|ENOENT/);
+  });
+});
+
+describe("csm-status reader — target branch (TB-03)", () => {
+  const BRANCH_GLYPH = "⎇"; // U+2387
+  const NEQ_GLYPH = "≠"; // U+2260
+
+  it("mismatch: a target differing from the current branch shows the target AND the ≠ flag", () => {
+    seed(tmp, "alpha111-aaaa", {
+      folder: "projAlpha",
+      branch: "main",
+      target_branch: "feature-x",
+      writes: ["/repo/a.ts"],
+    });
+
+    const res = runStatus("alpha111-aaaa", tmp);
+    expect(res.status).toBe(0);
+    const line = lineFor(res.stdout, "alpha111-aaaa");
+    expect(line).toBeDefined();
+    expect(line).toContain(BRANCH_GLYPH);
+    expect(line).toContain("feature-x");
+    expect(line).toContain(NEQ_GLYPH);
+  });
+
+  it("match: a target equal to the current branch shows the target but no ≠ flag", () => {
+    seed(tmp, "beta2222-bbbb", {
+      folder: "projBeta",
+      branch: "main",
+      target_branch: "main",
+      writes: ["/repo/b.ts"],
+    });
+
+    const res = runStatus("beta2222-bbbb", tmp);
+    expect(res.status).toBe(0);
+    const line = lineFor(res.stdout, "beta2222-bbbb");
+    expect(line).toBeDefined();
+    expect(line).toContain(BRANCH_GLYPH);
+    expect(line).not.toContain(NEQ_GLYPH);
+  });
+
+  it("absent: a session without a declared target shows no branch glyph token", () => {
+    seed(tmp, "gamma333-cccc", { folder: "projGamma", branch: "main", writes: ["/repo/c.ts"] });
+
+    const res = runStatus("gamma333-cccc", tmp);
+    expect(res.status).toBe(0);
+    const line = lineFor(res.stdout, "gamma333-cccc");
+    expect(line).toBeDefined();
+    expect(line).not.toContain(BRANCH_GLYPH);
+    expect(line).not.toContain(NEQ_GLYPH);
   });
 });
 

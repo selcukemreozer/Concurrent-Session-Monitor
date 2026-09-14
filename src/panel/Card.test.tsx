@@ -439,6 +439,52 @@ describe("SessionCard skill line (SKILL-04/SKILL-02, D-02/D-03/D-04)", () => {
   });
 });
 
+describe("SessionCard target branch (mismatch flag) (TB-03, D-BR-03/D-BR-05)", () => {
+  const BRANCH_GLYPH = "⎇"; // U+2387 — the declared-target marker
+  const NEQ_GLYPH = "≠"; // U+2260 — the mismatch (intent-vs-reality drift) flag
+
+  it("renders the branch glyph, the target name, and the ≠ mismatch flag when target differs from branch (D-BR-05)", () => {
+    const out = stripAnsi(
+      renderToString(<SessionCard s={makeRow({ branch: "main", target_branch: "feature-x" })} />),
+    );
+    expect(out).toContain(BRANCH_GLYPH);
+    expect(out).toContain("feature-x"); // the declared target
+    expect(out).toContain(NEQ_GLYPH); // visible mismatch flag
+  });
+
+  it("renders the glyph + target but NO ≠ flag when target equals the current branch", () => {
+    const out = stripAnsi(
+      renderToString(<SessionCard s={makeRow({ branch: "main", target_branch: "main" })} />),
+    );
+    expect(out).toContain(BRANCH_GLYPH);
+    expect(out).not.toContain(NEQ_GLYPH); // no mismatch when they agree
+  });
+
+  it("renders NO branch glyph when target_branch is absent (header backward compatible)", () => {
+    const out = stripAnsi(renderToString(<SessionCard s={makeRow({ branch: "main" })} />));
+    expect(out).not.toContain(BRANCH_GLYPH);
+    expect(out).not.toContain(NEQ_GLYPH);
+  });
+
+  it("sanitizes an ESC byte embedded in target_branch before render (T-BR-02)", () => {
+    const out = renderToString(
+      <SessionCard s={makeRow({ branch: "main", target_branch: "feat" + ESC + "ure" })} />,
+    );
+    expect(out).toContain("feature"); // ESC stripped, name intact
+    const line = out.split("\n").find((l) => l.includes("feature")) ?? "";
+    expect(line).not.toContain(ESC);
+  });
+
+  it("CompactRow stays target-free: no branch glyph, no target text, no ≠ flag (D-BR-03)", () => {
+    const out = renderToString(
+      <CompactRow s={makeRow({ branch: "main", target_branch: "feature-x" })} />,
+    );
+    expect(out).not.toContain(BRANCH_GLYPH);
+    expect(out).not.toContain("feature-x");
+    expect(out).not.toContain(NEQ_GLYPH);
+  });
+});
+
 /** Minimal Conflict fixture builder for band render assertions. */
 function makeConflict(over: Partial<Conflict> = {}): Conflict {
   return {

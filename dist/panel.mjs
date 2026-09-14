@@ -38158,6 +38158,20 @@ function readIntent(dir) {
     return {};
   }
 }
+function readTargetBranch(dir) {
+  try {
+    const parsed = JSON.parse(fs4.readFileSync(path3.join(dir, "target-branch.txt"), "utf8"));
+    if (typeof parsed?.target_branch === "string" && parsed.target_branch.length > 0) {
+      return {
+        target_branch: parsed.target_branch,
+        target_branch_ts: typeof parsed.ts === "string" ? parsed.ts : void 0
+      };
+    }
+    return {};
+  } catch {
+    return {};
+  }
+}
 function readSkill(dir, now) {
   let raw;
   try {
@@ -38234,6 +38248,8 @@ function readAll(now = Date.now(), probe = defaultProbe, startedProbe = defaultS
       reads,
       ...readIntent(dir),
       // INT-01 additive read-side field (D-01 separate shard)
+      ...readTargetBranch(dir),
+      // TB-02 additive card-only field (D-01/D-BR-01 separate shard)
       ...readSkill(dir, now),
       // SKILL-03 additive card-only field (D-01 separate shard)
       last_active: lastActive,
@@ -38557,6 +38573,8 @@ var READ_COLOR = "blue";
 var INTENT_GLYPH = "\xBB";
 var SKILL_GLYPH = "\u2699";
 var SKILL_SEP = " \u203A ";
+var BRANCH_GLYPH = "\u2387";
+var NEQ_GLYPH = "\u2260";
 function osc8(url, label2) {
   const u = sanitize(url);
   const l = sanitize(label2);
@@ -38601,6 +38619,9 @@ function SessionCard({ s }) {
     void 0
   );
   const intentLine = typeof s.intent === "string" && s.intent.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { children: "  " + INTENT_GLYPH + " " + sanitize(s.intent) }) : newestWrite ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: "  ~ " + sanitize(splitPath(newestWrite.file_path).name) }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: "  ~ (idle)" });
+  const targetBranch = typeof s.target_branch === "string" && s.target_branch.length > 0 ? sanitize(s.target_branch) : "";
+  const curBranch = sanitize(s.branch) || "\u2014";
+  const targetSegment = targetBranch === "" ? null : targetBranch === sanitize(s.branch) ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: " \xB7 " + BRANCH_GLYPH + " " + targetBranch }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { bold: true, children: " \xB7 " + BRANCH_GLYPH + " " + curBranch + " " + NEQ_GLYPH + " " + targetBranch });
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Box_default, { flexDirection: "column", borderStyle: "round", paddingX: 1, marginBottom: 1, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Box_default, { children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: dotColor(s.dotState), children: DOT + " " }),
@@ -38615,7 +38636,8 @@ function SessionCard({ s }) {
         " \xB7 ",
         uptime
       ] }),
-      focusUrl ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "cyan", children: " \xB7 " + osc8(focusUrl, "\u21AA go to pane") }) : null
+      focusUrl ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "cyan", children: " \xB7 " + osc8(focusUrl, "\u21AA go to pane") }) : null,
+      targetSegment
     ] }),
     intentLine,
     typeof s.skill === "string" && s.skill.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: "  " + SKILL_GLYPH + " " + (s.skill_subagent ? sanitize(s.skill_subagent) + SKILL_SEP : "") + sanitize(s.skill) }) : null,

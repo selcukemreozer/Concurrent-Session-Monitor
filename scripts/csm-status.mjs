@@ -144,6 +144,18 @@ function readIntent(dir) {
   return undefined;
 }
 
+/** Read the declared target-branch shard (mirrors aggregate.readTargetBranch, TB-03): absent/torn => undefined. */
+function readTargetBranch(dir) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(path.join(dir, "target-branch.txt"), "utf8"));
+    if (typeof parsed?.target_branch === "string" && parsed.target_branch.length > 0)
+      return parsed.target_branch;
+  } catch {
+    // absent/torn target-branch.txt self-heals (D-11)
+  }
+  return undefined;
+}
+
 /** Resolve the heartbeat sidecar last-seen ms (mirrors liveness.resolveLastSeen). */
 function resolveLastSeen(dir) {
   const hb = path.join(dir, "heartbeat");
@@ -195,6 +207,9 @@ function resolveRealpath(file_path, cwd) {
 const PORTS_CAP = 12;
 /** Exposed-bind security badge glyph (U+21C5); >= 0x00A0 so sanitize keeps it. */
 const EXPOSED_GLYPH = "⇅";
+/** Declared-target-branch marker (U+2387) and mismatch flag (U+2260), TB-03; both >= 0x00A0 so sanitize keeps them. */
+const BRANCH_GLYPH = "⎇";
+const NEQ_GLYPH = "≠";
 /** User-bucket heading literal (mirror Card.tsx:494 / D-02) — ASCII, constant. */
 const USER_BUCKET = "Sen (kullanici)";
 
@@ -435,6 +450,7 @@ async function main() {
       pid: typeof state.pid === "number" ? state.pid : undefined,
       cwd: typeof state.cwd === "string" ? state.cwd : undefined,
       intent: readIntent(dir),
+      target_branch: readTargetBranch(dir), // TB-03 declared target (current branch is state.branch)
       files, // [{file_path, tsMs}]
       startMs: Number.isNaN(startMs) ? now : startMs,
       sortMs,
@@ -456,6 +472,18 @@ async function main() {
     const branch = sanitize(r.branch ?? "") || "—";
     const shortId = sanitize(String(r.session_id).slice(0, 8));
 
+    // Declared-target token (TB-03), inserted immediately after the branch field so
+    // the current checkout and the declared target sit adjacent. Empty when no
+    // target; otherwise ` ⎇ <target>`, with a trailing ` ≠` mismatch flag when the
+    // SEPARATELY-sanitized target differs from the current branch (D-BR-05).
+    const targetRaw = r.target_branch;
+    let targetToken = "";
+    if (typeof targetRaw === "string" && targetRaw.length > 0) {
+      const target = sanitize(targetRaw);
+      const mismatch = target !== sanitize(r.branch ?? "");
+      targetToken = ` ${BRANCH_GLYPH} ${target}` + (mismatch ? ` ${NEQ_GLYPH}` : "");
+    }
+
     // Active WRITE basenames (reads excluded), newest first.
     const sortedFiles = [...r.files].sort((a, b) => b.tsMs - a.tsMs);
     const basenames = sortedFiles.map((f) => sanitize(basename(f.file_path)));
@@ -472,7 +500,7 @@ async function main() {
     const uptime = fmtUptime(r.startMs, now);
     const you = callerId !== undefined && r.session_id === callerId ? " (you)" : "";
 
-    out.push(`${folder} · ${branch} · ${shortId} · ${intentCol} · ${filesCol} · ${uptime}${you}`);
+    out.push(`${folder} · ${branch}${targetToken} · ${shortId} · ${intentCol} · ${filesCol} · ${uptime}${you}`);
   }
 
   // ---- Conflicts relevant to you (self-excluded) --------------------------

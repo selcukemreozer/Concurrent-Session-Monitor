@@ -61,6 +61,26 @@ const SKILL_GLYPH = "⚙";
 const SKILL_SEP = " › ";
 
 /**
+ * Leading marker for the declared TARGET branch segment (TB-03 D-BR-05): `⎇`
+ * (U+2387, the git-branch symbol). It is >= 0x00A0 so `sanitize()` preserves it,
+ * and it collides with NO reserved cue — NOT the liveness `●`, read `◇`, filled
+ * `◆`, conflict `⚠`, swap `↔`, link `↪`, intent `»`, exposed `⇅`, skill `⚙`, or
+ * current-phase `▸`. It leads the target segment on the card header only (D-BR-03:
+ * never in CompactRow).
+ */
+const BRANCH_GLYPH = "⎇";
+
+/**
+ * The mismatch flag between the declared target and the current checkout (TB-03
+ * D-BR-05): `≠` (U+2260). It is >= 0x00A0 so `sanitize()` preserves it and, like
+ * BRANCH_GLYPH, collides with no reserved cue. The mismatch is a pure render-time
+ * comparison `sanitize(target_branch) !== sanitize(branch)` — no boolean is
+ * persisted anywhere (D-BR-05). The glyph carries the signal so the segment needs
+ * no reserved color; a mismatch is emphasized with `bold` only.
+ */
+const NEQ_GLYPH = "≠";
+
+/**
  * Wrap a URL + label in an OSC-8 hyperlink escape so terminals like Warp render
  * a clickable go-to-pane affordance (D-06):  ESC ]8;; URL ST label ESC ]8;; ST.
  *
@@ -171,6 +191,24 @@ export function SessionCard({ s }: { s: SessionRow }) {
       <Text dimColor>{"  ~ (idle)"}</Text>
     );
 
+  // Declared-target-branch header segment (TB-03 D-BR-03/D-BR-05): rendered ONLY
+  // when a non-empty target is declared. Compare the SEPARATELY-sanitized target
+  // and current branch (never a joined string, T-BR-02) — an empty current branch
+  // collapses to the same em-dash the header uses. When they agree, an informational
+  // dim `· ⎇ <target>`. When they differ, an attention-drawing bold
+  // `· ⎇ <current> ≠ <target>` — the glyphs carry the signal, so NO reserved color.
+  const targetBranch =
+    typeof s.target_branch === "string" && s.target_branch.length > 0
+      ? sanitize(s.target_branch)
+      : "";
+  const curBranch = sanitize(s.branch) || "—";
+  const targetSegment =
+    targetBranch === "" ? null : targetBranch === sanitize(s.branch) ? (
+      <Text dimColor>{" · " + BRANCH_GLYPH + " " + targetBranch}</Text>
+    ) : (
+      <Text bold>{" · " + BRANCH_GLYPH + " " + curBranch + " " + NEQ_GLYPH + " " + targetBranch}</Text>
+    );
+
   return (
     <Box flexDirection="column" borderStyle="round" paddingX={1} marginBottom={1}>
       <Box>
@@ -189,6 +227,7 @@ export function SessionCard({ s }: { s: SessionRow }) {
         {focusUrl ? (
           <Text color="cyan">{" · " + osc8(focusUrl, "↪ go to pane")}</Text>
         ) : null}
+        {targetSegment}
       </Box>
       {intentLine}
       {typeof s.skill === "string" && s.skill.length > 0 ? (
