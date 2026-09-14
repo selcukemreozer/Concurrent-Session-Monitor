@@ -68,6 +68,19 @@ export interface SessionState {
   intent?: string;
   /** ISO-8601 timestamp the intent was last set (optional, INT-01). */
   intent_ts?: string;
+  /**
+   * The git branch this session declares it INTENDS to work on (optional,
+   * TB-01). Written to a SEPARATE `target-branch.txt` shard by the
+   * `/csm-branch` command (scripts/csm-branch.mjs) — a distinct writer from the
+   * SessionStart/heartbeat hooks, preserving the one-writer-per-file invariant
+   * (D-01/D-BR-01). Distinct from `branch` above, which is the CURRENT checkout;
+   * the panel flags a mismatch between the two. Sanitized (control-stripped,
+   * single-line, capped) at write time. Additive optional field read from a
+   * separate shard — SESSION_SCHEMA_VERSION is NOT bumped (D-BR-04).
+   */
+  target_branch?: string;
+  /** ISO-8601 timestamp the target branch was last declared (optional, TB-01). */
+  target_branch_ts?: string;
 }
 
 /**

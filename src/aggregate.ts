@@ -90,6 +90,17 @@ export type SessionRow = SessionState & {
   /** ISO-8601 timestamp the intent was last set, when present (INT-01). */
   intent_ts?: string;
   /**
+   * The session's declared TARGET branch (TB-02), surfaced from the
+   * `target-branch.txt` shard written by `/csm-branch`. Undefined when none was
+   * declared or the shard is absent/torn (D-11 self-heal) — a purely additive,
+   * card-only field that NEVER drives sort, liveness, or conflict detection
+   * (D-BR-03/D-BR-05). Distinct from `branch` (the CURRENT checkout); the panel
+   * flags a mismatch between the two.
+   */
+  target_branch?: string;
+  /** ISO-8601 ts the target branch was last declared, when present (TB-02). */
+  target_branch_ts?: string;
+  /**
    * Most-recently model-invoked skill within CSM_SKILL_WINDOW_MS (SKILL-03),
    * surfaced from the `skill.jsonl` shard. Undefined when no in-window skill or
    * the shard is absent/torn (T-04.3-03 self-heal) — a purely additive,
@@ -239,6 +250,31 @@ function readIntent(dir: string): { intent?: string; intent_ts?: string } {
 }
 
 /**
+ * Read one session's declared TARGET branch from its `target-branch.txt` shard
+ * (TB-02). Mirrors {@link readIntent} EXACTLY: an absent or torn/partial shard is
+ * the NORMAL case (D-11 self-heal), so any read/parse throw returns `{}` and the
+ * session is never dropped from the roster. Returns `{ target_branch,
+ * target_branch_ts }` only when the parsed `target_branch` is a non-empty string;
+ * an empty-string target_branch is treated as absent. `target_branch_ts` comes
+ * from a string `ts`, else undefined. Card-only — it feeds neither sort,
+ * liveness, nor conflict detection (D-02/D-03/D-BR-05).
+ */
+function readTargetBranch(dir: string): { target_branch?: string; target_branch_ts?: string } {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(path.join(dir, "target-branch.txt"), "utf8"));
+    if (typeof parsed?.target_branch === "string" && parsed.target_branch.length > 0) {
+      return {
+        target_branch: parsed.target_branch,
+        target_branch_ts: typeof parsed.ts === "string" ? parsed.ts : undefined,
+      };
+    }
+    return {};
+  } catch {
+    return {}; // absent/torn target-branch.txt self-heals (D-11)
+  }
+}
+
+/**
  * Reduce one session's `skill.jsonl` shard into the NEWEST in-window skill
  * (SKILL-03/D-02). Mirrors {@link activeReads}' torn-line-safe reduce — try/catch
  * read returning `{}` on throw (absent shard self-heals, T-04.3-03), per-line
@@ -377,6 +413,7 @@ export function readAll(
       files,
       reads,
       ...readIntent(dir), // INT-01 additive read-side field (D-01 separate shard)
+      ...readTargetBranch(dir), // TB-02 additive card-only field (D-01/D-BR-01 separate shard)
       ...readSkill(dir, now), // SKILL-03 additive card-only field (D-01 separate shard)
       last_active: lastActive,
       last_seen: heartbeatMs !== undefined ? new Date(heartbeatMs).toISOString() : state.last_seen,

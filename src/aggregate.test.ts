@@ -535,3 +535,56 @@ describe("readSkill (skill window, SKILL-03/D-02)", () => {
     expect(newerRow.skill).toBe("gsd-quick");
   });
 });
+
+// RED (260914-507 Task 2): readAll must surface a per-session target-branch.txt
+// shard as SessionRow.target_branch / target_branch_ts (TB-02). target-branch.txt
+// is a SEPARATE writer from session.json (D-01/D-BR-01), format
+// `{ target_branch: string, ts: string }`. An absent or torn shard must leave
+// target_branch undefined and NEVER drop the session (D-11 self-heal), mirroring
+// the readIntent try/catch shape exactly. An empty-string target_branch is
+// treated as absent.
+describe("readTargetBranch surface (TB-02, D-01/D-BR-01/D-11)", () => {
+  function writeTargetBranch(dir: string, snap: { target_branch?: unknown; ts?: unknown }): void {
+    fs.writeFileSync(path.join(dir, "target-branch.txt"), JSON.stringify(snap), { mode: 0o600 });
+  }
+
+  it("valid target-branch.txt: readAll's row carries target_branch and target_branch_ts", () => {
+    const now = Date.now();
+    const dir = seedSession("tb-ok", new Date(now).toISOString());
+    const ts = new Date(now).toISOString();
+    writeTargetBranch(dir, { target_branch: "feature-x", ts });
+
+    const row = readAll(now).find((r) => r.session_id === "tb-ok")!;
+    expect(row.target_branch).toBe("feature-x");
+    expect(row.target_branch_ts).toBe(ts);
+  });
+
+  it("torn target-branch.txt (non-JSON): row still appears with target_branch undefined (never dropped)", () => {
+    const now = Date.now();
+    const dir = seedSession("tb-torn", new Date(now).toISOString());
+    fs.writeFileSync(path.join(dir, "target-branch.txt"), "{not json", { mode: 0o600 });
+
+    const row = readAll(now).find((r) => r.session_id === "tb-torn");
+    expect(row).toBeDefined();
+    expect(row!.target_branch).toBeUndefined();
+    expect(row!.target_branch_ts).toBeUndefined();
+  });
+
+  it("absent target-branch.txt: target_branch is undefined and the session still appears", () => {
+    const now = Date.now();
+    seedSession("tb-absent", new Date(now).toISOString());
+
+    const row = readAll(now).find((r) => r.session_id === "tb-absent");
+    expect(row).toBeDefined();
+    expect(row!.target_branch).toBeUndefined();
+  });
+
+  it("empty-string target_branch is treated as absent (undefined, not empty)", () => {
+    const now = Date.now();
+    const dir = seedSession("tb-empty", new Date(now).toISOString());
+    writeTargetBranch(dir, { target_branch: "", ts: new Date(now).toISOString() });
+
+    const row = readAll(now).find((r) => r.session_id === "tb-empty")!;
+    expect(row.target_branch).toBeUndefined();
+  });
+});
