@@ -151,6 +151,30 @@ describe("csm-done writer (INT-01, D-03)", () => {
     expect(fs.existsSync(path.join(tmp, "evil"))).toBe(false);
   });
 
+  it("clears the target-branch shard (D-BR-02), leaving session.json byte-for-byte unchanged", () => {
+    const id = "done-target";
+    const dir = seed(id, { intent: "wip" });
+    // Seed a target-branch.txt directly (JSON: target_branch + ts), as /csm-branch writes.
+    fs.writeFileSync(
+      path.join(dir, "target-branch.txt"),
+      JSON.stringify({ target_branch: "feature-x", ts: new Date().toISOString() }),
+      { mode: 0o600 },
+    );
+    expect(fs.existsSync(path.join(dir, "target-branch.txt"))).toBe(true);
+
+    const sessionJsonPath = path.join(dir, "session.json");
+    const sessionBytesBefore = fs.readFileSync(sessionJsonPath);
+
+    const res = runDone(id, tmp);
+    expect(res.status).toBe(0);
+
+    // (1) the target-branch shard is removed (D-BR-02).
+    expect(fs.existsSync(path.join(dir, "target-branch.txt"))).toBe(false);
+    // (2) session.json byte-for-byte unchanged -> the session was NOT ended (D-01/D-BR-02).
+    expect(fs.readFileSync(sessionJsonPath).equals(sessionBytesBefore)).toBe(true);
+    expect(fs.existsSync(sessionJsonPath)).toBe(true);
+  });
+
   it("a session with no active files and no intent still exits 0 and never mints session.json", () => {
     const id = "empty-sess";
     // An empty shard dir: no session.json, no intent.txt, no files.jsonl.

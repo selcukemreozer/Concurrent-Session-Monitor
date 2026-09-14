@@ -108,6 +108,12 @@ try {
     // We deliberately do NOT create an empty intent.txt.
     rmSync(path.join(dir, "intent.txt"), { force: true });
 
+    // (a2) Clear the declared target branch (D-BR-02) — remove target-branch.txt
+    // if present. The done gesture releases the session's declared work, so a
+    // declared target that outlived it would mislead. force:true = absent is a
+    // no-op; deliberately do NOT create an empty file. Mirrors the intent removal.
+    rmSync(path.join(dir, "target-branch.txt"), { force: true });
+
     // (b) Release active files — reduce files.jsonl to its currently-active
     // write paths and append one released:true TouchEvent per path (O_APPEND,
     // same line shape as on-tool.mjs). Confined to files.jsonl; no new shard.
@@ -121,7 +127,7 @@ try {
     }
 
     // Short confirmation inlined into context by the command's `!` injection.
-    process.stdout.write(`csm: done — intent cleared, ${released} file(s) released\n`);
+    process.stdout.write(`csm: done — intent + target cleared, ${released} file(s) released\n`);
   }
 } catch {
   // Swallow everything: the done gesture is passive, never blocks the agent.
