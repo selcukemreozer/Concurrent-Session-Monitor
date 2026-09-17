@@ -21,7 +21,7 @@ function readRel(rel: string): string {
 
 const README = readRel("../README.md");
 
-/** The 11 live, user-facing CSM_* env knobs (source-verified). */
+/** The 12 live, user-facing CSM_* env knobs (source-verified). */
 const ENV_KNOBS = [
   "CSM_STORE_DIR",
   "CSM_STALE_MS",
@@ -33,6 +33,7 @@ const ENV_KNOBS = [
   "CSM_SKILL_WINDOW_MS",
   "CSM_PORT_SCAN_MS",
   "CSM_PHASE_SCAN_MS",
+  "CSM_BRANCH_SCAN_MS",
   "CSM_GSD_TOOLS",
 ] as const;
 
@@ -59,8 +60,9 @@ describe("README end-user docs (SC-4 doc-lint gate)", () => {
     expect(README).toMatch(/terminal/i);
   });
 
-  it("documents each of the three slash commands", () => {
+  it("documents each of the four slash commands", () => {
     expect(README).toContain("/csm-intent");
+    expect(README).toContain("/csm-branch");
     expect(README).toContain("/csm-done");
     expect(README).toContain("/csm-status");
   });

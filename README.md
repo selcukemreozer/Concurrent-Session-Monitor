@@ -10,7 +10,7 @@
   <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-2f5d3f?style=flat-square">
   <img alt="platform: macOS" src="https://img.shields.io/badge/platform-macOS-2f5d3f?style=flat-square">
   <img alt="node &gt;= 22" src="https://img.shields.io/badge/node-%3E%3D22-2f5d3f?style=flat-square">
-  <img alt="version 1.0.2" src="https://img.shields.io/badge/version-1.0.2-2f5d3f?style=flat-square">
+  <img alt="version 1.0.3" src="https://img.shields.io/badge/version-1.0.3-2f5d3f?style=flat-square">
   <img alt="license: MIT" src="https://img.shields.io/badge/license-MIT-2f5d3f?style=flat-square">
 </p>
 
@@ -33,6 +33,7 @@ noticed before they collide.
 - **Live file map**: every file each session is touching, updated within about a second, with no manual refresh.
 - **Conflict warnings**: the instant two sessions claim the same file, the panel flags it, before the edits collide.
 - **Session context**: per-session uptime, model, current intent, listening ports, and GSD-phase progress at a glance.
+- **Branch awareness**: each session's live current branch, plus the target branch it declares with `/csm-branch`; the panel flags a mismatch when a session is not yet on the branch it means to work on.
 - **Zero-config and non-intrusive**: capture hooks are async and never slow your tools; there is nothing to configure.
 
 ## Install
@@ -89,8 +90,13 @@ Use these from inside any Claude Code session:
 
 - `/csm-intent <task>`: record what this session is working on (shows up on the
   session's row in the panel and in `/csm-status`).
+- `/csm-branch <name>`: declare the git branch this session means to work on. The
+  panel and `/csm-status` show this target branch next to the session's live
+  current branch and flag it when the two differ, so you notice a session still
+  sitting on the wrong branch.
 - `/csm-done`: mark the current task done, which clears this session's intent and
-  releases the files it was holding. It does **not** end the session.
+  its declared target branch, and releases the files it was holding. It does
+  **not** end the session.
 - `/csm-status`: print the live cross-session roster plus any conflicts relevant
   to you, as plain text, right in the conversation.
 
@@ -112,6 +118,7 @@ back to the default. Times are in milliseconds.
 | `CSM_CONFLICT_MS` | tracks `CSM_WINDOW_MS` | Conflict-detection window. Not independently wired in v1; the effective window equals the active-file window (`CSM_WINDOW_MS`). |
 | `CSM_PORT_SCAN_MS` | `2500` (2.5 s) | Cadence of the listening-port scan feeding the PORTS pane. |
 | `CSM_PHASE_SCAN_MS` | `4000` (4 s) | Cadence of the GSD phase-progress scan feeding the FAZLAR pane. |
+| `CSM_BRANCH_SCAN_MS` | `1500` (1.5 s) | Cadence of the live current-branch scan that derives each session's checked-out branch from its working directory. |
 | `CSM_GSD_TOOLS` | auto-detected | Absolute path to the `gsd-tools` binary used by the phases pane. Set it to override auto-detection. |
 
 ## Platform and caveats
