@@ -335,6 +335,39 @@ describe("App summary header (D-15)", () => {
   });
 });
 
+// RED (06-05): the header gains a "N waiting" counter beside "N conflicts"
+// (D-01), counting ONLY non-ended display rows (Pitfall 5) — an ended/grey row in
+// the grace state must never inflate the count nor resurrect a pruned session. The
+// counter is always rendered (colored only when >0) for layout stability. RED
+// until App.tsx adds the nWaiting counter.
+describe("App waiting counter (ATTN-03, D-01 header counter, Pitfall 5)", () => {
+  beforeEach(() => {
+    (readAll as unknown as { mockReset: () => void }).mockReset();
+    (pruneSession as unknown as { mockReset: () => void }).mockReset();
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("counts only non-ended waiting rows: '1 waiting' for one live waiting row while an ended waiting row is excluded", () => {
+    (readAll as unknown as { mockReturnValue: (v: unknown) => unknown }).mockReturnValue([
+      makeRow({ session_id: "live-wait", alive: true, readyToPrune: false, dotState: "active", attention: true } as Partial<SessionRow>),
+      // An ended/grey row (readyToPrune) that is ALSO waiting — must NOT be counted.
+      makeRow({ session_id: "ended-wait", alive: false, readyToPrune: true, dotState: "stale", attention: true } as Partial<SessionRow>),
+    ]);
+    const { inst, frame } = renderCapture();
+    expect(frame()).toContain("1 waiting");
+    inst.unmount();
+  });
+
+  it("renders '0 waiting' when no live session is waiting (counter always shown)", () => {
+    (readAll as unknown as { mockReturnValue: (v: unknown) => unknown }).mockReturnValue([
+      makeRow({ session_id: "a", alive: true, dotState: "active", attention: false } as Partial<SessionRow>),
+    ]);
+    const { inst, frame } = renderCapture();
+    expect(frame()).toContain("0 waiting");
+    inst.unmount();
+  });
+});
+
 describe("App conflict surface (PANEL-04 SC-1/SC-3, D-06/D-07)", () => {
   beforeEach(() => {
     (readAll as unknown as { mockReset: () => void }).mockReset();

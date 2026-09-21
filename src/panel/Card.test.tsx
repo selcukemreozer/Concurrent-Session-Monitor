@@ -506,6 +506,38 @@ describe("SessionCard target branch (mismatch flag) (TB-03, D-BR-03/D-BR-05)", (
   });
 });
 
+// RED (06-05): unlike the card-only reads ◇ / skill ⚙ / intent » markers, the
+// attention alert renders on BOTH SessionCard AND CompactRow (D-01), as the
+// fisheye ◉ (U+25C9, yellowBright+bold — asserted here glyph/text-only, never on
+// ANSI color, per project memory "panel-tests-color-fragility"). SessionCard also
+// carries the literal detail-free label "waiting" (D-02 forbids splitting on
+// type). Both surfaces render nothing when attention is false. These are RED until
+// Card.tsx gains the ATTENTION_GLYPH line + compact token.
+describe("SessionCard + CompactRow attention indicator (ATTN-03, D-01/D-02/D-03)", () => {
+  const ATTENTION_GLYPH = "◉"; // U+25C9 fisheye
+
+  it("SessionCard renders the fisheye glyph AND the literal 'waiting' when attention is true", () => {
+    const out = stripAnsi(renderToString(<SessionCard s={makeRow({ attention: true } as Partial<SessionRow>)} />));
+    expect(out).toContain(ATTENTION_GLYPH);
+    expect(out).toContain("waiting");
+  });
+
+  it("CompactRow renders the fisheye glyph when attention is true (D-01: the alert appears on the compact row too)", () => {
+    const out = stripAnsi(renderToString(<CompactRow s={makeRow({ attention: true } as Partial<SessionRow>)} />));
+    expect(out).toContain(ATTENTION_GLYPH);
+  });
+
+  it("SessionCard renders NO fisheye glyph when attention is false", () => {
+    const out = stripAnsi(renderToString(<SessionCard s={makeRow({ attention: false } as Partial<SessionRow>)} />));
+    expect(out).not.toContain(ATTENTION_GLYPH);
+  });
+
+  it("CompactRow renders NO fisheye glyph when attention is false", () => {
+    const out = stripAnsi(renderToString(<CompactRow s={makeRow({ attention: false } as Partial<SessionRow>)} />));
+    expect(out).not.toContain(ATTENTION_GLYPH);
+  });
+});
+
 /** Minimal Conflict fixture builder for band render assertions. */
 function makeConflict(over: Partial<Conflict> = {}): Conflict {
   return {

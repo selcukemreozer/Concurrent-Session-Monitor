@@ -52,6 +52,8 @@ interface SeedOpts {
   intent?: string;
   /** Declared target branch written to target-branch.txt; omitted => no shard (TB-03). */
   target_branch?: string;
+  /** Attention shard { type, ts } written to attention.json; omitted => no shard (ATTN-04). */
+  attention?: { type: string; ts: string };
   /**
    * Numeric pid written into the session.json `state` object. Used ONLY for
    * port-ancestry attribution (liveness comes from the fresh heartbeat, not pid).
@@ -98,6 +100,9 @@ function seed(storeDir: string, id: string, opts: SeedOpts = {}): void {
       JSON.stringify({ target_branch: opts.target_branch, ts: nowIso }),
       { mode: 0o600 },
     );
+  }
+  if (opts.attention !== undefined) {
+    fs.writeFileSync(path.join(dir, "attention.json"), JSON.stringify(opts.attention), { mode: 0o600 });
   }
 }
 
@@ -401,6 +406,47 @@ describe("csm-status reader — Ports: block (INT-02, PORT-05)", () => {
     // Denylisted Apple agent (rapportd / port 7000) is excluded.
     expect(res.stdout).not.toContain("rapportd");
     expect(res.stdout).not.toContain("7000");
+  });
+});
+
+// RED (06-06): the self-contained csm-status reader (imports no src/) mirrors the
+// aggregate.readAll gate inline — readAttention + the window/newer-than-activity
+// rule — and appends a detail-free "◉ waiting" marker to a waiting live session's
+// roster line (ATTN-04). A non-waiting live session omits it. lastSeenMs is
+// heartbeat-based (verified: csm-status.mjs line 472), so an attention ts newer
+// than the heartbeat and within CSM_ATTN_WINDOW_MS (default 90000) surfaces the
+// marker regardless of write timestamps. RED until csm-status.mjs adds the inline
+// read + marker.
+describe("csm-status reader — attention marker (ATTN-04)", () => {
+  const ATTENTION_GLYPH = "◉"; // U+25C9 fisheye
+
+  it("waiting: a live session whose attention.json is newer than its heartbeat and within window carries the detail-free ◉ waiting marker", () => {
+    const now = Date.now();
+    seed(tmp, "alpha111-aaaa", {
+      folder: "projAlpha",
+      heartbeat: new Date(now - 30_000).toISOString(), // fresh (live) but 30s ago
+      writes: ["/repo/a.ts"],
+      intent: "awaiting approval",
+      // Attention 5s ago: newer than the heartbeat, well within the 90s window.
+      attention: { type: "permission_prompt", ts: new Date(now - 5_000).toISOString() },
+    });
+
+    const res = runStatus("alpha111-aaaa", tmp);
+    expect(res.status).toBe(0);
+    const line = lineFor(res.stdout, "alpha111-aaaa");
+    expect(line).toBeDefined();
+    expect(line).toContain(ATTENTION_GLYPH);
+    expect(line).toContain("waiting");
+  });
+
+  it("not waiting: a live session with NO attention.json omits the marker", () => {
+    seed(tmp, "beta2222-bbbb", { folder: "projBeta", writes: ["/repo/b.ts"], intent: "coding" });
+
+    const res = runStatus("beta2222-bbbb", tmp);
+    expect(res.status).toBe(0);
+    const line = lineFor(res.stdout, "beta2222-bbbb");
+    expect(line).toBeDefined();
+    expect(line).not.toContain(ATTENTION_GLYPH);
   });
 });
 
