@@ -15,6 +15,11 @@ const onTool = path.join(repoRoot, "scripts", "on-tool.mjs");
 const onSessionStart = path.join(repoRoot, "scripts", "on-session-start.mjs");
 const onUserPrompt = path.join(repoRoot, "scripts", "on-user-prompt.mjs");
 const onSkill = path.join(repoRoot, "scripts", "on-skill.mjs");
+// RED (06-02): the Notification capture hook does not exist yet. It writes a
+// per-session attention.json snapshot shard { type, ts } and — CRITICALLY —
+// must NOT refresh the heartbeat (Pitfall 1), so the reader-side newer-than
+// gate can surface the ◉ waiting flag.
+const onNotification = path.join(repoRoot, "scripts", "on-notification.mjs");
 
 let tmp: string;
 
@@ -357,5 +362,116 @@ describe("skill capture (SKILL-01/02)", () => {
     expect(fs.existsSync(path.join(tmp, "evil"))).toBe(false);
     expect(fs.existsSync(path.join(tmp, "sessions", "..", "evil"))).toBe(false);
     expect(fs.existsSync(path.join(tmp, "sessions", "..", "evil", "skill.jsonl"))).toBe(false);
+  });
+});
+
+// --- Plan 06-02: Notification capture writes its OWN attention.json snapshot
+// shard, NEVER a heartbeat (ATTN-01). Payload shape verified by the Phase-6
+// spike:
+//   { session_id, hook_event_name:"Notification", notification_type, message,
+//     transcript_path, prompt_id, cwd, ... }
+// The writer must persist ONLY { type, ts } (detail-free — no message/transcript/
+// prompt id leaks), narrow notification_type to the known enum
+// {permission_prompt, idle_prompt} else "waiting", and — the single phase-unique
+// rule — write NO heartbeat sidecar (Pitfall 1), or the reader's newer-than gate
+// would never surface the ◉ flag. These cases are RED until scripts/
+// on-notification.mjs lands in 06-02.
+
+describe("notification capture (ATTN-01)", () => {
+  const notifPayload = (extra: Record<string, unknown> = {}) =>
+    JSON.stringify({
+      session_id: "s",
+      cwd: "/repo",
+      hook_event_name: "Notification",
+      notification_type: "idle_prompt",
+      message: "Claude is waiting for your input",
+      transcript_path: "/some/transcript.jsonl",
+      prompt_id: "p-123",
+      ...extra,
+    });
+
+  const attentionPath = (id: string) => path.join(tmp, "sessions", id, "attention.json");
+  const heartbeatPath = (id: string) => path.join(tmp, "sessions", id, "heartbeat");
+
+  it("(a) ATTN-01 write: a valid idle_prompt Notification exits 0 and writes attention.json {type:'idle_prompt', ts:<ISO>}", () => {
+    const res = runHook(onNotification, notifPayload(), tmp);
+    expect(res.status).toBe(0);
+
+    const evt = JSON.parse(fs.readFileSync(attentionPath("s"), "utf8"));
+    expect(evt.type).toBe("idle_prompt");
+    expect(typeof evt.ts).toBe("string");
+    expect(Number.isFinite(Date.parse(evt.ts))).toBe(true);
+  });
+
+  it("(b) Pitfall-1 no-heartbeat: after the write attention.json EXISTS but the heartbeat sidecar does NOT (a waiting session emits no activity signal)", () => {
+    const res = runHook(onNotification, notifPayload(), tmp);
+    expect(res.status).toBe(0);
+
+    expect(fs.existsSync(attentionPath("s"))).toBe(true);
+    // The single phase-unique invariant: this hook must NEVER refresh heartbeat.
+    expect(fs.existsSync(heartbeatPath("s"))).toBe(false);
+  });
+
+  it("(c) permission_prompt: the type is persisted verbatim as 'permission_prompt'", () => {
+    const res = runHook(onNotification, notifPayload({ notification_type: "permission_prompt" }), tmp);
+    expect(res.status).toBe(0);
+
+    const evt = JSON.parse(fs.readFileSync(attentionPath("s"), "utf8"));
+    expect(evt.type).toBe("permission_prompt");
+  });
+
+  it("(d) enum narrowing: an unknown/crafted notification_type collapses to 'waiting' (A4/ASVS V5)", () => {
+    const res = runHook(onNotification, notifPayload({ notification_type: "weird" }), tmp);
+    expect(res.status).toBe(0);
+
+    const evt = JSON.parse(fs.readFileSync(attentionPath("s"), "utf8"));
+    expect(evt.type).toBe("waiting");
+  });
+
+  it("(e) detail-free: the written object exposes EXACTLY the keys ts and type — no message/transcript/prompt id leaks in", () => {
+    const res = runHook(onNotification, notifPayload(), tmp);
+    expect(res.status).toBe(0);
+
+    const evt = JSON.parse(fs.readFileSync(attentionPath("s"), "utf8"));
+    expect(Object.keys(evt).sort()).toEqual(["ts", "type"]);
+  });
+
+  it("(f) passivity: malformed stdin exits 0 with empty stdout and writes NO attention.json", () => {
+    const malformed = runHook(onNotification, "not json{", tmp);
+    expect(malformed.status).toBe(0);
+    expect(malformed.stdout).toBe("");
+    expect(fs.existsSync(attentionPath("s"))).toBe(false);
+  });
+
+  it("(g) passivity: an unwritable 0o500 store dir still exits 0 with empty stdout (mirror on-skill)", () => {
+    const readOnly = path.join(tmp, "readonly");
+    fs.mkdirSync(readOnly, { recursive: true });
+    fs.chmodSync(readOnly, 0o500);
+    const unwritable = runHook(onNotification, notifPayload(), readOnly);
+    expect(unwritable.status).toBe(0);
+    expect(unwritable.stdout).toBe("");
+    fs.chmodSync(readOnly, 0o700);
+  });
+
+  it("(h) W3 security (T-06-01): a crafted/traversal session_id is rejected by SAFE_ID — exits 0, writes no attention.json, and creates no file outside the session subtree", () => {
+    for (const crafted of ["../evil", "a/../../b"]) {
+      const res = runHook(onNotification, notifPayload({ session_id: crafted }), tmp);
+      expect(res.status).toBe(0);
+    }
+    // No escape above the sessions dir, and no attention shard for any crafted id.
+    expect(fs.existsSync(path.join(tmp, "evil"))).toBe(false);
+    expect(fs.existsSync(path.join(tmp, "sessions", "..", "evil"))).toBe(false);
+    expect(fs.existsSync(path.join(tmp, "sessions", "..", "evil", "attention.json"))).toBe(false);
+    expect(fs.existsSync(path.join(tmp, "b"))).toBe(false);
+    // Belt-and-braces: nothing anywhere under the store root carries the crafted segment.
+    const walk = (d: string): string[] =>
+      fs.existsSync(d)
+        ? fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => {
+            const full = path.join(d, e.name);
+            return e.isDirectory() ? [full, ...walk(full)] : [full];
+          })
+        : [];
+    const all = walk(tmp);
+    expect(all.some((p) => p.includes("evil"))).toBe(false);
   });
 });

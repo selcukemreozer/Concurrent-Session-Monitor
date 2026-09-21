@@ -21,7 +21,7 @@ function readRel(rel: string): string {
 
 const README = readRel("../README.md");
 
-/** The 12 live, user-facing CSM_* env knobs (source-verified). */
+/** The 13 live, user-facing CSM_* env knobs (source-verified). */
 const ENV_KNOBS = [
   "CSM_STORE_DIR",
   "CSM_STALE_MS",
@@ -31,6 +31,7 @@ const ENV_KNOBS = [
   "CSM_WINDOW_MS",
   "CSM_READ_WINDOW_MS",
   "CSM_SKILL_WINDOW_MS",
+  "CSM_ATTN_WINDOW_MS",
   "CSM_PORT_SCAN_MS",
   "CSM_PHASE_SCAN_MS",
   "CSM_BRANCH_SCAN_MS",

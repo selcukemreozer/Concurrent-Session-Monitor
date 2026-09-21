@@ -23,6 +23,7 @@ afterEach(() => {
   delete process.env.CSM_ACTIVE_MS;
   delete process.env.CSM_READ_WINDOW_MS;
   delete process.env.CSM_SKILL_WINDOW_MS;
+  delete process.env.CSM_ATTN_WINDOW_MS;
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
@@ -586,5 +587,74 @@ describe("readTargetBranch surface (TB-02, D-01/D-BR-01/D-11)", () => {
 
     const row = readAll(now).find((r) => r.session_id === "tb-empty")!;
     expect(row.target_branch).toBeUndefined();
+  });
+});
+
+// RED (06-03): readAll must surface a per-session attention.json snapshot shard
+// as a PRE-GATED boolean SessionRow.attention (+ passthrough attention_type /
+// attention_ts) (ATTN-02/03). attention.json is a SEPARATE writer from
+// session.json (D-01), format `{ type: string, ts: string }`. The gate is the
+// single genuinely-new rule in the phase (Pattern 2): the flag shows only while
+// the attention ts is BOTH within CSM_ATTN_WINDOW_MS (default 90000) AND strictly
+// NEWER than the session's last activity (heartbeat / newest tool touch). All
+// timestamps are explicit ISO strings and `now` is injected, so the four gate
+// cases are deterministic with no timers. attention NEVER drives sort/liveness/
+// conflicts — presentation-only, like reads/skill/intent/branch.
+describe("readAttention gate (ATTN-02/03, D-04 window + newer-than-activity)", () => {
+  function writeAttention(dir: string, snap: { type?: unknown; ts?: unknown }): void {
+    fs.writeFileSync(path.join(dir, "attention.json"), JSON.stringify(snap), { mode: 0o600 });
+  }
+
+  it("case 1 — in-window AND newer than heartbeat: attention true with attention_type passthrough", () => {
+    const now = Date.now();
+    // Heartbeat 30s ago; attention 5s ago (newer than heartbeat, well within 90s).
+    const dir = seedSession("at-show", new Date(now - 120_000).toISOString(), {
+      heartbeat: new Date(now - 30_000).toISOString(),
+    });
+    const attnTs = new Date(now - 5_000).toISOString();
+    writeAttention(dir, { type: "permission_prompt", ts: attnTs });
+
+    const row = readAll(now).find((r) => r.session_id === "at-show")!;
+    expect(row.attention).toBe(true);
+    expect(row.attention_type).toBe("permission_prompt");
+    expect(row.attention_ts).toBe(attnTs);
+  });
+
+  it("case 2 — attention OLDER than the heartbeat (session resumed): attention false", () => {
+    const now = Date.now();
+    // Attention 40s ago, but the heartbeat is fresher (5s ago) => the session
+    // resumed activity after the prompt, so the flag must clear.
+    const dir = seedSession("at-resumed", new Date(now - 120_000).toISOString(), {
+      heartbeat: new Date(now - 5_000).toISOString(),
+    });
+    writeAttention(dir, { type: "idle_prompt", ts: new Date(now - 40_000).toISOString() });
+
+    const row = readAll(now).find((r) => r.session_id === "at-resumed")!;
+    expect(row.attention).toBe(false);
+  });
+
+  it("case 3 — attention older than now minus CSM_ATTN_WINDOW_MS (expired): attention false", () => {
+    process.env.CSM_ATTN_WINDOW_MS = "90000";
+    const now = Date.now();
+    // Attention 120s ago (beyond the 90s window) though still newer than a very
+    // old heartbeat — the window backstop must expire it.
+    const dir = seedSession("at-expired", new Date(now - 600_000).toISOString(), {
+      heartbeat: new Date(now - 300_000).toISOString(),
+    });
+    writeAttention(dir, { type: "idle_prompt", ts: new Date(now - 120_000).toISOString() });
+
+    const row = readAll(now).find((r) => r.session_id === "at-expired")!;
+    expect(row.attention).toBe(false);
+  });
+
+  it("case 4 — no attention.json at all: attention false and the session still appears", () => {
+    const now = Date.now();
+    seedSession("at-absent", new Date(now).toISOString(), {
+      heartbeat: new Date(now - 5_000).toISOString(),
+    });
+
+    const row = readAll(now).find((r) => r.session_id === "at-absent");
+    expect(row).toBeDefined();
+    expect(row!.attention).toBe(false);
   });
 });
