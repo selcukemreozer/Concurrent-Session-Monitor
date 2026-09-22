@@ -112,6 +112,7 @@ back to the default. Times are in milliseconds.
 | `CSM_WINDOW_MS` | `300000` (5 min) | Rolling window for a session's "active files": files touched within this window count as currently held. |
 | `CSM_READ_WINDOW_MS` | `30000` (30 s) | Shorter window for read activity; reads decay ~10x faster than writes. |
 | `CSM_SKILL_WINDOW_MS` | `300000` (5 min) | Window for the most-recently-invoked skill shown on a session row. |
+| `CSM_ATTN_WINDOW_MS` | `90000` (90 s) | How long a session's "waiting on you" attention flag stays shown after its last Notification before auto-expiring as a backstop. Must exceed the ~60s idle-prompt re-fire cadence so a still-idle session stays flagged. |
 | `CSM_STALE_MS` | `120000` (2 min) | Liveness TTL: a session with no heartbeat for this long is treated as inactive. |
 | `CSM_ACTIVE_MS` | `30000` (30 s) | Recency threshold for the green/yellow activity dot. |
 | `CSM_GRACE_MS` | `1200` (1.2 s) | Grace window: a vanished session is shown dim-grey as "ended" for this long before it is pruned, so you see it die rather than blink out. |
