@@ -81,6 +81,19 @@ const BRANCH_GLYPH = "⎇";
 const NEQ_GLYPH = "≠";
 
 /**
+ * The action-needed attention indicator (ATTN-03 D-03): the fisheye `◉` (U+25C9).
+ * It is >= 0x00A0 so `sanitize()` preserves it, and it collides with NO reserved
+ * cue — NOT the liveness `●`, read `◇`, filled `◆`, conflict `⚠`, swap `↔`, link
+ * `↪`, intent `»`, exposed `⇅`, skill `⚙`, current-phase `▸`, or branch `⎇`. It
+ * always renders `yellowBright` + `bold`. Unlike the card-only reads/skill/intent
+ * markers, this indicator appears on BOTH SessionCard AND CompactRow (D-01). It is
+ * a SINGLE uniform, detail-free cue — the visual never splits on the attention
+ * type (permission_prompt vs idle_prompt), per D-02; the row consumes the
+ * pre-gated `s.attention` boolean (06-03) with no re-check here.
+ */
+const ATTENTION_GLYPH = "◉";
+
+/**
  * Wrap a URL + label in an OSC-8 hyperlink escape so terminals like Warp render
  * a clickable go-to-pane affordance (D-06):  ESC ]8;; URL ST label ESC ]8;; ST.
  *
@@ -229,6 +242,9 @@ export function SessionCard({ s }: { s: SessionRow }) {
         ) : null}
         {targetSegment}
       </Box>
+      {s.attention ? (
+        <Text color="yellowBright" bold>{"  " + ATTENTION_GLYPH + " waiting"}</Text>
+      ) : null}
       {intentLine}
       {typeof s.skill === "string" && s.skill.length > 0 ? (
         <Text dimColor>
@@ -286,6 +302,9 @@ export function CompactRow({ s }: { s: SessionRow }) {
   const uptime = sanitize(fmtUptime(Date.parse(s.start_time), Date.now()));
   return (
     <Text>
+      {s.attention ? (
+        <Text color="yellowBright" bold>{ATTENTION_GLYPH + " "}</Text>
+      ) : null}
       {sanitize(s.folder)}
       {" · "}
       {sanitize(s.branch) || "—"}
