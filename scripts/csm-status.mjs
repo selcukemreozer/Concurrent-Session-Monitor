@@ -92,6 +92,14 @@ function windowMs() {
 function staleMs() {
   return numEnv("CSM_STALE_MS", 120000);
 }
+/**
+ * Attention flag window (mirrors aggregate.attnWindowMs): how long a session's
+ * "waiting on you" flag stays shown after the last Notification before it
+ * auto-expires. Default 90000 (90s), > the ~60s idle-prompt re-fire cadence.
+ */
+function attnWindowMs() {
+  return numEnv("CSM_ATTN_WINDOW_MS", 90000);
+}
 
 /**
  * Render-boundary control-character strip (T-04-06, ASVS V5). Drops C0
@@ -192,6 +200,23 @@ function readTargetBranch(dir) {
   return undefined;
 }
 
+/**
+ * Read the attention snapshot shard {type, ts} written by on-notification.mjs
+ * (06-02), mirroring readTargetBranch's try/catch self-heal (T-06-07): returns
+ * the parsed object only when it has a non-empty string `type` and a string
+ * `ts`; any throw / torn / absent file returns undefined. NEVER the message.
+ */
+function readAttention(dir) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(path.join(dir, "attention.json"), "utf8"));
+    if (typeof parsed?.type === "string" && parsed.type.length > 0 && typeof parsed?.ts === "string")
+      return parsed;
+  } catch {
+    // absent/torn attention.json self-heals (D-11) — the row still renders
+  }
+  return undefined;
+}
+
 /** Resolve the heartbeat sidecar last-seen ms (mirrors liveness.resolveLastSeen). */
 function resolveLastSeen(dir) {
   const hb = path.join(dir, "heartbeat");
@@ -246,6 +271,8 @@ const EXPOSED_GLYPH = "⇅";
 /** Declared-target-branch marker (U+2387) and mismatch flag (U+2260), TB-03; both >= 0x00A0 so sanitize keeps them. */
 const BRANCH_GLYPH = "⎇";
 const NEQ_GLYPH = "≠";
+/** Detail-free "waiting on the human" marker glyph (U+25C9 fisheye); >= 0x00A0 so sanitize keeps it. Matches the panel label. */
+const ATTENTION_GLYPH = "◉";
 /** User-bucket heading literal (mirror Card.tsx:494 / D-02) — ASCII, constant. */
 const USER_BUCKET = "Sen (kullanici)";
 
@@ -478,6 +505,14 @@ async function main() {
     const startMs = Date.parse(state.start_time);
     const sortMs = lastActiveMs !== -Infinity ? lastActiveMs : Number.isNaN(startMs) ? 0 : startMs;
 
+    // ATTN-04 reader gate — mirrors aggregate.readAll exactly: within the window
+    // AND newer than the already-computed lastSeenMs (the D-04 activity signal).
+    // Both strict; NaN ts self-heals to false. Reuses lastSeenMs, never recomputed.
+    const attn = readAttention(dir);
+    const attnMs = attn ? Date.parse(attn.ts) : NaN;
+    const attention =
+      !Number.isNaN(attnMs) && now - attnMs < attnWindowMs() && attnMs > lastSeenMs;
+
     rows.push({
       session_id: typeof state.session_id === "string" ? state.session_id : id,
       folder: state.folder,
@@ -491,6 +526,7 @@ async function main() {
       cwd: typeof state.cwd === "string" ? state.cwd : undefined,
       intent: readIntent(dir),
       target_branch: readTargetBranch(dir), // TB-03 declared target (current branch is state.branch)
+      attention, // ATTN-04 pre-gated boolean: waiting on the human (detail-free)
       files, // [{file_path, tsMs}]
       startMs: Number.isNaN(startMs) ? now : startMs,
       sortMs,
@@ -540,7 +576,11 @@ async function main() {
     const uptime = fmtUptime(r.startMs, now);
     const you = callerId !== undefined && r.session_id === callerId ? " (you)" : "";
 
-    out.push(`${folder} · ${branch}${targetToken} · ${shortId} · ${intentCol} · ${filesCol} · ${uptime}${you}`);
+    // ATTN-04 detail-free waiting marker: a FIXED glyph + literal (no type text,
+    // T-06-02/T-06-06) appended only when the pre-gated attention flag held.
+    const attnMarker = r.attention ? ` ${ATTENTION_GLYPH} waiting` : "";
+
+    out.push(`${folder} · ${branch}${targetToken} · ${shortId} · ${intentCol} · ${filesCol} · ${uptime}${attnMarker}${you}`);
   }
 
   // ---- Conflicts relevant to you (self-excluded) --------------------------
