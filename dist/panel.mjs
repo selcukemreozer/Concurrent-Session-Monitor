@@ -38069,6 +38069,9 @@ function readWindowMs() {
 function skillWindowMs() {
   return numEnv("CSM_SKILL_WINDOW_MS", 5 * 60 * 1e3);
 }
+function attnWindowMs() {
+  return numEnv("CSM_ATTN_WINDOW_MS", 9e4);
+}
 function activeFiles(dir, now) {
   let raw;
   try {
@@ -38205,6 +38208,19 @@ function readSkill(dir, now) {
     skill_subagent: typeof best.subagent === "string" && best.subagent ? best.subagent : void 0
   };
 }
+function readAttention(dir) {
+  try {
+    const parsed = JSON.parse(
+      fs4.readFileSync(path3.join(dir, "attention.json"), "utf8")
+    );
+    if (typeof parsed?.type === "string" && parsed.type.length > 0 && typeof parsed.ts === "string") {
+      return { attention_type: parsed.type, attention_ts: parsed.ts };
+    }
+    return {};
+  } catch {
+    return {};
+  }
+}
 function readAll(now = Date.now(), probe = defaultProbe, startedProbe = defaultStartedProbe) {
   const root = sessionsDir();
   let ids;
@@ -38228,6 +38244,9 @@ function readAll(now = Date.now(), probe = defaultProbe, startedProbe = defaultS
     const reads = rawReads.filter((r) => !writeSet.has(r.file_path));
     const heartbeatMs = resolveLastSeen(dir);
     const lastSeenMs = heartbeatMs ?? Date.parse(lastActive ?? state.start_time);
+    const attn = readAttention(dir);
+    const attnMs = attn.attention_ts !== void 0 ? Date.parse(attn.attention_ts) : NaN;
+    const attention = !Number.isNaN(attnMs) && now - attnMs < attnWindowMs() && attnMs > lastSeenMs;
     const fresh = now - lastSeenMs < staleMs();
     const verdict = isProcessAlive(state.pid, probe, state.pid_started, startedProbe);
     const procAlive = verdict === "alive";
@@ -38256,7 +38275,12 @@ function readAll(now = Date.now(), probe = defaultProbe, startedProbe = defaultS
       last_seen: heartbeatMs !== void 0 ? new Date(heartbeatMs).toISOString() : state.last_seen,
       alive,
       readyToPrune,
-      dotState
+      dotState,
+      // ATTN-02/03 additive card-only fields — pre-gated; type/ts only survive
+      // when the gate held, so the panel needs no re-check.
+      attention,
+      attention_type: attention ? attn.attention_type : void 0,
+      attention_ts: attention ? attn.attention_ts : void 0
     });
   }
   const key = (r) => Date.parse(r.last_active ?? r.start_time) || 0;

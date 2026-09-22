@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { sessionsDir } from "./paths.js";
 import { numEnv } from "./env.js";
-import type { SessionState, TouchEvent, SkillEvent } from "./schema.js";
+import type { SessionState, TouchEvent, SkillEvent, AttentionState } from "./schema.js";
 import {
   isProcessAlive,
   resolveLastSeen,
@@ -43,6 +43,19 @@ function readWindowMs(): number {
  */
 function skillWindowMs(): number {
   return numEnv("CSM_SKILL_WINDOW_MS", 5 * 60 * 1000);
+}
+
+/**
+ * The attention "needs-you" decay window (ATTN-02/03), config-adjustable via
+ * CSM_ATTN_WINDOW_MS (default 90000ms / 90s). A NEW numeric axis, DISTINCT from
+ * `windowMs()`/`readWindowMs()`/`skillWindowMs()`: an attention snapshot older
+ * than this expires the flag even before any activity resumes (the window
+ * backstop). Routed through `numEnv` so a NaN/negative override degrades to the
+ * 90000 default. Read lazily (not module-const) so tests can flip the env
+ * per-case.
+ */
+function attnWindowMs(): number {
+  return numEnv("CSM_ATTN_WINDOW_MS", 90_000);
 }
 
 /** One file a session is actively touching within the window. */
@@ -114,6 +127,25 @@ export type SessionRow = SessionState & {
    * (SKILL-02); undefined for a main-loop invocation. Card-only passthrough.
    */
   skill_subagent?: string;
+  /**
+   * Whether this session currently needs the human's attention (ATTN-02/03),
+   * PRE-GATED reader-side: true only while the `attention.json` snapshot ts is
+   * BOTH within `attnWindowMs()` AND strictly NEWER than the session's last
+   * activity (`lastSeenMs`: heartbeat / newest touch / start_time). The gate IS
+   * the race-free clear — a resumed session (fresher heartbeat) or an expired
+   * window flips this false on the next read tick, with no second writer. A
+   * purely additive, card/presentation-only field that NEVER drives sort,
+   * liveness, dotState, or conflict detection (D-01/D-04).
+   */
+  attention: boolean;
+  /**
+   * The narrowed attention kind ("permission_prompt" | "idle_prompt" |
+   * "waiting"), passed through from the shard only when `attention` is true;
+   * undefined otherwise. Card-only passthrough — drives nothing else.
+   */
+  attention_type?: string;
+  /** ISO-8601 ts of that attention snapshot, present only when `attention` is true. */
+  attention_ts?: string;
 };
 
 /**
@@ -331,6 +363,33 @@ function readSkill(
 }
 
 /**
+ * Read one session's "needs-attention" snapshot from its `attention.json` shard
+ * (ATTN-02/03). Mirrors {@link readIntent}'s try/catch self-heal but SIMPLER — a
+ * single JSON snapshot, not a windowed jsonl reduce: an absent or torn/partial
+ * attention.json is the NORMAL case (D-11 self-heal), so any read/parse throw
+ * returns `{}` and the session is never dropped from the roster (T-06-07).
+ * Returns `{ attention_type, attention_ts }` only when the parsed object has a
+ * non-empty string `type` AND a string `ts`; else `{}`. This is a pass-through
+ * of the shard fields ONLY (T-06-02: the `type` was already narrowed at write
+ * time in 06-02) — the window/newer-than-activity GATE lives in readAll, not
+ * here. A card-only read — it feeds neither sort, liveness, nor conflict
+ * detection (D-02/D-03).
+ */
+function readAttention(dir: string): { attention_type?: string; attention_ts?: string } {
+  try {
+    const parsed = JSON.parse(
+      fs.readFileSync(path.join(dir, "attention.json"), "utf8"),
+    ) as Partial<AttentionState>;
+    if (typeof parsed?.type === "string" && parsed.type.length > 0 && typeof parsed.ts === "string") {
+      return { attention_type: parsed.type, attention_ts: parsed.ts };
+    }
+    return {};
+  } catch {
+    return {}; // absent/torn attention.json self-heals (D-11/T-06-07)
+  }
+}
+
+/**
  * The sole cross-session view (STATE-02): aggregate every session shard into
  * one array, apply the D-02 active window, and sort most-recently-active
  * first (D-09).
@@ -376,6 +435,17 @@ export function readAll(
     // last_seen priority: heartbeat sidecar -> newest active touch -> start_time.
     const heartbeatMs = resolveLastSeen(dir);
     const lastSeenMs = heartbeatMs ?? Date.parse(lastActive ?? state.start_time);
+
+    // --- Attention gate (ATTN-02/03), pure reader-side — the race-free clear.
+    // Reuse the SAME lastSeenMs (D-04 activity signal) computed just above; do
+    // NOT recompute. attention shows ONLY while the snapshot ts is within
+    // attnWindowMs() AND strictly newer than the last activity — so a resumed
+    // session (fresher heartbeat) or an expired window flips it false next tick.
+    // Additive/card-only: it drives nothing below (sort/liveness/dot/conflicts).
+    const attn = readAttention(dir);
+    const attnMs = attn.attention_ts !== undefined ? Date.parse(attn.attention_ts) : NaN;
+    const attention =
+      !Number.isNaN(attnMs) && now - attnMs < attnWindowMs() && attnMs > lastSeenMs;
     const fresh = now - lastSeenMs < staleMs(); // TTL authoritative (D-07)
     // PID-reuse guard (CR-01/WR-03): consult the captured `pid_started` identity
     // token. When the pid probes alive but its re-derived start-time differs from
@@ -420,6 +490,11 @@ export function readAll(
       alive,
       readyToPrune,
       dotState,
+      // ATTN-02/03 additive card-only fields — pre-gated; type/ts only survive
+      // when the gate held, so the panel needs no re-check.
+      attention,
+      attention_type: attention ? attn.attention_type : undefined,
+      attention_ts: attention ? attn.attention_ts : undefined,
     });
   }
 
