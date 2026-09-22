@@ -123,3 +123,26 @@ export interface SkillEvent {
    */
   subagent?: string;
 }
+
+/**
+ * One session's "needs-attention" snapshot written to `attention.json`
+ * (ATTN-01/02/03).
+ *
+ * Written by the passive Notification `scripts/on-notification.mjs` hook — a
+ * SEPARATE one-writer-per-file shard from files.jsonl/skill.jsonl (D-01), and
+ * the ONE shard-writer that deliberately never refreshes the heartbeat so the
+ * reader's newer-than-activity gate can fire. A separate shard read needs no
+ * SessionState change, so SESSION_SCHEMA_VERSION is NOT bumped (exactly as the
+ * intent / skill / target-branch shards above). It is a SNAPSHOT
+ * (writeFileSync), not an append log — the reader keeps only the latest.
+ */
+export interface AttentionState {
+  /**
+   * The narrowed notification kind: "permission_prompt", "idle_prompt", or the
+   * "waiting" fallback — already collapsed to the known set at write time
+   * (T-06-02), so the reader passes it through without re-validating.
+   */
+  type: string;
+  /** ISO-8601 invocation timestamp (Date.parse on the read side; NOT epoch ms). */
+  ts: string;
+}
