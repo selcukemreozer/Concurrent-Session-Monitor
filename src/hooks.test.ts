@@ -26,6 +26,8 @@ const onNotification = path.join(repoRoot, "scripts", "on-notification.mjs");
 // end refreshes the heartbeat and the reader's strict attnMs > lastSeenMs gate
 // clears the ◉ waiting marker.
 const onActivity = path.join(repoRoot, "scripts", "on-activity.mjs");
+// 260926-vfm (AQ-01): PreToolUse(AskUserQuestion) hook writing the asking.json {ts} shard.
+const onAsk = path.join(repoRoot, "scripts", "on-ask.mjs");
 
 let tmp: string;
 
@@ -653,5 +655,131 @@ describe("activity heartbeat — attention clear (AP-01/AP-03)", () => {
       if (prior === undefined) delete process.env.CSM_STORE_DIR;
       else process.env.CSM_STORE_DIR = prior;
     }
+  });
+});
+
+// --- Quick task 260926-vfm: on-ask PreToolUse(AskUserQuestion) hook (AQ-01).
+// Notification cannot distinguish AskUserQuestion, so a PreToolUse tap records
+// that a question was opened as a SEPARATE asking.json {ts} shard. It must be
+// detail-free, never write the heartbeat (Pitfall 1 mirrored) or attention.json
+// (one-writer-per-file), and always exit 0 with empty output (PreToolUse-safe).
+describe("asking capture — AskUserQuestion (AQ-01)", () => {
+  const sessDir = (id: string) => path.join(tmp, "sessions", id);
+  const askingPath = (id: string) => path.join(sessDir(id), "asking.json");
+  const askPayload = (extra: Record<string, unknown> = {}) =>
+    JSON.stringify({
+      session_id: "ask-sess",
+      hook_event_name: "PreToolUse",
+      tool_name: "AskUserQuestion",
+      tool_input: {
+        questions: [{ question: "SENTINEL_QUESTION_vfm", options: [{ label: "SENTINEL_OPTION_vfm" }] }],
+      },
+      transcript_path: "/x/t.jsonl",
+      ...extra,
+    });
+
+  it("H1 wiring: hooks.json wires on-ask under PreToolUse 'AskUserQuestion' (async, timeout 5); on-pre-tool stays synchronous", () => {
+    const cfg = JSON.parse(fs.readFileSync(path.join(repoRoot, "hooks", "hooks.json"), "utf8"));
+    const h = cfg.hooks;
+
+    const ask = h.PreToolUse.find((e: { matcher?: string }) => e.matcher === "AskUserQuestion");
+    expect(ask).toBeDefined();
+    expect(ask.hooks).toHaveLength(1);
+    expect(ask.hooks[0].type).toBe("command");
+    expect(ask.hooks[0].command).toContain("scripts/on-ask.mjs");
+    expect(ask.hooks[0].async).toBe(true);
+    expect(ask.hooks[0].timeout).toBe(5);
+
+    const pre = h.PreToolUse.find((e: { matcher?: string }) => e.matcher === "Edit|Write|MultiEdit");
+    expect(pre).toBeDefined();
+    expect(pre.hooks[0].command).toContain("scripts/on-pre-tool.mjs");
+    expect("async" in pre.hooks[0]).toBe(false);
+
+    for (const k of ["Notification", "PostToolUse", "Stop"]) {
+      expect(JSON.stringify(h[k])).not.toContain("on-ask");
+    }
+    expect(fs.existsSync(onAsk)).toBe(true);
+  });
+
+  it("H2 write + detail-free: writes asking.json with exactly {ts}, mode 0o600, no question/option text, silent exit 0", () => {
+    const res = runHook(onAsk, askPayload(), tmp);
+    expect(res.status).toBe(0);
+    expect(res.stdout).toBe("");
+    expect(res.stderr).toBe("");
+
+    const raw = fs.readFileSync(askingPath("ask-sess"), "utf8");
+    const parsed = JSON.parse(raw);
+    expect(Object.keys(parsed)).toEqual(["ts"]);
+    expect(Number.isFinite(Date.parse(parsed.ts))).toBe(true);
+    expect(raw).not.toContain("SENTINEL_QUESTION_vfm");
+    expect(raw).not.toContain("SENTINEL_OPTION_vfm");
+    expect(fs.statSync(askingPath("ask-sess")).mode & 0o777).toBe(0o600);
+  });
+
+  it("H3 no heartbeat / no foreign shards: the session dir holds ONLY asking.json", () => {
+    const res = runHook(onAsk, askPayload(), tmp);
+    expect(res.status).toBe(0);
+    expect(fs.readdirSync(sessDir("ask-sess"))).toEqual(["asking.json"]);
+  });
+
+  it("H4 one-writer rule: pre-existing heartbeat and attention.json are byte-identical after on-ask runs", () => {
+    fs.mkdirSync(sessDir("ask-sess"), { recursive: true });
+    const hb = path.join(sessDir("ask-sess"), "heartbeat");
+    const attn = path.join(sessDir("ask-sess"), "attention.json");
+    const hbOriginal = new Date(Date.now() - 5000).toISOString();
+    const attnOriginal = JSON.stringify({ type: "permission_prompt", ts: new Date(Date.now() - 1000).toISOString() });
+    fs.writeFileSync(hb, hbOriginal, { mode: 0o600 });
+    fs.writeFileSync(attn, attnOriginal, { mode: 0o600 });
+
+    const res = runHook(onAsk, askPayload(), tmp);
+    expect(res.status).toBe(0);
+    expect(fs.readFileSync(hb, "utf8")).toBe(hbOriginal);
+    expect(fs.readFileSync(attn, "utf8")).toBe(attnOriginal);
+    expect(fs.existsSync(askingPath("ask-sess"))).toBe(true);
+  });
+
+  it("H5 tool_name guard: a non-AskUserQuestion tool_name writes nothing", () => {
+    const res = runHook(onAsk, askPayload({ tool_name: "Bash" }), tmp);
+    expect(res.status).toBe(0);
+    expect(res.stdout).toBe("");
+    expect(fs.existsSync(askingPath("ask-sess"))).toBe(false);
+  });
+
+  it("H6 unsafe ids: traversal/empty/oversized/non-string/missing ids exit 0, empty stdout, and create nothing", () => {
+    const payloads: string[] = [
+      ...["../evil", "..", ".", "a/b", "", "x".repeat(129), 42].map((id) => askPayload({ session_id: id })),
+      JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "AskUserQuestion" }),
+    ];
+    for (const p of payloads) {
+      const res = runHook(onAsk, p, tmp);
+      expect(res.status).toBe(0);
+      expect(res.stdout).toBe("");
+    }
+    expect(fs.existsSync(path.join(tmp, "sessions"))).toBe(false);
+    expect(fs.existsSync(path.join(tmp, "evil"))).toBe(false);
+    const walk = (d: string): string[] =>
+      fs.existsSync(d)
+        ? fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => {
+            const full = path.join(d, e.name);
+            return e.isDirectory() ? [full, ...walk(full)] : [full];
+          })
+        : [];
+    expect(walk(tmp).some((p) => p.includes("evil"))).toBe(false);
+    expect(fs.readdirSync(tmp)).toEqual([]);
+  });
+
+  it("H7 passivity: malformed stdin AND an unwritable 0o500 store dir both exit 0 with empty stdout", () => {
+    const malformed = runHook(onAsk, "not json{", tmp);
+    expect(malformed.status).toBe(0);
+    expect(malformed.stdout).toBe("");
+    expect(fs.existsSync(askingPath("ask-sess"))).toBe(false);
+
+    const readOnly = path.join(tmp, "readonly");
+    fs.mkdirSync(readOnly, { recursive: true });
+    fs.chmodSync(readOnly, 0o500);
+    const unwritable = runHook(onAsk, askPayload(), readOnly);
+    expect(unwritable.status).toBe(0);
+    expect(unwritable.stdout).toBe("");
+    fs.chmodSync(readOnly, 0o700);
   });
 });
