@@ -4,6 +4,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readAll } from "./aggregate.js";
 
 // RED: the hook scripts do not exist yet. They land in wave 01-03:
 //   scripts/on-tool.mjs         (PostToolUse file-touch capture, CAP-01)
@@ -20,6 +21,11 @@ const onSkill = path.join(repoRoot, "scripts", "on-skill.mjs");
 // must NOT refresh the heartbeat (Pitfall 1), so the reader-side newer-than
 // gate can surface the ◉ waiting flag.
 const onNotification = path.join(repoRoot, "scripts", "on-notification.mjs");
+// 260926-r7n (AP-01): heartbeat-only activity hook wired to PostToolUse("*")
+// and Stop, so answering/approving a prompt (the tool then completes) or a turn
+// end refreshes the heartbeat and the reader's strict attnMs > lastSeenMs gate
+// clears the ◉ waiting marker.
+const onActivity = path.join(repoRoot, "scripts", "on-activity.mjs");
 
 let tmp: string;
 
@@ -473,5 +479,179 @@ describe("notification capture (ATTN-01)", () => {
         : [];
     const all = walk(tmp);
     expect(all.some((p) => p.includes("evil"))).toBe(false);
+  });
+});
+
+// --- Quick task 260926-r7n: on-activity heartbeat hook (AP-01/AP-03). The
+// Notification hook fires ONCE when a prompt opens; answering AskUserQuestion or
+// approving a permission bumped no heartbeat, so only the old short TTL cleared
+// the marker. on-activity refreshes the heartbeat on PostToolUse("*") and Stop.
+// It must be heartbeat-only, detail-free, Stop-safe (exit 0, empty stdout) and
+// must NEVER touch attention.json (D-01 one-writer-per-file).
+describe("activity heartbeat — attention clear (AP-01/AP-03)", () => {
+  const sessDir = (id: string) => path.join(tmp, "sessions", id);
+  const heartbeatPath = (id: string) => path.join(sessDir(id), "heartbeat");
+
+  it("T1 wiring: hooks.json wires on-activity to PostToolUse '*' and Stop (async, timeout 5) and leaves existing entries intact", () => {
+    const cfg = JSON.parse(fs.readFileSync(path.join(repoRoot, "hooks", "hooks.json"), "utf8"));
+    const h = cfg.hooks;
+
+    const star = h.PostToolUse.find((e: { matcher?: string }) => e.matcher === "*");
+    expect(star).toBeDefined();
+    expect(star.hooks).toHaveLength(1);
+    expect(star.hooks[0].type).toBe("command");
+    expect(star.hooks[0].command).toContain("scripts/on-activity.mjs");
+    expect(star.hooks[0].async).toBe(true);
+    expect(star.hooks[0].timeout).toBe(5);
+
+    expect(Array.isArray(h.Stop)).toBe(true);
+    const stop = h.Stop[0];
+    expect(stop.matcher).toBeUndefined();
+    expect(stop.hooks).toHaveLength(1);
+    expect(stop.hooks[0].type).toBe("command");
+    expect(stop.hooks[0].command).toContain("scripts/on-activity.mjs");
+    expect(stop.hooks[0].async).toBe(true);
+    expect(stop.hooks[0].timeout).toBe(5);
+
+    const tool = h.PostToolUse.find((e: { matcher?: string }) => e.matcher === "Read|Edit|Write|MultiEdit");
+    expect(tool.hooks[0].command).toContain("scripts/on-tool.mjs");
+    const skill = h.PostToolUse.find((e: { matcher?: string }) => e.matcher === "Skill");
+    expect(skill.hooks[0].command).toContain("scripts/on-skill.mjs");
+
+    // Pitfall 1: the Notification hook must never bump the heartbeat.
+    expect(JSON.stringify(h.Notification)).not.toContain("on-activity");
+    expect(fs.existsSync(onActivity)).toBe(true);
+  });
+
+  it("T2 PostToolUse: an AskUserQuestion completion writes a parseable heartbeat, exit 0, empty stdout", () => {
+    const payload = JSON.stringify({
+      session_id: "act-sess",
+      hook_event_name: "PostToolUse",
+      tool_name: "AskUserQuestion",
+      tool_input: {},
+      tool_response: {},
+    });
+    const res = runHook(onActivity, payload, tmp);
+    expect(res.status).toBe(0);
+    expect(res.stdout).toBe("");
+    const content = fs.readFileSync(heartbeatPath("act-sess"), "utf8");
+    expect(Number.isFinite(Date.parse(content.trim()))).toBe(true);
+  });
+
+  it("T3 Stop: a Stop payload writes a parseable heartbeat, exit 0, stdout exactly empty (Stop-safety)", () => {
+    const payload = JSON.stringify({ session_id: "act-sess", hook_event_name: "Stop", stop_hook_active: false });
+    const res = runHook(onActivity, payload, tmp);
+    expect(res.status).toBe(0);
+    expect(res.stdout).toBe("");
+    const content = fs.readFileSync(heartbeatPath("act-sess"), "utf8");
+    expect(Number.isFinite(Date.parse(content.trim()))).toBe(true);
+  });
+
+  it("T4 heartbeat-only + detail-free: a Bash PostToolUse leaves ONLY a heartbeat and never persists tool_input", () => {
+    const sentinel = "SENTINEL_SECRET_r7n";
+    const payload = JSON.stringify({
+      session_id: "act-sess",
+      hook_event_name: "PostToolUse",
+      tool_name: "Bash",
+      tool_input: { command: `echo ${sentinel}` },
+      tool_response: { stdout: sentinel },
+    });
+    const res = runHook(onActivity, payload, tmp);
+    expect(res.status).toBe(0);
+    expect(fs.readdirSync(sessDir("act-sess"))).toEqual(["heartbeat"]);
+    expect(fs.readFileSync(heartbeatPath("act-sess"), "utf8")).not.toContain(sentinel);
+  });
+
+  it("T5 one-writer rule: a pre-existing attention.json is byte-identical after on-activity runs", () => {
+    fs.mkdirSync(sessDir("act-sess"), { recursive: true });
+    const attn = path.join(sessDir("act-sess"), "attention.json");
+    const original = JSON.stringify({ type: "permission_prompt", ts: new Date(Date.now() - 1000).toISOString() });
+    fs.writeFileSync(attn, original, { mode: 0o600 });
+
+    const res = runHook(
+      onActivity,
+      JSON.stringify({ session_id: "act-sess", hook_event_name: "PostToolUse", tool_name: "Bash" }),
+      tmp,
+    );
+    expect(res.status).toBe(0);
+    expect(fs.readFileSync(attn, "utf8")).toBe(original);
+  });
+
+  it("T6 unsafe ids: traversal/empty/oversized/non-string/missing ids exit 0, empty stdout, and create nothing", () => {
+    const payloads: string[] = [
+      ...["../evil", "..", ".", "a/b", "", "x".repeat(129), 42].map((id) =>
+        JSON.stringify({ session_id: id, hook_event_name: "PostToolUse", tool_name: "Bash" }),
+      ),
+      JSON.stringify({ hook_event_name: "Stop" }),
+    ];
+    for (const p of payloads) {
+      const res = runHook(onActivity, p, tmp);
+      expect(res.status).toBe(0);
+      expect(res.stdout).toBe("");
+    }
+    expect(fs.existsSync(path.join(tmp, "sessions"))).toBe(false);
+    expect(fs.existsSync(path.join(tmp, "evil"))).toBe(false);
+    expect(fs.readdirSync(tmp)).toEqual([]);
+  });
+
+  it("T7 passivity: malformed stdin AND an unwritable 0o500 store dir both exit 0 with empty stdout", () => {
+    const malformed = runHook(onActivity, "not json{", tmp);
+    expect(malformed.status).toBe(0);
+    expect(malformed.stdout).toBe("");
+
+    const readOnly = path.join(tmp, "readonly");
+    fs.mkdirSync(readOnly, { recursive: true });
+    fs.chmodSync(readOnly, 0o500);
+    const payload = JSON.stringify({ session_id: "act-sess", hook_event_name: "Stop" });
+    const unwritable = runHook(onActivity, payload, readOnly);
+    expect(unwritable.status).toBe(0);
+    expect(unwritable.stdout).toBe("");
+    fs.chmodSync(readOnly, 0o700);
+  });
+
+  it("T8 end-to-end: a permission_prompt Notification sets attention, then an on-activity PostToolUse clears it", () => {
+    const prior = process.env.CSM_STORE_DIR;
+    process.env.CSM_STORE_DIR = tmp;
+    try {
+      const id = "e2e-sess";
+      fs.mkdirSync(sessDir(id), { recursive: true });
+      fs.writeFileSync(
+        path.join(sessDir(id), "session.json"),
+        JSON.stringify({
+          schema_version: 1,
+          session_id: id,
+          folder: id,
+          branch: "main",
+          model: "unknown",
+          start_time: new Date(Date.now() - 10_000).toISOString(),
+        }),
+        { mode: 0o600 },
+      );
+
+      const notif = runHook(
+        onNotification,
+        JSON.stringify({ session_id: id, hook_event_name: "Notification", notification_type: "permission_prompt" }),
+        tmp,
+      );
+      expect(notif.status).toBe(0);
+      expect(readAll(Date.now()).find((r) => r.session_id === id)!.attention).toBe(true);
+
+      const act = runHook(
+        onActivity,
+        JSON.stringify({
+          session_id: id,
+          hook_event_name: "PostToolUse",
+          tool_name: "AskUserQuestion",
+          tool_input: {},
+          tool_response: {},
+        }),
+        tmp,
+      );
+      expect(act.status).toBe(0);
+      expect(readAll(Date.now()).find((r) => r.session_id === id)!.attention).toBe(false);
+    } finally {
+      if (prior === undefined) delete process.env.CSM_STORE_DIR;
+      else process.env.CSM_STORE_DIR = prior;
+    }
   });
 });
