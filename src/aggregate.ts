@@ -46,16 +46,24 @@ function skillWindowMs(): number {
 }
 
 /**
- * The attention "needs-you" decay window (ATTN-02/03), config-adjustable via
- * CSM_ATTN_WINDOW_MS (default 90000ms / 90s). A NEW numeric axis, DISTINCT from
- * `windowMs()`/`readWindowMs()`/`skillWindowMs()`: an attention snapshot older
- * than this expires the flag even before any activity resumes (the window
- * backstop). Routed through `numEnv` so a NaN/negative override degrades to the
- * 90000 default. Read lazily (not module-const) so tests can flip the env
- * per-case.
+ * The attention "needs-you" safety-net ceiling (ATTN-02/03, 260926-r7n),
+ * config-adjustable via CSM_ATTN_WINDOW_MS (default 1_800_000ms / 30 min). A
+ * NEW numeric axis, DISTINCT from `windowMs()`/`readWindowMs()`/`skillWindowMs()`.
+ *
+ * This is a SAFETY NET, not the primary clear. The primary clear is any
+ * heartbeat newer than the attention ts — written by on-activity (PostToolUse
+ * "*" and Stop), on-tool, on-skill and on-user-prompt — so the flag drops as
+ * soon as the user answers a question, approves a permission, the turn ends,
+ * or a new prompt is submitted. The ceiling was raised from the former
+ * 90-second TTL, which existed only because answering a prompt bumped nothing;
+ * it hid the marker from users who answered later than that. An attention
+ * snapshot older than this still expires the flag if no activity ever follows.
+ *
+ * Routed through `numEnv` so a NaN/negative override degrades to the 30-minute
+ * default. Read lazily (not module-const) so tests can flip the env per-case.
  */
 function attnWindowMs(): number {
-  return numEnv("CSM_ATTN_WINDOW_MS", 90_000);
+  return numEnv("CSM_ATTN_WINDOW_MS", 1_800_000);
 }
 
 /** One file a session is actively touching within the window. */
@@ -438,10 +446,13 @@ export function readAll(
 
     // --- Attention gate (ATTN-02/03), pure reader-side — the race-free clear.
     // Reuse the SAME lastSeenMs (D-04 activity signal) computed just above; do
-    // NOT recompute. attention shows ONLY while the snapshot ts is within
-    // attnWindowMs() AND strictly newer than the last activity — so a resumed
-    // session (fresher heartbeat) or an expired window flips it false next tick.
-    // Additive/card-only: it drives nothing below (sort/liveness/dot/conflicts).
+    // NOT recompute. attention shows ONLY while the snapshot ts is strictly
+    // newer than the last activity AND within attnWindowMs(). Activity is the
+    // PRIMARY clear: a fresher heartbeat (any tool completion / turn end / new
+    // prompt via on-activity, on-tool, on-skill, on-user-prompt) flips it false
+    // next tick. The 30-minute window is only the backstop for a session where
+    // no activity ever follows. Additive/card-only: it drives nothing below
+    // (sort/liveness/dot/conflicts).
     const attn = readAttention(dir);
     const attnMs = attn.attention_ts !== undefined ? Date.parse(attn.attention_ts) : NaN;
     const attention =
