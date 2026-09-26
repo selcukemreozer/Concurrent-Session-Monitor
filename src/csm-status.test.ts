@@ -54,6 +54,8 @@ interface SeedOpts {
   target_branch?: string;
   /** Attention shard { type, ts } written to attention.json; omitted => no shard (ATTN-04). */
   attention?: { type: string; ts: string };
+  /** Asking shard written VERBATIM to asking.json; omitted => no shard (AQ-03, 260926-vfm). */
+  asking?: Record<string, unknown>;
   /**
    * Numeric pid written into the session.json `state` object. Used ONLY for
    * port-ancestry attribution (liveness comes from the fresh heartbeat, not pid).
@@ -103,6 +105,9 @@ function seed(storeDir: string, id: string, opts: SeedOpts = {}): void {
   }
   if (opts.attention !== undefined) {
     fs.writeFileSync(path.join(dir, "attention.json"), JSON.stringify(opts.attention), { mode: 0o600 });
+  }
+  if (opts.asking !== undefined) {
+    fs.writeFileSync(path.join(dir, "asking.json"), JSON.stringify(opts.asking), { mode: 0o600 });
   }
 }
 
@@ -495,6 +500,84 @@ describe("csm-status reader — attention marker (ATTN-04)", () => {
     const line = lineFor(res.stdout, "delta444-dddd");
     expect(line).toBeDefined();
     expect(line).not.toContain(ATTENTION_GLYPH);
+  });
+});
+
+// --- Quick task 260926-vfm (AQ-03): the inline mirror computes `asking` from
+// asking.json with the same gate as attention, applies asking-wins precedence,
+// and prints a distinct detail-free " ◉ asking" marker (vs " ◉ waiting").
+describe("csm-status reader — asking marker (AQ-03)", () => {
+  const GLYPH = "◉";
+
+  it("C1: a live session with an open question (asking 5s ago, heartbeat 30s ago) shows ◉ asking, not waiting", () => {
+    const now = Date.now();
+    seed(tmp, "aq111111-aaaa", {
+      folder: "projOne",
+      heartbeat: new Date(now - 30_000).toISOString(),
+      asking: { ts: new Date(now - 5_000).toISOString() },
+    });
+    const res = runStatus("aq111111-aaaa", tmp);
+    expect(res.status).toBe(0);
+    const line = lineFor(res.stdout, "aq111111-aaaa");
+    expect(line).toBeDefined();
+    expect(line).toContain(GLYPH + " asking");
+    expect(line).not.toContain("waiting");
+  });
+
+  it("C2 precedence: asking 10s ago + permission_prompt 3s ago → ◉ asking, not waiting", () => {
+    const now = Date.now();
+    seed(tmp, "aq222222-bbbb", {
+      folder: "projTwo",
+      heartbeat: new Date(now - 30_000).toISOString(),
+      asking: { ts: new Date(now - 10_000).toISOString() },
+      attention: { type: "permission_prompt", ts: new Date(now - 3_000).toISOString() },
+    });
+    const res = runStatus("aq222222-bbbb", tmp);
+    const line = lineFor(res.stdout, "aq222222-bbbb");
+    expect(line).toBeDefined();
+    expect(line).toContain(GLYPH + " asking");
+    expect(line).not.toContain("waiting");
+  });
+
+  it("C3 waiting unchanged: attention only → ◉ waiting, not asking", () => {
+    const now = Date.now();
+    seed(tmp, "aq333333-cccc", {
+      folder: "projThree",
+      heartbeat: new Date(now - 30_000).toISOString(),
+      attention: { type: "permission_prompt", ts: new Date(now - 5_000).toISOString() },
+    });
+    const res = runStatus("aq333333-cccc", tmp);
+    const line = lineFor(res.stdout, "aq333333-cccc");
+    expect(line).toBeDefined();
+    expect(line).toContain(GLYPH + " waiting");
+    expect(line).not.toContain("asking");
+  });
+
+  it("C4 answered: heartbeat 30s ago is newer than asking 60s ago → no ◉", () => {
+    const now = Date.now();
+    seed(tmp, "aq444444-dddd", {
+      folder: "projFour",
+      heartbeat: new Date(now - 30_000).toISOString(),
+      asking: { ts: new Date(now - 60_000).toISOString() },
+    });
+    const res = runStatus("aq444444-dddd", tmp);
+    const line = lineFor(res.stdout, "aq444444-dddd");
+    expect(line).toBeDefined();
+    expect(line).not.toContain(GLYPH);
+  });
+
+  it("C5 detail-free: an extra question key in asking.json never reaches stdout", () => {
+    const now = Date.now();
+    seed(tmp, "aq555555-eeee", {
+      folder: "projFive",
+      heartbeat: new Date(now - 30_000).toISOString(),
+      asking: { ts: new Date(now - 5_000).toISOString(), question: "SENTINEL_Q_vfm" },
+    });
+    const res = runStatus("aq555555-eeee", tmp);
+    const line = lineFor(res.stdout, "aq555555-eeee");
+    expect(line).toBeDefined();
+    expect(line).toContain(GLYPH + " asking");
+    expect(res.stdout).not.toContain("SENTINEL_Q_vfm");
   });
 });
 

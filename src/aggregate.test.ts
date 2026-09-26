@@ -695,3 +695,124 @@ describe("readAttention gate (ATTN-02/03, D-04 window + newer-than-activity)", (
     expect(row.attention).toBe(true);
   });
 });
+
+// --- Quick task 260926-vfm (AQ-02): readAll surfaces a SEPARATE asking.json
+// {ts} shard (written by scripts/on-ask.mjs on PreToolUse AskUserQuestion) as a
+// PRE-GATED SessionRow.asking boolean, using the SAME gate as attention (within
+// attnWindowMs AND strictly newer than lastSeenMs). Asking WINS: when asking is
+// true, attention is forced false (attention_type/ts undefined), so a row is
+// counted once. Timestamps are explicit ISO strings and `now` is injected.
+describe("readAsking gate + precedence (AQ-02)", () => {
+  type AskFields = { asking?: boolean; asking_ts?: string; attention?: boolean; attention_type?: string; attention_ts?: string };
+  const askRow = (id: string, now: number): AskFields | undefined =>
+    readAll(now).find((r) => r.session_id === id) as unknown as AskFields | undefined;
+
+  function writeAsking(dir: string, snap: Record<string, unknown>): void {
+    fs.writeFileSync(path.join(dir, "asking.json"), JSON.stringify(snap), { mode: 0o600 });
+  }
+  function writeAttention(dir: string, snap: { type?: unknown; ts?: unknown }): void {
+    fs.writeFileSync(path.join(dir, "attention.json"), JSON.stringify(snap), { mode: 0o600 });
+  }
+
+  it("A1 open question: asking 5s ago, heartbeat 30s ago → asking true with asking_ts, attention false", () => {
+    const now = Date.now();
+    const dir = seedSession("ask-open", new Date(now - 120_000).toISOString(), {
+      heartbeat: new Date(now - 30_000).toISOString(),
+    });
+    const askTs = new Date(now - 5_000).toISOString();
+    writeAsking(dir, { ts: askTs });
+
+    const row = askRow("ask-open", now)!;
+    expect(row.asking).toBe(true);
+    expect(row.asking_ts).toBe(askTs);
+    expect(row.attention).toBe(false);
+  });
+
+  it("A2 answered: heartbeat 5s ago is newer than asking 40s ago → asking false, asking_ts undefined", () => {
+    const now = Date.now();
+    const dir = seedSession("ask-answered", new Date(now - 120_000).toISOString(), {
+      heartbeat: new Date(now - 5_000).toISOString(),
+    });
+    writeAsking(dir, { ts: new Date(now - 40_000).toISOString() });
+
+    const row = askRow("ask-answered", now)!;
+    expect(row.asking).toBe(false);
+    expect(row.asking_ts).toBeUndefined();
+  });
+
+  it("A3 explicit window expiry: CSM_ATTN_WINDOW_MS=90000, asking 120s ago → asking false", () => {
+    process.env.CSM_ATTN_WINDOW_MS = "90000";
+    const now = Date.now();
+    const dir = seedSession("ask-expired", new Date(now - 600_000).toISOString(), {
+      heartbeat: new Date(now - 300_000).toISOString(),
+    });
+    writeAsking(dir, { ts: new Date(now - 120_000).toISOString() });
+
+    expect(askRow("ask-expired", now)!.asking).toBe(false);
+  });
+
+  it("A4 default 30-min window: asking 10 min ago → true; asking 31 min ago → false", () => {
+    const now = Date.now();
+    const d1 = seedSession("ask-long", new Date(now - 3_600_000).toISOString(), {
+      heartbeat: new Date(now - 1_200_000).toISOString(),
+    });
+    writeAsking(d1, { ts: new Date(now - 600_000).toISOString() });
+    const d2 = seedSession("ask-net", new Date(now - 7_200_000).toISOString(), {
+      heartbeat: new Date(now - 3_600_000).toISOString(),
+    });
+    writeAsking(d2, { ts: new Date(now - 1_860_000).toISOString() });
+
+    expect(askRow("ask-long", now)!.asking).toBe(true);
+    expect(askRow("ask-net", now)!.asking).toBe(false);
+  });
+
+  it("A5 precedence: a permission_prompt Notification newer than the open question → asking true, attention false (type/ts undefined)", () => {
+    const now = Date.now();
+    const dir = seedSession("ask-wins", new Date(now - 120_000).toISOString(), {
+      heartbeat: new Date(now - 30_000).toISOString(),
+    });
+    writeAsking(dir, { ts: new Date(now - 10_000).toISOString() });
+    writeAttention(dir, { type: "permission_prompt", ts: new Date(now - 3_000).toISOString() });
+
+    const row = askRow("ask-wins", now)!;
+    expect(row.asking).toBe(true);
+    expect(row.attention).toBe(false);
+    expect(row.attention_type).toBeUndefined();
+    expect(row.attention_ts).toBeUndefined();
+  });
+
+  it("A6 waiting unchanged after an answered question: asking false, attention true with type passthrough", () => {
+    const now = Date.now();
+    const dir = seedSession("ask-then-wait", new Date(now - 120_000).toISOString(), {
+      heartbeat: new Date(now - 30_000).toISOString(),
+    });
+    writeAsking(dir, { ts: new Date(now - 60_000).toISOString() });
+    writeAttention(dir, { type: "permission_prompt", ts: new Date(now - 5_000).toISOString() });
+
+    const row = askRow("ask-then-wait", now)!;
+    expect(row.asking).toBe(false);
+    expect(row.attention).toBe(true);
+    expect(row.attention_type).toBe("permission_prompt");
+  });
+
+  it("A7 self-heal: absent, torn, or non-string-ts asking.json → asking false and the row is present", () => {
+    const now = Date.now();
+    seedSession("ask-absent", new Date(now - 120_000).toISOString(), {
+      heartbeat: new Date(now - 30_000).toISOString(),
+    });
+    const torn = seedSession("ask-torn", new Date(now - 120_000).toISOString(), {
+      heartbeat: new Date(now - 30_000).toISOString(),
+    });
+    fs.writeFileSync(path.join(torn, "asking.json"), "{not json", { mode: 0o600 });
+    const bad = seedSession("ask-badts", new Date(now - 120_000).toISOString(), {
+      heartbeat: new Date(now - 30_000).toISOString(),
+    });
+    writeAsking(bad, { ts: 123 });
+
+    for (const id of ["ask-absent", "ask-torn", "ask-badts"]) {
+      const row = askRow(id, now);
+      expect(row).toBeDefined();
+      expect(row!.asking).toBe(false);
+    }
+  });
+});

@@ -782,4 +782,60 @@ describe("asking capture — AskUserQuestion (AQ-01)", () => {
     expect(unwritable.stdout).toBe("");
     fs.chmodSync(readOnly, 0o700);
   });
+
+  it("E1 end-to-end: on-ask → asking; a Notification while open → still asking (asking wins); answer via on-activity → cleared", () => {
+    const prior = process.env.CSM_STORE_DIR;
+    process.env.CSM_STORE_DIR = tmp;
+    type AskFields = { asking?: boolean; attention?: boolean };
+    const rowOf = (id: string) =>
+      readAll(Date.now()).find((r) => r.session_id === id) as unknown as AskFields;
+    try {
+      const id = "ask-e2e";
+      fs.mkdirSync(sessDir(id), { recursive: true });
+      fs.writeFileSync(
+        path.join(sessDir(id), "session.json"),
+        JSON.stringify({
+          schema_version: 1,
+          session_id: id,
+          folder: id,
+          branch: "main",
+          model: "unknown",
+          start_time: new Date(Date.now() - 10_000).toISOString(),
+        }),
+        { mode: 0o600 },
+      );
+
+      const ask = runHook(onAsk, askPayload({ session_id: id }), tmp);
+      expect(ask.status).toBe(0);
+      expect(rowOf(id).asking).toBe(true);
+      expect(rowOf(id).attention).toBe(false);
+
+      const notif = runHook(
+        onNotification,
+        JSON.stringify({ session_id: id, hook_event_name: "Notification", notification_type: "permission_prompt" }),
+        tmp,
+      );
+      expect(notif.status).toBe(0);
+      expect(rowOf(id).asking).toBe(true);
+      expect(rowOf(id).attention).toBe(false);
+
+      const act = runHook(
+        onActivity,
+        JSON.stringify({
+          session_id: id,
+          hook_event_name: "PostToolUse",
+          tool_name: "AskUserQuestion",
+          tool_input: {},
+          tool_response: {},
+        }),
+        tmp,
+      );
+      expect(act.status).toBe(0);
+      expect(rowOf(id).asking).toBe(false);
+      expect(rowOf(id).attention).toBe(false);
+    } finally {
+      if (prior === undefined) delete process.env.CSM_STORE_DIR;
+      else process.env.CSM_STORE_DIR = prior;
+    }
+  });
 });
