@@ -62,6 +62,10 @@ interface SeedOpts {
    * Omitted => no `pid` key is written (the 8 pre-existing tests are unaffected).
    */
   pid?: number;
+  /** ISO-8601 written into the plain `resumed` sidecar (260927-1zw); omitted => absent. */
+  resumed?: string;
+  /** ISO-8601 written into the plain `ask-resolved` sidecar (260927-1zw); omitted => absent. */
+  askResolved?: string;
 }
 
 /** Seed one session shard directly on disk (no src/ import — self-contained). */
@@ -108,6 +112,12 @@ function seed(storeDir: string, id: string, opts: SeedOpts = {}): void {
   }
   if (opts.asking !== undefined) {
     fs.writeFileSync(path.join(dir, "asking.json"), JSON.stringify(opts.asking), { mode: 0o600 });
+  }
+  if (opts.resumed !== undefined) {
+    fs.writeFileSync(path.join(dir, "resumed"), opts.resumed, { mode: 0o600 });
+  }
+  if (opts.askResolved !== undefined) {
+    fs.writeFileSync(path.join(dir, "ask-resolved"), opts.askResolved, { mode: 0o600 });
   }
 }
 
@@ -673,5 +683,87 @@ describe.runIf(HAVE_GIT)("csm-status reader — LIVE branch derivation (LB-03)",
     const line = lineFor(res.stdout, "gamma333-cccc");
     expect(line).toBeDefined();
     expect(line).toContain("main"); // snapshot fallback
+  });
+});
+
+// --- Quick task 260927-1zw: the inline csm-status mirror applies the same
+// resume-signal gates (CR-01 resumed / WR-02 ask-resolved, heartbeat fallback)
+// and the WR-01 needs-you keepalive as aggregate.readAll. Env pinned for
+// determinism.
+describe("csm-status reader — resume signals + keepalive (260927-1zw)", () => {
+  const env = { CSM_STALE_MS: "120000", CSM_ATTN_WINDOW_MS: "1800000" };
+  const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+
+  it("K1 CR-01: resumed older than the prompt keeps ◉ waiting despite a fresh heartbeat", () => {
+    const id = "kone1111-aaaa";
+    seed(tmp, id, { heartbeat: ago(1_000), resumed: ago(30_000), attention: { type: "permission_prompt", ts: ago(5_000) } });
+    const res = runStatus(id, tmp, env);
+    expect(res.status).toBe(0);
+    expect(lineFor(res.stdout, id)).toContain("◉ waiting");
+  });
+
+  it("K2 a main-thread resume newer than the prompt clears the marker", () => {
+    const id = "ktwo2222-aaaa";
+    seed(tmp, id, { heartbeat: ago(1_000), resumed: ago(1_000), attention: { type: "permission_prompt", ts: ago(5_000) } });
+    const res = runStatus(id, tmp, env);
+    const line = lineFor(res.stdout, id);
+    expect(line).toBeDefined();
+    expect(line).not.toContain("◉");
+  });
+
+  it("K3 WR-02: a sibling main-thread tool (resumed newer) keeps ◉ asking while ask-resolved is older", () => {
+    const id = "kthree33-aaaa";
+    seed(tmp, id, {
+      heartbeat: ago(1_000),
+      resumed: ago(1_000),
+      askResolved: ago(60_000),
+      asking: { ts: ago(5_000) },
+    });
+    const res = runStatus(id, tmp, env);
+    expect(lineFor(res.stdout, id)).toContain("◉ asking");
+  });
+
+  it("K4 the answer (ask-resolved newer) clears asking", () => {
+    const id = "kfour444-aaaa";
+    seed(tmp, id, { askResolved: ago(1_000), asking: { ts: ago(5_000) } });
+    const res = runStatus(id, tmp, env);
+    const line = lineFor(res.stdout, id);
+    expect(line).toBeDefined();
+    expect(line).not.toContain("asking");
+  });
+
+  it("K5 WR-01: no pid, heartbeat 180s, asking 170s → still listed with ◉ asking", () => {
+    const id = "kfive555-aaaa";
+    seed(tmp, id, { heartbeat: ago(180_000), asking: { ts: ago(170_000) } });
+    const res = runStatus(id, tmp, env);
+    const line = lineFor(res.stdout, id);
+    expect(line).toBeDefined();
+    expect(line).toContain("◉ asking");
+  });
+
+  it("K6 WR-01 waiting: no pid, heartbeat 180s, idle_prompt 60s → still listed with ◉ waiting", () => {
+    const id = "ksix6666-aaaa";
+    seed(tmp, id, { heartbeat: ago(180_000), attention: { type: "idle_prompt", ts: ago(60_000) } });
+    const res = runStatus(id, tmp, env);
+    const line = lineFor(res.stdout, id);
+    expect(line).toBeDefined();
+    expect(line).toContain("◉ waiting");
+  });
+
+  it("K7 bounded by the window: no pid, heartbeat 40 min, attention 31 min → not listed", () => {
+    const id = "kseven77-aaaa";
+    seed(tmp, id, { heartbeat: ago(2_400_000), attention: { type: "idle_prompt", ts: ago(1_860_000) } });
+    const res = runStatus(id, tmp, env);
+    expect(res.status).toBe(0);
+    expect(lineFor(res.stdout, id)).toBeUndefined();
+  });
+
+  it("K8 DISC-4: a known pid that has exited is not kept alive by an active marker", () => {
+    const id = "keight88-aaaa";
+    const deadPid = spawnSync(process.execPath, ["-e", ""]).pid as number;
+    seed(tmp, id, { pid: deadPid, heartbeat: ago(180_000), asking: { ts: ago(60_000) } });
+    const res = runStatus(id, tmp, env);
+    expect(res.status).toBe(0);
+    expect(lineFor(res.stdout, id)).toBeUndefined();
   });
 });

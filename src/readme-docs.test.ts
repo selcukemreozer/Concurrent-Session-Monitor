@@ -85,3 +85,33 @@ describe("README end-user docs (SC-4 doc-lint gate)", () => {
     expect(README).not.toContain("CSM_TEST_NUM");
   });
 });
+
+// Quick task 260927-1zw (WR-03 / WR-04): the README must describe the real
+// needs-you clear semantics. Approving a permission, rejecting a question and
+// Esc fire no hook, "waiting" clears when the approved tool finishes, and
+// subagent activity never clears a marker.
+describe("README needs-you clear semantics (260927-1zw WR-03/WR-04)", () => {
+  it("does not claim approving clears the marker", () => {
+    expect(README).not.toContain("you answer, you approve");
+  });
+
+  it("does not claim any tool completion clears the marker", () => {
+    expect(README).not.toContain("any tool completes");
+  });
+
+  it("documents the Esc limitation", () => {
+    expect(README).toContain("Esc");
+  });
+
+  it("documents that subagent activity does not clear a marker", () => {
+    expect(README).toMatch(/subagent/i);
+  });
+
+  it("documents that waiting clears when the approved tool finishes", () => {
+    expect(README).toMatch(/approved tool/i);
+  });
+
+  it("keeps the 30-minute safety-net default", () => {
+    expect(README).toContain("1800000");
+  });
+});
