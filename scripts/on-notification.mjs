@@ -9,18 +9,21 @@
 // D-01 one-writer-per-file: attention.json is its OWN shard — this hook NEVER
 // writes files.jsonl, reads.jsonl, skill.jsonl, or the heartbeat sidecar.
 //
-// !!! PHASE-UNIQUE RULE (Pitfall 1): this hook DELIBERATELY DOES NOT refresh
-// the heartbeat. Every other shard-writer ends with a `heartbeat` write; this
-// one MUST NOT. A waiting session is not doing work, and the reader gate in
-// 06-03 only surfaces the ◉ flag when the attention ts stays NEWER than the
-// last activity (attnMs > lastSeenMs). Writing a heartbeat here would refresh
-// last activity and permanently suppress the indicator.
+// !!! Pitfall 1: the needs-you writers (on-notification and on-ask) never
+// refresh the heartbeat, and they never write the `resumed` / `ask-resolved`
+// sidecars. A waiting session is not doing work. Clearing is driven by the
+// main-thread `resumed` sidecar (260927-1zw CR-01): the reader surfaces the ◉
+// flag while the attention ts stays NEWER than it (attnMs > resumedMs, with the
+// heartbeat as the fallback for sessions whose hooks predate the sidecar).
+//
+// WR-05: attention.json is written via a same-dir temp file + renameSync, so a
+// reader polling mid-write never sees a torn or empty snapshot.
 //
 // D-01b passivity contract: this runs on EVERY Notification event. It is wired
 // "async" so the agent never waits on it, and the whole body is wrapped so it
 // ALWAYS exits 0. A non-zero exit would inject stderr straight into Claude's
 // context — forbidden. It also writes NOTHING to stdout.
-import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { readFileSync, mkdirSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
@@ -53,6 +56,26 @@ function readStdin() {
   }
 }
 
+// WR-05 atomic write: unique temp in the same dir + renameSync over the target
+// (rename(2) atomicity). Never throws: on any error the temp is removed on a
+// best-effort basis.
+function writeAtomic(dir, name, content) {
+  const tmp = path.join(
+    dir,
+    `.${name}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`,
+  );
+  try {
+    writeFileSync(tmp, content, { mode: FILE_MODE });
+    renameSync(tmp, path.join(dir, name));
+  } catch {
+    try {
+      unlinkSync(tmp);
+    } catch {
+      // Temp was never created or is already gone.
+    }
+  }
+}
+
 try {
   let payload;
   try {
@@ -76,9 +99,9 @@ try {
     // transcript_path, or prompt_id. ts is ISO-8601 to match the reader gate
     // (Date.parse), NOT epoch ms.
     const evt = { type, ts: new Date().toISOString() };
-    writeFileSync(path.join(dir, "attention.json"), JSON.stringify(evt), { mode: FILE_MODE });
-    // DELIBERATELY NO heartbeat write here (Pitfall 1) — a waiting session emits
-    // no activity signal, so the reader's newer-than-activity gate can fire.
+    writeAtomic(dir, "attention.json", JSON.stringify(evt));
+    // DELIBERATELY NO heartbeat / resumed write here (Pitfall 1) — a waiting
+    // session emits no resume signal, so the reader's newer-than gate can fire.
   }
 } catch {
   // Swallow every error (D-01b): NEVER exit non-zero, NEVER write stdout.

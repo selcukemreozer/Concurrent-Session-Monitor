@@ -6,8 +6,15 @@
 // fires permission_prompt / idle_prompt), so the only reliable "a question is
 // open" signal is the tool call itself. This PreToolUse hook (matcher
 // "AskUserQuestion") records that a question was opened. When the user answers,
-// the tool completes, PostToolUse("*") runs on-activity.mjs, the heartbeat is
-// refreshed, and the reader's strict askMs > lastSeenMs gate clears the flag.
+// the tool completes and PostToolUse("*") runs on-activity.mjs, which writes the
+// answer-specific `ask-resolved` sidecar (260927-1zw WR-02). The reader's strict
+// askMs > askResolvedMs gate then clears the flag. A main-thread Stop or a
+// submitted prompt also writes `ask-resolved`. Sibling tool completions (Read,
+// Grep, Bash, ...) and subagent activity only refresh the heartbeat, so they no
+// longer clear an open question.
+//
+// WR-05: asking.json is written via a same-dir temp file + renameSync, so a
+// reader polling mid-write never sees a torn or empty snapshot.
 //
 // (b) PreToolUse safety contract: on exit 0 PreToolUse stdout is parsed as a
 // hook decision, and exit 2 would BLOCK the AskUserQuestion call. So this hook
@@ -15,8 +22,10 @@
 // prints NOTHING to stdout or stderr.
 //
 // (c) DELIBERATELY NO heartbeat write (Pitfall 1, mirrored from
-// on-notification.mjs): a heartbeat written here would make last activity newer
-// than the asking ts and suppress the indicator instantly.
+// on-notification.mjs): the needs-you writers never refresh the heartbeat or
+// write the `resumed` / `ask-resolved` sidecars. The heartbeat is still the
+// gate's fallback for sessions whose hooks predate the sidecars, so a heartbeat
+// written here would suppress the indicator instantly.
 //
 // (d) Separate shard / one-writer-per-file (D-01): asking.json is its OWN shard.
 // This hook never writes, renames or deletes the attention shard (on-notification
@@ -25,7 +34,7 @@
 // (e) Detail-free: persists ONLY { ts }. The question text, options,
 // transcript_path and every other payload field are never read or persisted.
 // tool_name is used only as a guard and is never written.
-import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { readFileSync, mkdirSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
@@ -53,6 +62,26 @@ function readStdin() {
   }
 }
 
+// WR-05 atomic write: unique temp in the same dir + renameSync over the target
+// (rename(2) atomicity). Never throws: on any error the temp is removed on a
+// best-effort basis.
+function writeAtomic(dir, name, content) {
+  const tmp = path.join(
+    dir,
+    `.${name}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`,
+  );
+  try {
+    writeFileSync(tmp, content, { mode: FILE_MODE });
+    renameSync(tmp, path.join(dir, name));
+  } catch {
+    try {
+      unlinkSync(tmp);
+    } catch {
+      // Temp was never created or is already gone.
+    }
+  }
+}
+
 try {
   let payload;
   try {
@@ -72,7 +101,7 @@ try {
     // ISO-8601 ts to match the reader gate (Date.parse), NOT epoch ms. A
     // snapshot, not an append log.
     const snap = { ts: new Date().toISOString() };
-    writeFileSync(path.join(dir, "asking.json"), JSON.stringify(snap), { mode: FILE_MODE });
+    writeAtomic(dir, "asking.json", JSON.stringify(snap));
   }
 } catch {
   // Swallow every error: NEVER exit non-zero, NEVER write stdout/stderr.

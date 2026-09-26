@@ -3,13 +3,20 @@
 // that is only reading/thinking between edits.
 //
 // Kept deliberately tiny and self-contained (Node stdlib only, T-1-SC): buffer
-// stdin, extract session_id, write ONE `heartbeat` sidecar, exit 0. Unlike
+// stdin, extract session_id, write the `heartbeat` sidecar, exit 0. Unlike
 // on-tool.mjs it does NOT append files.jsonl — a bare prompt touches no file.
+//
+// Resume signals (260927-1zw CR-01/WR-02): a submitted prompt is always a
+// main-thread user action. It resumes the session AND resolves any open
+// question, so this hook also writes the `resumed` sidecar (clears ◉ waiting)
+// and the `ask-resolved` sidecar (clears ◉ asking). Both are written via a
+// same-dir temp file + renameSync (WR-05); the heartbeat keeps its frozen
+// plain write. It never touches attention.json or asking.json.
 //
 // Passivity contract (T-1-05 / T-02-11): UserPromptSubmit stdout is
 // model-visible, so this hook writes NOTHING to stdout, wraps its whole body so
 // it ALWAYS exits 0, and is wired "async" so the prompt never waits on it.
-import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { readFileSync, mkdirSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
@@ -37,6 +44,26 @@ function readStdin() {
   }
 }
 
+// WR-05 atomic write: unique temp in the same dir + renameSync over the target
+// (rename(2) atomicity). Never throws: on any error the temp is removed on a
+// best-effort basis, so each sidecar write is independent of the others.
+function writeAtomic(dir, name, content) {
+  const tmp = path.join(
+    dir,
+    `.${name}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`,
+  );
+  try {
+    writeFileSync(tmp, content, { mode: FILE_MODE });
+    renameSync(tmp, path.join(dir, name));
+  } catch {
+    try {
+      unlinkSync(tmp);
+    } catch {
+      // Temp was never created or is already gone.
+    }
+  }
+}
+
 try {
   let payload;
   try {
@@ -50,10 +77,14 @@ try {
   if (typeof id === "string" && SAFE_ID.test(id) && id !== "." && id !== "..") {
     const dir = path.join(storeRoot(), "sessions", id);
     mkdirSync(dir, { recursive: true, mode: DIR_MODE });
+    const iso = new Date().toISOString();
     // Heartbeat sidecar contract (FROZEN, shared with 02-01 resolveLastSeen):
     // file `heartbeat`, content = ISO-8601, plain writeFileSync (a one-line
     // mtime/content file has no torn-read window — no temp+rename needed).
-    writeFileSync(path.join(dir, "heartbeat"), new Date().toISOString(), { mode: FILE_MODE });
+    writeFileSync(path.join(dir, "heartbeat"), iso, { mode: FILE_MODE });
+    // CR-01 / WR-02: a prompt resumes the session and resolves any question.
+    writeAtomic(dir, "resumed", iso);
+    writeAtomic(dir, "ask-resolved", iso);
   }
 } catch {
   // Swallow every error (T-1-05): NEVER exit non-zero, NEVER write stdout.
