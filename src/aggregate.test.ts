@@ -816,3 +816,168 @@ describe("readAsking gate + precedence (AQ-02)", () => {
     }
   });
 });
+
+// --- Quick task 260927-1zw (CR-01 / WR-02): the waiting gate compares against
+// the main-thread `resumed` sidecar and the asking gate against the
+// answer-specific `ask-resolved` sidecar. The heartbeat stays the liveness
+// signal (it counts subagent activity) and is only the FALLBACK clear when a
+// sidecar is absent (DISC-1: sessions whose hooks predate the fix).
+describe("resume-signal gates (260927-1zw CR-01/WR-02)", () => {
+  function writeSidecar(dir: string, name: string, iso: string): void {
+    fs.writeFileSync(path.join(dir, name), iso, { mode: 0o600 });
+  }
+  function writeAttention(dir: string, snap: { type?: unknown; ts?: unknown }): void {
+    fs.writeFileSync(path.join(dir, "attention.json"), JSON.stringify(snap), { mode: 0o600 });
+  }
+  function writeAsking(dir: string, snap: Record<string, unknown>): void {
+    fs.writeFileSync(path.join(dir, "asking.json"), JSON.stringify(snap), { mode: 0o600 });
+  }
+  const ago = (now: number, ms: number) => new Date(now - ms).toISOString();
+  const row = (id: string, now: number) => readAll(now).find((r) => r.session_id === id)!;
+
+  it("G1 CR-01: waiting survives subagent activity (heartbeat newer, resumed older than the prompt)", () => {
+    const now = Date.now();
+    const dir = seedSession("g1", ago(now, 120_000), { heartbeat: ago(now, 1_000) });
+    writeSidecar(dir, "resumed", ago(now, 30_000));
+    writeAttention(dir, { type: "permission_prompt", ts: ago(now, 5_000) });
+    expect(row("g1", now).attention).toBe(true);
+  });
+
+  it("G2 a main-thread resume newer than the prompt clears waiting", () => {
+    const now = Date.now();
+    const dir = seedSession("g2", ago(now, 120_000), { heartbeat: ago(now, 1_000) });
+    writeSidecar(dir, "resumed", ago(now, 1_000));
+    writeAttention(dir, { type: "permission_prompt", ts: ago(now, 5_000) });
+    expect(row("g2", now).attention).toBe(false);
+  });
+
+  it("G3 strictly newer: resumed ts equal to the attention ts clears waiting", () => {
+    const now = Date.now();
+    const ts = ago(now, 5_000);
+    const dir = seedSession("g3", ago(now, 120_000), { heartbeat: ago(now, 30_000) });
+    writeSidecar(dir, "resumed", ts);
+    writeAttention(dir, { type: "permission_prompt", ts });
+    expect(row("g3", now).attention).toBe(false);
+  });
+
+  it("G4 WR-02: an open question survives a sibling main-thread tool (resumed newer, ask-resolved older)", () => {
+    const now = Date.now();
+    const dir = seedSession("g4", ago(now, 120_000), { heartbeat: ago(now, 1_000) });
+    writeSidecar(dir, "resumed", ago(now, 1_000));
+    writeSidecar(dir, "ask-resolved", ago(now, 60_000));
+    writeAsking(dir, { ts: ago(now, 5_000) });
+    const r = row("g4", now);
+    expect(r.asking).toBe(true);
+    expect(r.attention).toBe(false);
+  });
+
+  it("G5 the answer clears asking: ask-resolved newer than the question", () => {
+    const now = Date.now();
+    const dir = seedSession("g5", ago(now, 120_000), { heartbeat: ago(now, 1_000) });
+    writeSidecar(dir, "ask-resolved", ago(now, 1_000));
+    writeAsking(dir, { ts: ago(now, 5_000) });
+    const r = row("g5", now);
+    expect(r.asking).toBe(false);
+    expect(r.asking_ts).toBeUndefined();
+  });
+
+  it("G6 legacy fallback (DISC-1): with no sidecars the heartbeat still gates both markers", () => {
+    const now = Date.now();
+    const a = seedSession("g6a", ago(now, 120_000), { heartbeat: ago(now, 1_000) });
+    writeAttention(a, { type: "permission_prompt", ts: ago(now, 5_000) });
+    writeAsking(a, { ts: ago(now, 5_000) });
+    const b = seedSession("g6b", ago(now, 120_000), { heartbeat: ago(now, 30_000) });
+    writeAttention(b, { type: "permission_prompt", ts: ago(now, 5_000) });
+
+    const ra = row("g6a", now);
+    expect(ra.attention).toBe(false);
+    expect(ra.asking).toBe(false);
+    expect(row("g6b", now).attention).toBe(true);
+  });
+});
+
+// --- Quick task 260927-1zw (WR-01): an active needs-you marker is liveness
+// evidence. A session blocked on the human with an old heartbeat and no
+// trustworthy pid must not go stale / readyToPrune (App would delete its shard).
+// Bounded by CSM_ATTN_WINDOW_MS through the marker gate; an authoritatively
+// dead pid is still reaped (DISC-4).
+describe("needs-you keepalive (260927-1zw WR-01)", () => {
+  function writeSidecar(dir: string, name: string, iso: string): void {
+    fs.writeFileSync(path.join(dir, name), iso, { mode: 0o600 });
+  }
+  function writeAttention(dir: string, snap: { type?: unknown; ts?: unknown }): void {
+    fs.writeFileSync(path.join(dir, "attention.json"), JSON.stringify(snap), { mode: 0o600 });
+  }
+  function writeAsking(dir: string, snap: Record<string, unknown>): void {
+    fs.writeFileSync(path.join(dir, "asking.json"), JSON.stringify(snap), { mode: 0o600 });
+  }
+  const ago = (now: number, ms: number) => new Date(now - ms).toISOString();
+
+  beforeEach(() => {
+    process.env.CSM_STALE_MS = "120000";
+  });
+
+  it("W1 reviewer repro: no pid, heartbeat 180s, asking 170s → asking, alive, not readyToPrune, idle dot, not pruned by App", () => {
+    const now = Date.now();
+    const dir = seedSession("w1", ago(now, 600_000), { heartbeat: ago(now, 180_000) });
+    writeAsking(dir, { ts: ago(now, 170_000) });
+    const r = readAll(now, deadProbe).find((x) => x.session_id === "w1")!;
+    expect(r.asking).toBe(true);
+    expect(r.alive).toBe(true);
+    expect(r.readyToPrune).toBe(false);
+    expect(r.dotState).toBe("idle");
+    expect(!r.alive || r.readyToPrune).toBe(false);
+  });
+
+  it("W2 waiting variant: no pid, heartbeat 180s, idle_prompt 60s → attention, alive, not readyToPrune", () => {
+    const now = Date.now();
+    const dir = seedSession("w2", ago(now, 600_000), { heartbeat: ago(now, 180_000) });
+    writeAttention(dir, { type: "idle_prompt", ts: ago(now, 60_000) });
+    const r = readAll(now, deadProbe).find((x) => x.session_id === "w2")!;
+    expect(r.attention).toBe(true);
+    expect(r.alive).toBe(true);
+    expect(r.readyToPrune).toBe(false);
+  });
+
+  it("W3 bounded by the window: no pid, heartbeat 40 min, asking 31 min → no keepalive", () => {
+    const now = Date.now();
+    const dir = seedSession("w3", ago(now, 7_200_000), { heartbeat: ago(now, 2_400_000) });
+    writeAsking(dir, { ts: ago(now, 1_860_000) });
+    const r = readAll(now, deadProbe).find((x) => x.session_id === "w3")!;
+    expect(r.asking).toBe(false);
+    expect(r.alive).toBe(false);
+    expect(r.readyToPrune).toBe(true);
+  });
+
+  it("W4 a cleared marker gives no keepalive: resumed newer than the attention ts", () => {
+    const now = Date.now();
+    const dir = seedSession("w4", ago(now, 600_000), { heartbeat: ago(now, 150_000) });
+    writeSidecar(dir, "resumed", ago(now, 150_000));
+    writeAttention(dir, { type: "permission_prompt", ts: ago(now, 170_000) });
+    const r = readAll(now, deadProbe).find((x) => x.session_id === "w4")!;
+    expect(r.attention).toBe(false);
+    expect(r.alive).toBe(false);
+    expect(r.readyToPrune).toBe(true);
+  });
+
+  it("W5 DISC-4: a known pid that probes dead is still reaped despite an active marker", () => {
+    const now = Date.now();
+    const dir = seedSession("w5", ago(now, 600_000), { pid: 4242, heartbeat: ago(now, 180_000) });
+    writeAsking(dir, { ts: ago(now, 60_000) });
+    const r = readAll(now, deadProbe).find((x) => x.session_id === "w5")!;
+    expect(r.asking).toBe(true);
+    expect(r.alive).toBe(false);
+    expect(r.readyToPrune).toBe(true);
+    expect(r.dotState).toBe("stale");
+  });
+
+  it("W6 known-alive pid: an active marker keeps the dot idle instead of stale", () => {
+    const now = Date.now();
+    const dir = seedSession("w6", ago(now, 600_000), { pid: 4242, heartbeat: ago(now, 180_000) });
+    writeAttention(dir, { type: "permission_prompt", ts: ago(now, 60_000) });
+    const r = readAll(now, aliveProbe).find((x) => x.session_id === "w6")!;
+    expect(r.alive).toBe(true);
+    expect(r.readyToPrune).toBe(false);
+    expect(r.dotState).toBe("idle");
+  });
+});

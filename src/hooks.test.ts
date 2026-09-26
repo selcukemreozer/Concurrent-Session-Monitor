@@ -1040,3 +1040,127 @@ describe("asking capture — AskUserQuestion (AQ-01)", () => {
     }
   });
 });
+
+// --- Quick task 260927-1zw: resume signals end to end. Real hook processes are
+// spawned in sequence and the real readAll is consulted after each step. Every
+// scenario starts with a prompt, mirroring real ordering (a prompt precedes any
+// agent work), so the new sidecars exist before the marker opens.
+describe("resume signals end-to-end (260927-1zw)", () => {
+  const sessDir = (id: string) => path.join(tmp, "sessions", id);
+  let prior: string | undefined;
+
+  beforeEach(() => {
+    prior = process.env.CSM_STORE_DIR;
+    process.env.CSM_STORE_DIR = tmp;
+  });
+
+  afterEach(() => {
+    if (prior === undefined) delete process.env.CSM_STORE_DIR;
+    else process.env.CSM_STORE_DIR = prior;
+  });
+
+  function seed(id: string): void {
+    fs.mkdirSync(sessDir(id), { recursive: true });
+    fs.writeFileSync(
+      path.join(sessDir(id), "session.json"),
+      JSON.stringify({
+        schema_version: 1,
+        session_id: id,
+        folder: id,
+        branch: "main",
+        model: "unknown",
+        start_time: new Date(Date.now() - 10_000).toISOString(),
+      }),
+      { mode: 0o600 },
+    );
+    const res = runHook(onUserPrompt, JSON.stringify({ session_id: id, hook_event_name: "UserPromptSubmit" }), tmp);
+    expect(res.status).toBe(0);
+  }
+
+  function run(script: string, payload: Record<string, unknown>): void {
+    const res = runHook(script, JSON.stringify(payload), tmp);
+    expect(res.status).toBe(0);
+    expect(res.stdout).toBe("");
+  }
+
+  const rowOf = (id: string) => readAll(Date.now()).find((r) => r.session_id === id)!;
+  const askPayload = (id: string) => ({
+    session_id: id,
+    hook_event_name: "PreToolUse",
+    tool_name: "AskUserQuestion",
+    tool_input: { questions: [] },
+  });
+
+  it("X1 CR-01 waiting: subagent activity and a Task completion keep it; a main-thread tool clears it", () => {
+    const id = "x1";
+    seed(id);
+    run(onNotification, { session_id: id, hook_event_name: "Notification", notification_type: "permission_prompt" });
+    expect(rowOf(id).attention).toBe(true);
+
+    run(onActivity, { session_id: id, hook_event_name: "PostToolUse", tool_name: "Bash", agent_id: "agent-x" });
+    const hbMs = Date.parse(fs.readFileSync(path.join(sessDir(id), "heartbeat"), "utf8").trim());
+    const attnMs = Date.parse(JSON.parse(fs.readFileSync(path.join(sessDir(id), "attention.json"), "utf8")).ts);
+    // Proof the old heartbeat gate would have cleared the marker here.
+    expect(hbMs).toBeGreaterThan(attnMs);
+    expect(rowOf(id).attention).toBe(true);
+
+    run(onActivity, { session_id: id, hook_event_name: "PostToolUse", tool_name: "Task" });
+    expect(rowOf(id).attention).toBe(true);
+
+    run(onActivity, { session_id: id, hook_event_name: "PostToolUse", tool_name: "Bash" });
+    expect(rowOf(id).attention).toBe(false);
+  });
+
+  it("X2 CR-01 asking: subagent PostToolUse and a subagent Stop-shaped payload keep the question open", () => {
+    const id = "x2";
+    seed(id);
+    run(onAsk, askPayload(id));
+    expect(rowOf(id).asking).toBe(true);
+
+    run(onActivity, { session_id: id, hook_event_name: "PostToolUse", tool_name: "Bash", agent_id: "agent-x" });
+    expect(rowOf(id).asking).toBe(true);
+
+    run(onActivity, { session_id: id, hook_event_name: "Stop", agent_id: "agent-x" });
+    expect(rowOf(id).asking).toBe(true);
+  });
+
+  it("X3 WR-02 sibling tools: main-thread Read (on-activity and on-tool) keep asking; the AskUserQuestion completion clears it", () => {
+    const id = "x3";
+    seed(id);
+    run(onAsk, askPayload(id));
+    expect(rowOf(id).asking).toBe(true);
+
+    run(onActivity, { session_id: id, hook_event_name: "PostToolUse", tool_name: "Read" });
+    expect(rowOf(id).asking).toBe(true);
+
+    run(onTool, {
+      session_id: id,
+      hook_event_name: "PostToolUse",
+      tool_name: "Read",
+      tool_input: { file_path: path.join(tmp, "some-file.ts") },
+      cwd: tmp,
+    });
+    expect(rowOf(id).asking).toBe(true);
+
+    run(onActivity, { session_id: id, hook_event_name: "PostToolUse", tool_name: "AskUserQuestion" });
+    expect(rowOf(id).asking).toBe(false);
+  });
+
+  it("X4 a main-thread Stop clears asking", () => {
+    const id = "x4";
+    seed(id);
+    run(onAsk, askPayload(id));
+    expect(rowOf(id).asking).toBe(true);
+    run(onActivity, { session_id: id, hook_event_name: "Stop", stop_hook_active: false });
+    expect(rowOf(id).asking).toBe(false);
+  });
+
+  it("X5 a submitted prompt clears asking", () => {
+    const id = "x5";
+    seed(id);
+    run(onAsk, askPayload(id));
+    expect(rowOf(id).asking).toBe(true);
+    run(onUserPrompt, { session_id: id, hook_event_name: "UserPromptSubmit" });
+    expect(rowOf(id).asking).toBe(false);
+  });
+});
