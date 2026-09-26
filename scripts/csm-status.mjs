@@ -94,13 +94,16 @@ function staleMs() {
 }
 /**
  * Attention safety-net ceiling (mirrors aggregate.attnWindowMs, 260926-r7n):
- * the longest a session's "waiting on you" flag can stay shown after the last
- * Notification when no activity follows. Default 1800000 (30 min). This is a
- * SAFETY NET, not the primary clear: the primary clear is any heartbeat newer
- * than the attention ts — written by on-activity (PostToolUse "*" and Stop),
- * on-tool, on-skill or on-user-prompt — so answering a question, approving a
- * permission, a turn end or a new prompt drops the flag on the next read.
- * A NaN/negative override degrades to the 30-minute default.
+ * the longest a session's "asking" / "waiting on you" flag can stay shown when
+ * no resume signal follows. Default 1800000 (30 min). This is a SAFETY NET, not
+ * the primary clear. The primary clears are the resume sidecars (260927-1zw):
+ * `resumed` (main-thread PostToolUse / Stop via on-activity, and on-user-prompt)
+ * clears waiting; `ask-resolved` (main-thread AskUserQuestion completion or
+ * Stop via on-activity, and on-user-prompt) clears asking. The heartbeat is
+ * only the fallback clear when a sidecar is absent. Subagent activity never
+ * clears a flag, and Esc / reject / approve / deny fire no hook. The ceiling
+ * also bounds the WR-01 needs-you keepalive. A NaN/negative override degrades
+ * to the 30-minute default.
  */
 function attnWindowMs() {
   return numEnv("CSM_ATTN_WINDOW_MS", 1800000);
@@ -239,22 +242,31 @@ function readAsking(dir) {
   return undefined;
 }
 
-/** Resolve the heartbeat sidecar last-seen ms (mirrors liveness.resolveLastSeen). */
-function resolveLastSeen(dir) {
-  const hb = path.join(dir, "heartbeat");
+/**
+ * Resolve an ISO-text timestamp sidecar (`heartbeat`, `resumed`,
+ * `ask-resolved`) to ms (mirrors liveness.resolveSidecarMs): Date.parse of the
+ * trimmed content, else the file mtime, else undefined. Never throws.
+ */
+function resolveSidecarMs(dir, name) {
+  const file = path.join(dir, name);
   let content;
   try {
-    content = fs.readFileSync(hb, "utf8");
+    content = fs.readFileSync(file, "utf8");
   } catch {
     return undefined;
   }
   const parsed = Date.parse(content.trim());
   if (!Number.isNaN(parsed)) return parsed;
   try {
-    return fs.statSync(hb).mtimeMs;
+    return fs.statSync(file).mtimeMs;
   } catch {
     return undefined;
   }
+}
+
+/** Resolve the heartbeat sidecar last-seen ms (mirrors liveness.resolveLastSeen). */
+function resolveLastSeen(dir) {
+  return resolveSidecarMs(dir, "heartbeat");
 }
 
 /** Cheap pid liveness (mirrors liveness.defaultProbe) — kill -0; no lstart guard. */
@@ -516,34 +528,52 @@ async function main() {
 
     const { files, lastActiveMs } = activeWrites(dir, now);
 
-    // Cheap liveness (T-04-09b): heartbeat-fresh OR pid alive. No lstart guard.
+    // Last activity (heartbeat -> newest write -> start_time). Liveness input and
+    // the legacy fallback clear for the needs-you gates.
     const heartbeatMs = resolveLastSeen(dir);
     const lastSeenMs =
       heartbeatMs ?? (lastActiveMs !== -Infinity ? lastActiveMs : Date.parse(state.start_time));
-    const fresh = !Number.isNaN(lastSeenMs) && now - lastSeenMs < staleMs();
-    const alive = fresh || pidAlive(state.pid);
+
+    // Resume signals (260927-1zw CR-01 / WR-02) — mirrors aggregate.readAll
+    // exactly. `resumed` (main-thread only) clears waiting; `ask-resolved`
+    // (answer-specific) clears asking. DISC-1: a session without the sidecars
+    // (hooks that predate them) falls back to lastSeenMs, so it behaves as before.
+    const resumedMs = resolveSidecarMs(dir, "resumed") ?? lastSeenMs;
+    const askResolvedMs = resolveSidecarMs(dir, "ask-resolved") ?? lastSeenMs;
+
+    // ATTN-04 reader gate — within the window AND strictly newer than the
+    // main-thread resume signal. NaN ts self-heals to false. Computed BEFORE the
+    // liveness check because an active marker is liveness evidence (WR-01).
+    const attn = readAttention(dir);
+    const attnMs = attn ? Date.parse(attn.ts) : NaN;
+    const rawWaiting =
+      !Number.isNaN(attnMs) && now - attnMs < attnWindowMs() && attnMs > resumedMs;
+
+    // AQ-03 asking gate (260926-vfm, 260927-1zw WR-02) — the same window,
+    // strictly newer than the answer-specific ask-resolved signal, and asking
+    // WINS over attention (a Notification can fire while a question is open;
+    // the question is the more specific signal). Sibling tools cannot clear it.
+    const askTs = readAsking(dir);
+    const askMs = askTs !== undefined ? Date.parse(askTs) : NaN;
+    const asking =
+      !Number.isNaN(askMs) && now - askMs < attnWindowMs() && askMs > askResolvedMs;
+    const attention = rawWaiting && !asking;
+
+    // Cheap liveness (T-04-09b): heartbeat-fresh OR needs-you keepalive OR pid
+    // alive. No lstart guard. WR-01 / D-03: a session blocked on the human emits
+    // no heartbeat, so an active marker keeps it listed; the marker gate bounds
+    // this by attnWindowMs(). DISC-4: a known pid that probes dead gets no
+    // keepalive, so a crashed session still drops off the roster.
+    const heartbeatFresh = !Number.isNaN(lastSeenMs) && now - lastSeenMs < staleMs();
+    const pidValid = typeof state.pid === "number" && Number.isInteger(state.pid) && state.pid > 0;
+    const procAlive = pidAlive(state.pid);
+    const procDead = pidValid && !procAlive;
+    const keepalive = (asking || rawWaiting) && !procDead;
+    const alive = heartbeatFresh || keepalive || procAlive;
     if (!alive) continue; // live-only roster (D-04)
 
     const startMs = Date.parse(state.start_time);
     const sortMs = lastActiveMs !== -Infinity ? lastActiveMs : Number.isNaN(startMs) ? 0 : startMs;
-
-    // ATTN-04 reader gate — mirrors aggregate.readAll exactly: within the window
-    // AND newer than the already-computed lastSeenMs (the D-04 activity signal).
-    // Both strict; NaN ts self-heals to false. Reuses lastSeenMs, never recomputed.
-    const attn = readAttention(dir);
-    const attnMs = attn ? Date.parse(attn.ts) : NaN;
-    const rawWaiting =
-      !Number.isNaN(attnMs) && now - attnMs < attnWindowMs() && attnMs > lastSeenMs;
-
-    // AQ-03 asking gate (260926-vfm) — mirrors aggregate.readAll exactly: the
-    // SAME window + strictly-newer-than-lastSeenMs gate on asking.json, and
-    // asking WINS over attention (a Notification can fire while a question is
-    // open; the question is the more specific signal).
-    const askTs = readAsking(dir);
-    const askMs = askTs !== undefined ? Date.parse(askTs) : NaN;
-    const asking =
-      !Number.isNaN(askMs) && now - askMs < attnWindowMs() && askMs > lastSeenMs;
-    const attention = rawWaiting && !asking;
 
     rows.push({
       session_id: typeof state.session_id === "string" ? state.session_id : id,
