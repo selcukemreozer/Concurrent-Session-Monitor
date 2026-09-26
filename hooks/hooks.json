@@ -10,6 +10,17 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/on-ask.mjs\"",
+            "async": true,
+            "timeout": 5
+          }
+        ]
       }
     ],
     "PostToolUse": [
