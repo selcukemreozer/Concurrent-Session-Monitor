@@ -414,8 +414,9 @@ describe("csm-status reader — Ports: block (INT-02, PORT-05)", () => {
 // rule — and appends a detail-free "◉ waiting" marker to a waiting live session's
 // roster line (ATTN-04). A non-waiting live session omits it. lastSeenMs is
 // heartbeat-based (verified: csm-status.mjs line 472), so an attention ts newer
-// than the heartbeat and within CSM_ATTN_WINDOW_MS (default 90000) surfaces the
-// marker regardless of write timestamps. RED until csm-status.mjs adds the inline
+// than the heartbeat and within CSM_ATTN_WINDOW_MS (default 1800000 — a 30-minute
+// safety net, 260926-r7n; activity is the primary clear) surfaces the marker
+// regardless of write timestamps. RED until csm-status.mjs adds the inline
 // read + marker.
 describe("csm-status reader — attention marker (ATTN-04)", () => {
   const ATTENTION_GLYPH = "◉"; // U+25C9 fisheye
@@ -427,7 +428,7 @@ describe("csm-status reader — attention marker (ATTN-04)", () => {
       heartbeat: new Date(now - 30_000).toISOString(), // fresh (live) but 30s ago
       writes: ["/repo/a.ts"],
       intent: "awaiting approval",
-      // Attention 5s ago: newer than the heartbeat, well within the 90s window.
+      // Attention 5s ago: newer than the heartbeat, well within the 30-min window.
       attention: { type: "permission_prompt", ts: new Date(now - 5_000).toISOString() },
     });
 
@@ -445,6 +446,53 @@ describe("csm-status reader — attention marker (ATTN-04)", () => {
     const res = runStatus("beta2222-bbbb", tmp);
     expect(res.status).toBe(0);
     const line = lineFor(res.stdout, "beta2222-bbbb");
+    expect(line).toBeDefined();
+    expect(line).not.toContain(ATTENTION_GLYPH);
+  });
+
+  // --- 260926-r7n (AP-02): the inline mirror shares the 30-minute safety-net
+  // default. CSM_ATTN_WINDOW_MS is removed from the spawned env so the DEFAULT
+  // is exercised; pid = the test runner keeps the session live despite a stale
+  // heartbeat.
+  function withoutAttnEnv<T>(fn: () => T): T {
+    const prior = process.env.CSM_ATTN_WINDOW_MS;
+    delete process.env.CSM_ATTN_WINDOW_MS;
+    try {
+      return fn();
+    } finally {
+      if (prior !== undefined) process.env.CSM_ATTN_WINDOW_MS = prior;
+    }
+  }
+
+  it("S1 — default window keeps a long wait visible: attention 10 min ago, heartbeat 15 min ago → ◉ waiting", () => {
+    const now = Date.now();
+    seed(tmp, "gamma333-cccc", {
+      folder: "projGamma",
+      pid: process.pid,
+      heartbeat: new Date(now - 900_000).toISOString(),
+      attention: { type: "permission_prompt", ts: new Date(now - 600_000).toISOString() },
+    });
+
+    const res = withoutAttnEnv(() => runStatus("gamma333-cccc", tmp));
+    expect(res.status).toBe(0);
+    const line = lineFor(res.stdout, "gamma333-cccc");
+    expect(line).toBeDefined();
+    expect(line).toContain(ATTENTION_GLYPH);
+    expect(line).toContain("waiting");
+  });
+
+  it("S2 — default safety net still expires: attention 31 min ago, heartbeat 40 min ago → no ◉", () => {
+    const now = Date.now();
+    seed(tmp, "delta444-dddd", {
+      folder: "projDelta",
+      pid: process.pid,
+      heartbeat: new Date(now - 2_400_000).toISOString(),
+      attention: { type: "permission_prompt", ts: new Date(now - 1_860_000).toISOString() },
+    });
+
+    const res = withoutAttnEnv(() => runStatus("delta444-dddd", tmp));
+    expect(res.status).toBe(0);
+    const line = lineFor(res.stdout, "delta444-dddd");
     expect(line).toBeDefined();
     expect(line).not.toContain(ATTENTION_GLYPH);
   });
