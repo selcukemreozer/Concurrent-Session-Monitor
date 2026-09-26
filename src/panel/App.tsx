@@ -400,12 +400,18 @@ export function App() {
   const nConf = state.conflicts.length;
   const summaryLead = sanitize(`${state.live} live · ${state.idle} idle · `);
   const conflictLabel = sanitize(`${nConf} conflicts`);
-  // "N waiting" attention counter (ATTN-03, D-01): count ONLY non-ended display
-  // rows (Pitfall 5) — an ended/grey row in its prune grace must never inflate
-  // the count nor resurrect a pruned session. Consumes the pre-gated
-  // d.row.attention boolean (06-03); no window/newer-than re-check here.
-  const nWaiting = state.display.filter((d) => !d.ended && d.row.attention).length;
+  // "N waiting" / "N asking" needs-you counters (ATTN-03 D-01; 260926-vfm D-04):
+  // count ONLY non-ended display rows (Pitfall 5) — an ended/grey row in its
+  // prune grace must never inflate the count nor resurrect a pruned session.
+  // Consumes the pre-gated d.row.asking / d.row.attention booleans; no
+  // window/newer-than re-check here. Asking wins, so a row carrying both flags
+  // is counted exactly once, under asking (the reader already guarantees this).
+  const nAsking = state.display.filter((d) => !d.ended && d.row.asking).length;
+  const nWaiting = state.display.filter(
+    (d) => !d.ended && d.row.attention && !d.row.asking,
+  ).length;
   const waitingLabel = sanitize(`${nWaiting} waiting`);
+  const askingLabel = sanitize(`${nAsking} asking`);
   const clock = sanitize(fmtClock(Date.now()));
 
   // Merge the live-derived branch into each roster row (D-LB-03): App overrides
@@ -446,6 +452,10 @@ export function App() {
           {" · "}
           <Text color={nWaiting > 0 ? "yellowBright" : undefined} bold={nWaiting > 0}>
             {waitingLabel}
+          </Text>
+          {" · "}
+          <Text color={nAsking > 0 ? "magenta" : undefined} bold={nAsking > 0}>
+            {askingLabel}
           </Text>
         </Text>
       </Box>

@@ -34,6 +34,7 @@ noticed before they collide.
 - **Conflict warnings**: the instant two sessions claim the same file, the panel flags it, before the edits collide.
 - **Session context**: per-session uptime, model, current intent, listening ports, and GSD-phase progress at a glance.
 - **Branch awareness**: each session's live current branch, plus the target branch it declares with `/csm-branch`; the panel flags a mismatch when a session is not yet on the branch it means to work on.
+- **Needs-you markers**: a session that asked you a question (Claude's `AskUserQuestion` tool) shows a magenta `◉ asking`; a session blocked on a permission prompt or sitting idle shows a yellow `◉ waiting`. The panel header counts both, and `/csm-status` shows the same markers. A marker clears as soon as the session resumes: you answer, you approve, the turn ends, or you submit a prompt. The question is captured by an async `PreToolUse` hook on `AskUserQuestion`; waiting comes from the `Notification` hook.
 - **Zero-config and non-intrusive**: capture hooks are async and never slow your tools; there is nothing to configure.
 
 ## Install
@@ -112,7 +113,7 @@ back to the default. Times are in milliseconds.
 | `CSM_WINDOW_MS` | `300000` (5 min) | Rolling window for a session's "active files": files touched within this window count as currently held. |
 | `CSM_READ_WINDOW_MS` | `30000` (30 s) | Shorter window for read activity; reads decay ~10x faster than writes. |
 | `CSM_SKILL_WINDOW_MS` | `300000` (5 min) | Window for the most-recently-invoked skill shown on a session row. |
-| `CSM_ATTN_WINDOW_MS` | `1800000` (30 min) | Safety-net ceiling on how long a session's "waiting on you" attention flag can stay shown after its last Notification when no activity follows. The flag normally clears as soon as the session shows activity again: any tool completes (for example after you answer a question or approve a permission), the turn ends, or you submit a prompt. |
+| `CSM_ATTN_WINDOW_MS` | `1800000` (30 min) | Safety-net ceiling on how long a session's "asking" and "waiting on you" flags can stay shown (after the question was asked or its last Notification) when no activity follows. The flag normally clears as soon as the session shows activity again: any tool completes (for example after you answer a question or approve a permission), the turn ends, or you submit a prompt. |
 | `CSM_STALE_MS` | `120000` (2 min) | Liveness TTL: a session with no heartbeat for this long is treated as inactive. |
 | `CSM_ACTIVE_MS` | `30000` (30 s) | Recency threshold for the green/yellow activity dot. |
 | `CSM_GRACE_MS` | `1200` (1.2 s) | Grace window: a vanished session is shown dim-grey as "ended" for this long before it is pruned, so you see it die rather than blink out. |

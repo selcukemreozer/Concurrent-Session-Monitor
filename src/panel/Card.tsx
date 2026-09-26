@@ -81,15 +81,21 @@ const BRANCH_GLYPH = "⎇";
 const NEQ_GLYPH = "≠";
 
 /**
- * The action-needed attention indicator (ATTN-03 D-03): the fisheye `◉` (U+25C9).
- * It is >= 0x00A0 so `sanitize()` preserves it, and it collides with NO reserved
- * cue — NOT the liveness `●`, read `◇`, filled `◆`, conflict `⚠`, swap `↔`, link
- * `↪`, intent `»`, exposed `⇅`, skill `⚙`, current-phase `▸`, or branch `⎇`. It
- * always renders `yellowBright` + `bold`. Unlike the card-only reads/skill/intent
- * markers, this indicator appears on BOTH SessionCard AND CompactRow (D-01). It is
- * a SINGLE uniform, detail-free cue — the visual never splits on the attention
- * type (permission_prompt vs idle_prompt), per D-02; the row consumes the
- * pre-gated `s.attention` boolean (06-03) with no re-check here.
+ * The needs-you indicator glyph (ATTN-03 D-03; 260926-vfm): the fisheye `◉`
+ * (U+25C9). It is >= 0x00A0 so `sanitize()` preserves it, and it collides with NO
+ * reserved cue — NOT the liveness `●`, read `◇`, filled `◆`, conflict `⚠`, swap
+ * `↔`, link `↪`, intent `»`, exposed `⇅`, skill `⚙`, current-phase `▸`, or branch
+ * `⎇`. It leads TWO detail-free states, and asking takes precedence:
+ *  - `s.asking` (Claude asked a question via AskUserQuestion; 260926-vfm) renders
+ *    `magenta` + `bold` with the literal "asking". The magenta shares its hue with
+ *    the PORTS-pane exposed badge but is disambiguated by the ◉ glyph + the
+ *    "asking" literal, and it lives only on roster rows.
+ *  - otherwise `s.attention` (permission prompt / idle) renders `yellowBright` +
+ *    `bold` with the literal "waiting", unchanged.
+ * Unlike the card-only reads/skill/intent markers, this indicator appears on BOTH
+ * SessionCard AND CompactRow (D-01). The waiting visual never splits on the
+ * Notification type (permission_prompt vs idle_prompt), per D-02; the row
+ * consumes the pre-gated `s.asking` / `s.attention` booleans with no re-check here.
  */
 const ATTENTION_GLYPH = "◉";
 
@@ -242,7 +248,9 @@ export function SessionCard({ s }: { s: SessionRow }) {
         ) : null}
         {targetSegment}
       </Box>
-      {s.attention ? (
+      {s.asking ? (
+        <Text color="magenta" bold>{"  " + ATTENTION_GLYPH + " asking"}</Text>
+      ) : s.attention ? (
         <Text color="yellowBright" bold>{"  " + ATTENTION_GLYPH + " waiting"}</Text>
       ) : null}
       {intentLine}
@@ -302,7 +310,9 @@ export function CompactRow({ s }: { s: SessionRow }) {
   const uptime = sanitize(fmtUptime(Date.parse(s.start_time), Date.now()));
   return (
     <Text>
-      {s.attention ? (
+      {s.asking ? (
+        <Text color="magenta" bold>{ATTENTION_GLYPH + " "}</Text>
+      ) : s.attention ? (
         <Text color="yellowBright" bold>{ATTENTION_GLYPH + " "}</Text>
       ) : null}
       {sanitize(s.folder)}

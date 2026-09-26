@@ -38684,7 +38684,7 @@ function SessionCard({ s }) {
       focusUrl ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "cyan", children: " \xB7 " + osc8(focusUrl, "\u21AA go to pane") }) : null,
       targetSegment
     ] }),
-    s.attention ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "yellowBright", bold: true, children: "  " + ATTENTION_GLYPH + " waiting" }) : null,
+    s.asking ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "magenta", bold: true, children: "  " + ATTENTION_GLYPH + " asking" }) : s.attention ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "yellowBright", bold: true, children: "  " + ATTENTION_GLYPH + " waiting" }) : null,
     intentLine,
     typeof s.skill === "string" && s.skill.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: "  " + SKILL_GLYPH + " " + (s.skill_subagent ? sanitize(s.skill_subagent) + SKILL_SEP : "") + sanitize(s.skill) }) : null,
     s.files.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: "  (no active files)" }) : s.files.map((f, i) => {
@@ -38710,7 +38710,7 @@ function SessionCard({ s }) {
 function CompactRow({ s }) {
   const uptime = sanitize(fmtUptime(Date.parse(s.start_time), Date.now()));
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Text, { children: [
-    s.attention ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "yellowBright", bold: true, children: ATTENTION_GLYPH + " " }) : null,
+    s.asking ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "magenta", bold: true, children: ATTENTION_GLYPH + " " }) : s.attention ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "yellowBright", bold: true, children: ATTENTION_GLYPH + " " }) : null,
     sanitize(s.folder),
     " \xB7 ",
     sanitize(s.branch) || "\u2014",
@@ -39183,8 +39183,12 @@ function App2() {
   const nConf = state.conflicts.length;
   const summaryLead = sanitize(`${state.live} live \xB7 ${state.idle} idle \xB7 `);
   const conflictLabel = sanitize(`${nConf} conflicts`);
-  const nWaiting = state.display.filter((d) => !d.ended && d.row.attention).length;
+  const nAsking = state.display.filter((d) => !d.ended && d.row.asking).length;
+  const nWaiting = state.display.filter(
+    (d) => !d.ended && d.row.attention && !d.row.asking
+  ).length;
   const waitingLabel = sanitize(`${nWaiting} waiting`);
+  const askingLabel = sanitize(`${nAsking} asking`);
   const clock = sanitize(fmtClock(Date.now()));
   const withLiveBranch = (row) => {
     const b = liveBranch(row, branches);
@@ -39208,7 +39212,9 @@ function App2() {
             summaryLead,
             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { color: nConf > 0 ? "red" : void 0, bold: nConf > 0, children: conflictLabel }),
             " \xB7 ",
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { color: nWaiting > 0 ? "yellowBright" : void 0, bold: nWaiting > 0, children: waitingLabel })
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { color: nWaiting > 0 ? "yellowBright" : void 0, bold: nWaiting > 0, children: waitingLabel }),
+            " \xB7 ",
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { color: nAsking > 0 ? "magenta" : void 0, bold: nAsking > 0, children: askingLabel })
           ] })
         ]
       }
