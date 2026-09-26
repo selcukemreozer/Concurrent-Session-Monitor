@@ -538,6 +538,80 @@ describe("SessionCard + CompactRow attention indicator (ATTN-03, D-01/D-02/D-03)
   });
 });
 
+// --- Quick task 260926-vfm (AQ-04): "asking" (an open AskUserQuestion) renders
+// MAGENTA on both surfaces; "waiting" (permission/idle) keeps its unchanged
+// yellowBright look. Asking wins when both flags are set (belt-and-braces render
+// guard — the reader already forces attention false). Color cases force
+// chalk.level = 1 inside try/finally (never depend on FORCE_COLOR).
+describe("SessionCard + CompactRow asking indicator (AQ-04)", () => {
+  const GLYPH = "◉";
+  const MAGENTA = ESC + "[35m";
+  const YELLOW_BRIGHT = ESC + "[93m";
+
+  function rawAt1(node: React.ReactElement): string {
+    const prev = chalk.level;
+    chalk.level = 1;
+    try {
+      return renderToString(node);
+    } finally {
+      chalk.level = prev;
+    }
+  }
+  const lineWith = (raw: string, needle: string): string =>
+    raw.split("\n").find((l) => stripAnsi(l).includes(needle)) ?? "";
+  const count = (s: string, needle: string): number => s.split(needle).length - 1;
+
+  it("P1: SessionCard shows '◉ asking' (not waiting) when asking is true", () => {
+    const out = stripAnsi(renderToString(<SessionCard s={makeRow({ asking: true } as Partial<SessionRow>)} />));
+    expect(out).toContain(GLYPH + " asking");
+    expect(out).not.toContain("waiting");
+  });
+
+  it("P2: SessionCard asking line is magenta, not yellowBright", () => {
+    const raw = rawAt1(<SessionCard s={makeRow({ asking: true } as Partial<SessionRow>)} />);
+    const line = lineWith(raw, "asking");
+    expect(line).not.toBe("");
+    expect(line).toContain(MAGENTA);
+    expect(line).not.toContain(YELLOW_BRIGHT);
+  });
+
+  it("P3: SessionCard waiting line is unchanged yellowBright, not magenta, and no 'asking'", () => {
+    const raw = rawAt1(<SessionCard s={makeRow({ attention: true } as Partial<SessionRow>)} />);
+    const line = lineWith(raw, "waiting");
+    expect(line).not.toBe("");
+    expect(line).toContain(YELLOW_BRIGHT);
+    expect(line).not.toContain(MAGENTA);
+    expect(stripAnsi(raw)).not.toContain("asking");
+  });
+
+  it("P4: SessionCard precedence — asking + attention renders only 'asking', one ◉", () => {
+    const out = stripAnsi(
+      renderToString(<SessionCard s={makeRow({ asking: true, attention: true } as Partial<SessionRow>)} />),
+    );
+    expect(out).toContain("asking");
+    expect(out).not.toContain("waiting");
+    expect(count(out, GLYPH)).toBe(1);
+  });
+
+  it("P5: CompactRow asking token is a magenta ◉, not yellowBright", () => {
+    const raw = rawAt1(<CompactRow s={makeRow({ asking: true } as Partial<SessionRow>)} />);
+    expect(stripAnsi(raw)).toContain(GLYPH);
+    expect(raw).toContain(MAGENTA);
+    expect(raw).not.toContain(YELLOW_BRIGHT);
+  });
+
+  it("P6: CompactRow waiting token unchanged yellowBright; with both flags exactly one magenta ◉", () => {
+    const waitRaw = rawAt1(<CompactRow s={makeRow({ attention: true } as Partial<SessionRow>)} />);
+    expect(waitRaw).toContain(YELLOW_BRIGHT);
+    expect(waitRaw).not.toContain(MAGENTA);
+
+    const bothRaw = rawAt1(<CompactRow s={makeRow({ asking: true, attention: true } as Partial<SessionRow>)} />);
+    expect(count(stripAnsi(bothRaw), GLYPH)).toBe(1);
+    expect(bothRaw).toContain(MAGENTA);
+    expect(bothRaw).not.toContain(YELLOW_BRIGHT);
+  });
+});
+
 /** Minimal Conflict fixture builder for band render assertions. */
 function makeConflict(over: Partial<Conflict> = {}): Conflict {
   return {

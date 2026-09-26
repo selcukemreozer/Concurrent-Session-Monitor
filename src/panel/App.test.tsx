@@ -8,6 +8,14 @@ import * as os from "node:os";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { SessionRow } from "../aggregate.js";
+import chalk from "chalk";
+
+// 260926-vfm (AQ-04): raw-SGR helpers for the asking-counter color assertion.
+const ESC = String.fromCharCode(27); // 0x1B
+function stripAnsi(s: string): string {
+  // eslint-disable-next-line no-control-regex
+  return s.replace(new RegExp(ESC + "\\[[0-9;]*m", "g"), "");
+}
 
 // RED (wave 01-04): App.tsx is the ~750ms poll + full re-read panel (PANEL-05).
 // readAll (01-02) is the store reader the poll calls; mock it so the test asserts
@@ -365,6 +373,76 @@ describe("App waiting counter (ATTN-03, D-01 header counter, Pitfall 5)", () => 
     const { inst, frame } = renderCapture();
     expect(frame()).toContain("0 waiting");
     inst.unmount();
+  });
+});
+
+// --- Quick task 260926-vfm (AQ-04): the header gains an "N asking" counter
+// (magenta+bold when > 0) beside "N waiting", with the same visibility rules —
+// always rendered, non-ended rows only — and each row counted exactly once
+// (asking wins over waiting).
+describe("App asking counter (AQ-04)", () => {
+  beforeEach(() => {
+    (readAll as unknown as { mockReset: () => void }).mockReset();
+    (pruneSession as unknown as { mockReset: () => void }).mockReset();
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  const setRows = (rows: SessionRow[]) =>
+    (readAll as unknown as { mockReturnValue: (v: unknown) => unknown }).mockReturnValue(rows);
+
+  it("P7: counts only non-ended asking rows — '1 asking' and '1 waiting'", () => {
+    setRows([
+      makeRow({ session_id: "live-ask", alive: true, dotState: "active", asking: true } as Partial<SessionRow>),
+      makeRow({ session_id: "live-wait", alive: true, dotState: "active", attention: true } as Partial<SessionRow>),
+      makeRow({ session_id: "ended-ask", alive: false, readyToPrune: true, dotState: "stale", asking: true } as Partial<SessionRow>),
+    ]);
+    const { inst, frame } = renderCapture();
+    expect(frame()).toContain("1 asking");
+    expect(frame()).toContain("1 waiting");
+    inst.unmount();
+  });
+
+  it("P8: renders '0 asking' and '0 waiting' when nobody needs you (counter always shown)", () => {
+    setRows([makeRow({ session_id: "a", alive: true, dotState: "active" } as Partial<SessionRow>)]);
+    const { inst, frame } = renderCapture();
+    expect(frame()).toContain("0 asking");
+    expect(frame()).toContain("0 waiting");
+    inst.unmount();
+  });
+
+  it("P9: a row with asking AND attention is counted once, under asking", () => {
+    setRows([
+      makeRow({ session_id: "both", alive: true, dotState: "active", asking: true, attention: true } as Partial<SessionRow>),
+    ]);
+    const { inst, frame } = renderCapture();
+    expect(frame()).toContain("1 asking");
+    expect(frame()).toContain("0 waiting");
+    inst.unmount();
+  });
+
+  it("P10: the header line is magenta only when nAsking > 0", () => {
+    const headerAt1 = (rows: SessionRow[]): string => {
+      setRows(rows);
+      const prev = chalk.level;
+      chalk.level = 1;
+      try {
+        const { inst, frame } = renderCapture();
+        const raw = frame();
+        inst.unmount();
+        return raw.split("\n").find((l) => stripAnsi(l).includes("conflicts")) ?? "";
+      } finally {
+        chalk.level = prev;
+      }
+    };
+    const withAsk = headerAt1([
+      makeRow({ session_id: "ask", alive: true, dotState: "active", asking: true } as Partial<SessionRow>),
+    ]);
+    expect(withAsk).not.toBe("");
+    expect(withAsk).toContain(ESC + "[35m");
+
+    const noAsk = headerAt1([makeRow({ session_id: "calm", alive: true, dotState: "active" } as Partial<SessionRow>)]);
+    expect(noAsk).not.toBe("");
+    expect(noAsk).not.toContain(ESC + "[35m");
   });
 });
 
