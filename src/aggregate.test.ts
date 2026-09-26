@@ -595,8 +595,9 @@ describe("readTargetBranch surface (TB-02, D-01/D-BR-01/D-11)", () => {
 // attention_ts) (ATTN-02/03). attention.json is a SEPARATE writer from
 // session.json (D-01), format `{ type: string, ts: string }`. The gate is the
 // single genuinely-new rule in the phase (Pattern 2): the flag shows only while
-// the attention ts is BOTH within CSM_ATTN_WINDOW_MS (default 90000) AND strictly
-// NEWER than the session's last activity (heartbeat / newest tool touch). All
+// the attention ts is BOTH within CSM_ATTN_WINDOW_MS (default 1_800_000 ms — a
+// 30-minute safety net, 260926-r7n) AND strictly NEWER than the session's last
+// activity (heartbeat / newest tool touch). Activity is the primary clear. All
 // timestamps are explicit ISO strings and `now` is injected, so the four gate
 // cases are deterministic with no timers. attention NEVER drives sort/liveness/
 // conflicts — presentation-only, like reads/skill/intent/branch.
@@ -656,5 +657,41 @@ describe("readAttention gate (ATTN-02/03, D-04 window + newer-than-activity)", (
     const row = readAll(now).find((r) => r.session_id === "at-absent");
     expect(row).toBeDefined();
     expect(row!.attention).toBe(false);
+  });
+
+  // --- 260926-r7n (AP-02): the default window is a 30-minute SAFETY NET, not
+  // the primary clear (activity is). A user who answers late must still see ◉.
+  it("D1 — default window keeps a long wait visible: attention 10 min ago, no activity since → attention true", () => {
+    const now = Date.now();
+    const dir = seedSession("at-long-wait", new Date(now - 3_600_000).toISOString(), {
+      heartbeat: new Date(now - 1_200_000).toISOString(),
+    });
+    writeAttention(dir, { type: "permission_prompt", ts: new Date(now - 600_000).toISOString() });
+
+    const row = readAll(now).find((r) => r.session_id === "at-long-wait")!;
+    expect(row.attention).toBe(true);
+  });
+
+  it("D2 — default safety net still expires: attention 31 min ago → attention false", () => {
+    const now = Date.now();
+    const dir = seedSession("at-safety-net", new Date(now - 7_200_000).toISOString(), {
+      heartbeat: new Date(now - 3_600_000).toISOString(),
+    });
+    writeAttention(dir, { type: "permission_prompt", ts: new Date(now - 1_860_000).toISOString() });
+
+    const row = readAll(now).find((r) => r.session_id === "at-safety-net")!;
+    expect(row.attention).toBe(false);
+  });
+
+  it("D3 — an invalid override (NaN) degrades to the 30-min default: attention 10 min ago → attention true", () => {
+    process.env.CSM_ATTN_WINDOW_MS = "abc";
+    const now = Date.now();
+    const dir = seedSession("at-bad-override", new Date(now - 3_600_000).toISOString(), {
+      heartbeat: new Date(now - 1_200_000).toISOString(),
+    });
+    writeAttention(dir, { type: "idle_prompt", ts: new Date(now - 600_000).toISOString() });
+
+    const row = readAll(now).find((r) => r.session_id === "at-bad-override")!;
+    expect(row.attention).toBe(true);
   });
 });
