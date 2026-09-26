@@ -86,34 +86,49 @@ export function isProcessAlive(
 }
 
 /**
- * Resolve the last-seen time (ms) for a shard from its `heartbeat` sidecar.
+ * Resolve the timestamp (ms) stored in a per-session ISO-text sidecar.
  *
- * On-disk contract (FROZEN, shared with the 02-02 writer):
- *   - file name: `heartbeat` in the shard dir (no extension)
- *   - content:   `new Date().toISOString()` — parsed via `Date.parse`
- *   - fallback:  `statSync(heartbeat).mtimeMs` when content is unparseable
- *   - absent:    returns `undefined`
+ * Shared on-disk contract for the timestamp sidecars in a shard dir:
+ *   - `heartbeat`    — liveness (every agent's activity). FROZEN plain
+ *                      writeFileSync, shared with the 02-02 writer.
+ *   - `resumed`      — main-thread resume signal, clears ◉ waiting
+ *                      (260927-1zw CR-01). Written via temp + rename.
+ *   - `ask-resolved` — answer-specific signal, clears ◉ asking
+ *                      (260927-1zw WR-02). Written via temp + rename.
+ *
+ * Every sidecar has no extension and holds `new Date().toISOString()`, parsed
+ * via `Date.parse`. Unparseable content falls back to `statSync(file).mtimeMs`;
+ * an absent file returns `undefined`.
  *
  * Wrapped in try/catch so a torn read never throws — the panel self-heals next
  * tick.
  */
-export function resolveLastSeen(dir: string): number | undefined {
-  const hb = path.join(dir, "heartbeat");
+export function resolveSidecarMs(dir: string, name: string): number | undefined {
+  const file = path.join(dir, name);
   let content: string;
   try {
-    content = fs.readFileSync(hb, "utf8");
+    content = fs.readFileSync(file, "utf8");
   } catch {
-    return undefined; // no heartbeat sidecar yet
+    return undefined; // sidecar not written yet
   }
 
   const parsed = Date.parse(content.trim());
   if (!Number.isNaN(parsed)) return parsed;
 
   try {
-    return fs.statSync(hb).mtimeMs; // unparseable content -> mtime fallback
+    return fs.statSync(file).mtimeMs; // unparseable content -> mtime fallback
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Resolve the last-seen time (ms) for a shard from its `heartbeat` sidecar
+ * (see {@link resolveSidecarMs} for the contract). Returns `undefined` when no
+ * heartbeat has been written yet.
+ */
+export function resolveLastSeen(dir: string): number | undefined {
+  return resolveSidecarMs(dir, "heartbeat");
 }
 
 /**

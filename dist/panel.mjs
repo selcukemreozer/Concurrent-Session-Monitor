@@ -38028,21 +38028,24 @@ function isProcessAlive(pid, probe = defaultProbe, expectedStarted, startedProbe
   }
   return "alive";
 }
-function resolveLastSeen(dir) {
-  const hb = path2.join(dir, "heartbeat");
+function resolveSidecarMs(dir, name) {
+  const file = path2.join(dir, name);
   let content;
   try {
-    content = fs3.readFileSync(hb, "utf8");
+    content = fs3.readFileSync(file, "utf8");
   } catch {
     return void 0;
   }
   const parsed = Date.parse(content.trim());
   if (!Number.isNaN(parsed)) return parsed;
   try {
-    return fs3.statSync(hb).mtimeMs;
+    return fs3.statSync(file).mtimeMs;
   } catch {
     return void 0;
   }
+}
+function resolveLastSeen(dir) {
+  return resolveSidecarMs(dir, "heartbeat");
 }
 function staleMs() {
   return numEnv("CSM_STALE_MS", 12e4);
@@ -38257,17 +38260,21 @@ function readAll(now = Date.now(), probe = defaultProbe, startedProbe = defaultS
     const reads = rawReads.filter((r) => !writeSet.has(r.file_path));
     const heartbeatMs = resolveLastSeen(dir);
     const lastSeenMs = heartbeatMs ?? Date.parse(lastActive ?? state.start_time);
+    const resumedMs = resolveSidecarMs(dir, "resumed") ?? lastSeenMs;
+    const askResolvedMs = resolveSidecarMs(dir, "ask-resolved") ?? lastSeenMs;
     const attn = readAttention(dir);
     const attnMs = attn.attention_ts !== void 0 ? Date.parse(attn.attention_ts) : NaN;
-    const rawWaiting = !Number.isNaN(attnMs) && now - attnMs < attnWindowMs() && attnMs > lastSeenMs;
+    const rawWaiting = !Number.isNaN(attnMs) && now - attnMs < attnWindowMs() && attnMs > resumedMs;
     const ask = readAsking(dir);
     const askMs = ask.asking_ts !== void 0 ? Date.parse(ask.asking_ts) : NaN;
-    const asking = !Number.isNaN(askMs) && now - askMs < attnWindowMs() && askMs > lastSeenMs;
+    const asking = !Number.isNaN(askMs) && now - askMs < attnWindowMs() && askMs > askResolvedMs;
     const attention = rawWaiting && !asking;
-    const fresh = now - lastSeenMs < staleMs();
     const verdict = isProcessAlive(state.pid, probe, state.pid_started, startedProbe);
     const procAlive = verdict === "alive";
     const procDead = verdict === "dead";
+    const heartbeatFresh = now - lastSeenMs < staleMs();
+    const needsYouKeepalive = (asking || rawWaiting) && !procDead;
+    const fresh = heartbeatFresh || needsYouKeepalive;
     const alive = fresh || procAlive;
     const readyToPrune = !fresh && !procAlive;
     let dotState;

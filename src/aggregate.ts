@@ -6,6 +6,7 @@ import type { SessionState, TouchEvent, SkillEvent, AttentionState, AskingState 
 import {
   isProcessAlive,
   resolveLastSeen,
+  resolveSidecarMs,
   staleMs,
   activeMs,
   defaultProbe,
@@ -50,14 +51,20 @@ function skillWindowMs(): number {
  * config-adjustable via CSM_ATTN_WINDOW_MS (default 1_800_000ms / 30 min). A
  * NEW numeric axis, DISTINCT from `windowMs()`/`readWindowMs()`/`skillWindowMs()`.
  *
- * This is a SAFETY NET, not the primary clear. The primary clear is any
- * heartbeat newer than the attention ts — written by on-activity (PostToolUse
- * "*" and Stop), on-tool, on-skill and on-user-prompt — so the flag drops as
- * soon as the user answers a question, approves a permission, the turn ends,
- * or a new prompt is submitted. The ceiling was raised from the former
- * 90-second TTL, which existed only because answering a prompt bumped nothing;
- * it hid the marker from users who answered later than that. An attention
- * snapshot older than this still expires the flag if no activity ever follows.
+ * This is a SAFETY NET, not the primary clear. The primary clears are the
+ * resume sidecars (260927-1zw): ◉ waiting drops once the main-thread `resumed`
+ * sidecar (on-activity for main-thread PostToolUse / Stop, on-user-prompt) is
+ * at least as new as the attention ts; ◉ asking drops once the answer-specific
+ * `ask-resolved` sidecar (main-thread AskUserQuestion completion, main-thread
+ * Stop, on-user-prompt) is at least as new as the asking ts. Subagent activity
+ * and sibling tools never clear a marker. When a sidecar is absent (hooks that
+ * predate it) the heartbeat-derived last activity is the fallback clear.
+ * Approving/denying a permission, rejecting a question and Esc fire no hook, so
+ * after those the marker stays until the next prompt or this ceiling. The
+ * ceiling was raised from the former 90-second TTL; an attention snapshot older
+ * than this expires the flag if no resume signal ever follows. It also bounds
+ * the needs-you liveness keepalive (WR-01), because the keepalive only holds
+ * while a marker gate holds.
  *
  * Routed through `numEnv` so a NaN/negative override degrades to the 30-minute
  * default. Read lazily (not module-const) so tests can flip the env per-case.
@@ -138,12 +145,15 @@ export type SessionRow = SessionState & {
   /**
    * Whether this session currently needs the human's attention (ATTN-02/03),
    * PRE-GATED reader-side: true only while the `attention.json` snapshot ts is
-   * BOTH within `attnWindowMs()` AND strictly NEWER than the session's last
-   * activity (`lastSeenMs`: heartbeat / newest touch / start_time). The gate IS
-   * the race-free clear — a resumed session (fresher heartbeat) or an expired
-   * window flips this false on the next read tick, with no second writer. A
-   * purely additive, card/presentation-only field that NEVER drives sort,
-   * liveness, dotState, or conflict detection (D-01/D-04). It is forced false
+   * BOTH within `attnWindowMs()` AND strictly NEWER than the main-thread
+   * `resumed` sidecar (260927-1zw CR-01), falling back to the session's last
+   * activity (`lastSeenMs`: heartbeat / newest touch / start_time) when that
+   * sidecar is absent. The gate IS the race-free clear — a main-thread resume
+   * or an expired window flips this false on the next read tick, with no second
+   * writer. Subagent activity never clears it. Presentation-only for sort and
+   * conflicts; an active marker (this or `asking`) IS liveness evidence
+   * (260927-1zw WR-01 / D-03): it keeps a non-dead session fresh, so it is
+   * neither stale nor readyToPrune while the marker holds. It is forced false
    * whenever `asking` is true (D-03 asking-wins precedence, 260926-vfm), so a
    * row is counted once.
    */
@@ -158,11 +168,13 @@ export type SessionRow = SessionState & {
   attention_ts?: string;
   /**
    * Whether Claude asked this session's user a question via AskUserQuestion and
-   * it is still open (260926-vfm, AQ-02). PRE-GATED reader-side with the SAME
-   * gate as `attention` applied to the `asking.json` shard: within
-   * `attnWindowMs()` AND strictly NEWER than `lastSeenMs`. Asking takes
-   * precedence over attention. Card/presentation-only — it drives no sort,
-   * liveness, dotState, or conflict detection.
+   * it is still open (260926-vfm, AQ-02). PRE-GATED reader-side on the
+   * `asking.json` shard: within `attnWindowMs()` AND strictly NEWER than the
+   * answer-specific `ask-resolved` sidecar (260927-1zw WR-02), falling back to
+   * `lastSeenMs` when that sidecar is absent. Sibling tool completions and
+   * subagent activity never clear it. Asking takes precedence over attention.
+   * It drives no sort or conflict detection; like `attention`, an open question
+   * counts as liveness evidence (WR-01 keepalive) for a non-dead session.
    */
   asking: boolean;
   /** ISO-8601 ts the open question was asked, present only when `asking` is true. */
@@ -480,32 +492,41 @@ export function readAll(
     const heartbeatMs = resolveLastSeen(dir);
     const lastSeenMs = heartbeatMs ?? Date.parse(lastActive ?? state.start_time);
 
+    // --- Resume signals (260927-1zw CR-01 / WR-02). The heartbeat counts every
+    // agent's activity (liveness), so it cannot be the clear signal: a subagent
+    // or sibling tool finishing would hide a marker the human still has to act
+    // on. `resumed` is written only by main-thread events (clears waiting) and
+    // `ask-resolved` only by answer-specific events (clears asking).
+    // DISC-1 fallback: a session whose hooks predate these sidecars (or that
+    // has not seen its first prompt yet) has none, so fall back to the legacy
+    // heartbeat-derived lastSeenMs. Such sessions then behave exactly as before,
+    // instead of resurfacing already-answered markers for up to 30 minutes.
+    const resumedMs = resolveSidecarMs(dir, "resumed") ?? lastSeenMs;
+    const askResolvedMs = resolveSidecarMs(dir, "ask-resolved") ?? lastSeenMs;
+
     // --- Attention gate (ATTN-02/03), pure reader-side — the race-free clear.
-    // Reuse the SAME lastSeenMs (D-04 activity signal) computed just above; do
-    // NOT recompute. attention shows ONLY while the snapshot ts is strictly
-    // newer than the last activity AND within attnWindowMs(). Activity is the
-    // PRIMARY clear: a fresher heartbeat (any tool completion / turn end / new
-    // prompt via on-activity, on-tool, on-skill, on-user-prompt) flips it false
-    // next tick. The 30-minute window is only the backstop for a session where
-    // no activity ever follows. Additive/card-only: it drives nothing below
-    // (sort/liveness/dot/conflicts).
+    // attention shows ONLY while the snapshot ts is strictly newer than the
+    // main-thread resume signal AND within attnWindowMs(). A main-thread tool
+    // completion (e.g. the approved tool), a main-thread Stop or a new prompt
+    // flips it false next tick. The 30-minute window is only the backstop for a
+    // session where no resume signal ever follows (Esc / deny fire no hook).
     const attn = readAttention(dir);
     const attnMs = attn.attention_ts !== undefined ? Date.parse(attn.attention_ts) : NaN;
     const rawWaiting =
-      !Number.isNaN(attnMs) && now - attnMs < attnWindowMs() && attnMs > lastSeenMs;
+      !Number.isNaN(attnMs) && now - attnMs < attnWindowMs() && attnMs > resumedMs;
 
-    // --- Asking gate (260926-vfm, AQ-02): the SAME gate on the asking.json
-    // shard, reusing the SAME lastSeenMs and attnWindowMs() (no new knob).
-    // Asking WINS over attention: permission_prompt / idle_prompt Notifications
-    // fire while a question is open, and the question is the more specific
-    // signal. Answering fires PostToolUse("*") → on-activity heartbeat →
-    // askMs <= lastSeenMs clears it on the next tick.
+    // --- Asking gate (260926-vfm AQ-02, 260927-1zw WR-02): the same window on
+    // the asking.json shard, compared against the answer-specific
+    // `ask-resolved` sidecar. Asking WINS over attention: permission_prompt /
+    // idle_prompt Notifications fire while a question is open, and the question
+    // is the more specific signal. Answering fires the main-thread
+    // PostToolUse(AskUserQuestion) → on-activity writes ask-resolved →
+    // askMs <= askResolvedMs clears it on the next tick. Sibling tools cannot.
     const ask = readAsking(dir);
     const askMs = ask.asking_ts !== undefined ? Date.parse(ask.asking_ts) : NaN;
     const asking =
-      !Number.isNaN(askMs) && now - askMs < attnWindowMs() && askMs > lastSeenMs;
+      !Number.isNaN(askMs) && now - askMs < attnWindowMs() && askMs > askResolvedMs;
     const attention = rawWaiting && !asking;
-    const fresh = now - lastSeenMs < staleMs(); // TTL authoritative (D-07)
     // PID-reuse guard (CR-01/WR-03): consult the captured `pid_started` identity
     // token. When the pid probes alive but its re-derived start-time differs from
     // what SessionStart recorded, the numeric pid has been recycled by another
@@ -520,6 +541,15 @@ export function readAll(
     // so the reader must defer to the TTL/heartbeat for the dot rather than
     // asserting "stale" and mislabelling a genuinely-live session.
     const procDead = verdict === "dead";
+    const heartbeatFresh = now - lastSeenMs < staleMs(); // TTL authoritative (D-07)
+    // Needs-you keepalive (260927-1zw WR-01 / D-03): a session blocked on the
+    // human emits no heartbeat, so an active marker is liveness evidence. It
+    // keeps the row fresh (not stale, not readyToPrune, never pruned by App)
+    // while the marker gate holds, which bounds it by attnWindowMs(). DISC-4: an
+    // authoritatively dead pid gets no keepalive, so a crashed session is still
+    // reaped normally.
+    const needsYouKeepalive = (asking || rawWaiting) && !procDead;
+    const fresh = heartbeatFresh || needsYouKeepalive;
     const alive = fresh || procAlive; // shown while EITHER says alive (SC-4)
     const readyToPrune = !fresh && !procAlive; // D-06: dead/unknown AND stale (SC-3)
 

@@ -129,12 +129,14 @@ export interface SkillEvent {
  * (ATTN-01/02/03).
  *
  * Written by the passive Notification `scripts/on-notification.mjs` hook — a
- * SEPARATE one-writer-per-file shard from files.jsonl/skill.jsonl (D-01), and
- * the ONE shard-writer that deliberately never refreshes the heartbeat so the
- * reader's newer-than-activity gate can fire. A separate shard read needs no
- * SessionState change, so SESSION_SCHEMA_VERSION is NOT bumped (exactly as the
- * intent / skill / target-branch shards above). It is a SNAPSHOT
- * (writeFileSync), not an append log — the reader keeps only the latest.
+ * SEPARATE one-writer-per-file shard from files.jsonl/skill.jsonl (D-01). The
+ * needs-you writers (on-notification, on-ask) never refresh the heartbeat
+ * (IN-02). The ◉ waiting flag clears when the main-thread `resumed` sidecar is
+ * at least as new as `ts` (260927-1zw CR-01; heartbeat fallback when absent).
+ * A separate shard read needs no SessionState change, so
+ * SESSION_SCHEMA_VERSION is NOT bumped (exactly as the intent / skill /
+ * target-branch shards above). It is a SNAPSHOT written via a same-dir temp
+ * file + rename (WR-05), not an append log — the reader keeps only the latest.
  */
 export interface AttentionState {
   /**
@@ -154,11 +156,13 @@ export interface AttentionState {
  * Written by `scripts/on-ask.mjs` on PreToolUse matcher "AskUserQuestion" — a
  * SEPARATE one-writer-per-file shard (it never touches attention.json, which a
  * later Notification would overwrite). Like on-notification, that writer never
- * refreshes the heartbeat, so the reader's newer-than-activity gate can fire;
- * answering the question completes the tool and on-activity's PostToolUse("*")
- * heartbeat clears it. It is a SNAPSHOT (writeFileSync), not a log. A separate
- * shard read needs no SessionState change, so SESSION_SCHEMA_VERSION is NOT
- * bumped (exactly like attention.json).
+ * refreshes the heartbeat (IN-02). The ◉ asking flag clears via the
+ * answer-specific `ask-resolved` sidecar (260927-1zw WR-02), written by
+ * on-activity on the main-thread AskUserQuestion completion or Stop and by
+ * on-user-prompt; sibling tools never clear it (heartbeat fallback when the
+ * sidecar is absent). It is a SNAPSHOT written via a same-dir temp file +
+ * rename (WR-05), not a log. A separate shard read needs no SessionState
+ * change, so SESSION_SCHEMA_VERSION is NOT bumped (exactly like attention.json).
  */
 export interface AskingState {
   /** ISO-8601 timestamp the question was opened (Date.parse on the read side; NOT epoch ms). */
