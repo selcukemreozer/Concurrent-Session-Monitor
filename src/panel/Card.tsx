@@ -229,7 +229,14 @@ export function SessionCard({ s }: { s: SessionRow }) {
     );
 
   return (
-    <Box flexDirection="column" borderStyle="round" paddingX={1} marginBottom={1}>
+    <Box
+      flexDirection="column"
+      borderStyle="round"
+      // Frame mirrors the needs-you marker below: asking wins over waiting.
+      borderColor={s.asking ? "magenta" : s.attention ? "yellowBright" : undefined}
+      paddingX={1}
+      marginBottom={1}
+    >
       <Box>
         <Text color={dotColor(s.dotState)}>{DOT + " "}</Text>
         <Text bold>{sanitize(s.folder)}</Text>

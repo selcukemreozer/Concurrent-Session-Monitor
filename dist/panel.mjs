@@ -38667,45 +38667,55 @@ function SessionCard({ s }) {
   const targetBranch = typeof s.target_branch === "string" && s.target_branch.length > 0 ? sanitize(s.target_branch) : "";
   const curBranch = sanitize(s.branch) || "\u2014";
   const targetSegment = targetBranch === "" ? null : targetBranch === sanitize(s.branch) ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: " \xB7 " + BRANCH_GLYPH + " " + targetBranch }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { bold: true, children: " \xB7 " + BRANCH_GLYPH + " " + curBranch + " " + NEQ_GLYPH + " " + targetBranch });
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Box_default, { flexDirection: "column", borderStyle: "round", paddingX: 1, marginBottom: 1, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Box_default, { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: dotColor(s.dotState), children: DOT + " " }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { bold: true, children: sanitize(s.folder) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Text, { dimColor: true, children: [
-        " \xB7 ",
-        sanitize(s.branch) || "\u2014",
-        " \xB7 ",
-        shortId(s.session_id),
-        " \xB7 ",
-        modelLabel(s.model),
-        " \xB7 ",
-        uptime
-      ] }),
-      focusUrl ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "cyan", children: " \xB7 " + osc8(focusUrl, "\u21AA go to pane") }) : null,
-      targetSegment
-    ] }),
-    s.asking ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "magenta", bold: true, children: "  " + ATTENTION_GLYPH + " asking" }) : s.attention ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "yellowBright", bold: true, children: "  " + ATTENTION_GLYPH + " waiting" }) : null,
-    intentLine,
-    typeof s.skill === "string" && s.skill.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: "  " + SKILL_GLYPH + " " + (s.skill_subagent ? sanitize(s.skill_subagent) + SKILL_SEP : "") + sanitize(s.skill) }) : null,
-    s.files.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: "  (no active files)" }) : s.files.map((f, i) => {
-      const { name, dir } = writeParts[i];
-      const left = sanitize(name);
-      const d = sanitize(dir);
-      return d === "" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { children: "  " + left }, f.file_path) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Text, { children: [
-        "  " + left.padEnd(W) + " | ",
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: d })
-      ] }, f.file_path);
-    }),
-    reads.map((r, i) => {
-      const { name, dir } = readParts[i];
-      const left = READ_GLYPH + " " + sanitize(name);
-      const d = sanitize(dir);
-      return d === "" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: READ_COLOR, children: "  " + left }, "r:" + r.file_path) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Text, { color: READ_COLOR, children: [
-        "  " + left.padEnd(W) + " | ",
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: d })
-      ] }, "r:" + r.file_path);
-    })
-  ] });
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+    Box_default,
+    {
+      flexDirection: "column",
+      borderStyle: "round",
+      borderColor: s.asking ? "magenta" : s.attention ? "yellowBright" : void 0,
+      paddingX: 1,
+      marginBottom: 1,
+      children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Box_default, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: dotColor(s.dotState), children: DOT + " " }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { bold: true, children: sanitize(s.folder) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Text, { dimColor: true, children: [
+            " \xB7 ",
+            sanitize(s.branch) || "\u2014",
+            " \xB7 ",
+            shortId(s.session_id),
+            " \xB7 ",
+            modelLabel(s.model),
+            " \xB7 ",
+            uptime
+          ] }),
+          focusUrl ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "cyan", children: " \xB7 " + osc8(focusUrl, "\u21AA go to pane") }) : null,
+          targetSegment
+        ] }),
+        s.asking ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "magenta", bold: true, children: "  " + ATTENTION_GLYPH + " asking" }) : s.attention ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "yellowBright", bold: true, children: "  " + ATTENTION_GLYPH + " waiting" }) : null,
+        intentLine,
+        typeof s.skill === "string" && s.skill.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: "  " + SKILL_GLYPH + " " + (s.skill_subagent ? sanitize(s.skill_subagent) + SKILL_SEP : "") + sanitize(s.skill) }) : null,
+        s.files.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: "  (no active files)" }) : s.files.map((f, i) => {
+          const { name, dir } = writeParts[i];
+          const left = sanitize(name);
+          const d = sanitize(dir);
+          return d === "" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { children: "  " + left }, f.file_path) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Text, { children: [
+            "  " + left.padEnd(W) + " | ",
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: d })
+          ] }, f.file_path);
+        }),
+        reads.map((r, i) => {
+          const { name, dir } = readParts[i];
+          const left = READ_GLYPH + " " + sanitize(name);
+          const d = sanitize(dir);
+          return d === "" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: READ_COLOR, children: "  " + left }, "r:" + r.file_path) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Text, { color: READ_COLOR, children: [
+            "  " + left.padEnd(W) + " | ",
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: d })
+          ] }, "r:" + r.file_path);
+        })
+      ]
+    }
+  );
 }
 function CompactRow({ s }) {
   const uptime = sanitize(fmtUptime(Date.parse(s.start_time), Date.now()));

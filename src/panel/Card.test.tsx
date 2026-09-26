@@ -610,6 +610,22 @@ describe("SessionCard + CompactRow asking indicator (AQ-04)", () => {
     expect(bothRaw).toContain(MAGENTA);
     expect(bothRaw).not.toContain(YELLOW_BRIGHT);
   });
+
+  it("P7: SessionCard border follows state — magenta asking, yellowBright waiting, uncolored otherwise", () => {
+    const top = (raw: string): string => lineWith(raw, "╭");
+    const askTop = top(rawAt1(<SessionCard s={makeRow({ asking: true, attention: true } as Partial<SessionRow>)} />));
+    expect(askTop).toContain(MAGENTA);
+    expect(askTop).not.toContain(YELLOW_BRIGHT);
+
+    const waitTop = top(rawAt1(<SessionCard s={makeRow({ attention: true } as Partial<SessionRow>)} />));
+    expect(waitTop).toContain(YELLOW_BRIGHT);
+    expect(waitTop).not.toContain(MAGENTA);
+
+    const idleTop = top(rawAt1(<SessionCard s={makeRow()} />));
+    expect(idleTop).not.toBe("");
+    expect(idleTop).not.toContain(MAGENTA);
+    expect(idleTop).not.toContain(YELLOW_BRIGHT);
+  });
 });
 
 /** Minimal Conflict fixture builder for band render assertions. */
