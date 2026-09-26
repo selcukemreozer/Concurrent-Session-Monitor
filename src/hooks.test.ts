@@ -549,7 +549,7 @@ describe("activity heartbeat — attention clear (AP-01/AP-03)", () => {
     expect(Number.isFinite(Date.parse(content.trim()))).toBe(true);
   });
 
-  it("T4 heartbeat-only + detail-free: a Bash PostToolUse leaves ONLY a heartbeat and never persists tool_input", () => {
+  it("T4 heartbeat + resumed only, detail-free: a main-thread Bash PostToolUse leaves ONLY heartbeat + resumed and never persists tool_input (260927-1zw)", () => {
     const sentinel = "SENTINEL_SECRET_r7n";
     const payload = JSON.stringify({
       session_id: "act-sess",
@@ -560,8 +560,9 @@ describe("activity heartbeat — attention clear (AP-01/AP-03)", () => {
     });
     const res = runHook(onActivity, payload, tmp);
     expect(res.status).toBe(0);
-    expect(fs.readdirSync(sessDir("act-sess"))).toEqual(["heartbeat"]);
+    expect(fs.readdirSync(sessDir("act-sess")).sort()).toEqual(["heartbeat", "resumed"]);
     expect(fs.readFileSync(heartbeatPath("act-sess"), "utf8")).not.toContain(sentinel);
+    expect(fs.readFileSync(path.join(sessDir("act-sess"), "resumed"), "utf8")).not.toContain(sentinel);
   });
 
   it("T5 one-writer rule: a pre-existing attention.json is byte-identical after on-activity runs", () => {
@@ -654,6 +655,206 @@ describe("activity heartbeat — attention clear (AP-01/AP-03)", () => {
     } finally {
       if (prior === undefined) delete process.env.CSM_STORE_DIR;
       else process.env.CSM_STORE_DIR = prior;
+    }
+  });
+});
+
+// --- Quick task 260927-1zw: resume signals written by the hooks.
+// The heartbeat stays the liveness signal for every agent. Two new sidecars
+// split out the clear signals: `resumed` (main-thread only, clears waiting,
+// CR-01) and `ask-resolved` (answer-specific, clears asking, WR-02). All
+// needs-you snapshots and sidecars are written via temp + rename (WR-05).
+describe("resume signals: hook writers (260927-1zw CR-01/WR-02/WR-05)", () => {
+  const sessDir = (id: string) => path.join(tmp, "sessions", id);
+  const ls = (id: string) => fs.readdirSync(sessDir(id)).sort();
+  const parses = (id: string, name: string) =>
+    Number.isFinite(Date.parse(fs.readFileSync(path.join(sessDir(id), name), "utf8").trim()));
+  const modeOf = (id: string, name: string) => fs.statSync(path.join(sessDir(id), name)).mode & 0o777;
+
+  it("R1 subagent PostToolUse (agent_id) writes ONLY the heartbeat", () => {
+    const res = runHook(
+      onActivity,
+      JSON.stringify({
+        session_id: "rs-sess",
+        hook_event_name: "PostToolUse",
+        tool_name: "Bash",
+        agent_id: "agent-abc",
+        agent_type: "general-purpose",
+        tool_input: { command: "echo SENTINEL_1zw" },
+      }),
+      tmp,
+    );
+    expect(res.status).toBe(0);
+    expect(res.stdout).toBe("");
+    expect(res.stderr).toBe("");
+    expect(ls("rs-sess")).toEqual(["heartbeat"]);
+    expect(parses("rs-sess", "heartbeat")).toBe(true);
+  });
+
+  it("R2 main-thread sibling PostToolUse (Read) writes heartbeat + resumed (0o600)", () => {
+    const res = runHook(
+      onActivity,
+      JSON.stringify({ session_id: "rs-sess", hook_event_name: "PostToolUse", tool_name: "Read" }),
+      tmp,
+    );
+    expect(res.status).toBe(0);
+    expect(ls("rs-sess")).toEqual(["heartbeat", "resumed"]);
+    expect(parses("rs-sess", "resumed")).toBe(true);
+    expect(modeOf("rs-sess", "resumed")).toBe(0o600);
+  });
+
+  it("R3 main-thread AskUserQuestion PostToolUse writes ask-resolved + heartbeat + resumed", () => {
+    const res = runHook(
+      onActivity,
+      JSON.stringify({ session_id: "rs-sess", hook_event_name: "PostToolUse", tool_name: "AskUserQuestion" }),
+      tmp,
+    );
+    expect(res.status).toBe(0);
+    expect(ls("rs-sess")).toEqual(["ask-resolved", "heartbeat", "resumed"]);
+    for (const f of ["ask-resolved", "heartbeat", "resumed"]) expect(parses("rs-sess", f)).toBe(true);
+  });
+
+  it("R4 main-thread Stop writes all three sidecars, exit 0, empty stdout/stderr (Stop-safety)", () => {
+    const res = runHook(
+      onActivity,
+      JSON.stringify({ session_id: "rs-sess", hook_event_name: "Stop", stop_hook_active: false }),
+      tmp,
+    );
+    expect(res.status).toBe(0);
+    expect(res.stdout).toBe("");
+    expect(res.stderr).toBe("");
+    expect(ls("rs-sess")).toEqual(["ask-resolved", "heartbeat", "resumed"]);
+  });
+
+  it("R5 subagent AskUserQuestion PostToolUse writes ONLY the heartbeat (D-02 main-thread wording)", () => {
+    const res = runHook(
+      onActivity,
+      JSON.stringify({
+        session_id: "rs-sess",
+        hook_event_name: "PostToolUse",
+        tool_name: "AskUserQuestion",
+        agent_id: "agent-abc",
+      }),
+      tmp,
+    );
+    expect(res.status).toBe(0);
+    expect(ls("rs-sess")).toEqual(["heartbeat"]);
+  });
+
+  it("R6 discriminator (DISC-2): agent_type alone or an empty agent_id still counts as main-thread", () => {
+    const a = runHook(
+      onActivity,
+      JSON.stringify({ session_id: "rs-type", hook_event_name: "PostToolUse", tool_name: "Bash", agent_type: "reviewer" }),
+      tmp,
+    );
+    expect(a.status).toBe(0);
+    expect(ls("rs-type")).toContain("resumed");
+
+    const b = runHook(
+      onActivity,
+      JSON.stringify({ session_id: "rs-empty", hook_event_name: "PostToolUse", tool_name: "Bash", agent_id: "" }),
+      tmp,
+    );
+    expect(b.status).toBe(0);
+    expect(ls("rs-empty")).toContain("resumed");
+  });
+
+  it("R7 agent-spawn exclusion (DISC-3): main-thread Task / Agent completions write ONLY the heartbeat", () => {
+    for (const tool of ["Task", "Agent"]) {
+      const id = `rs-${tool.toLowerCase()}`;
+      const res = runHook(
+        onActivity,
+        JSON.stringify({ session_id: id, hook_event_name: "PostToolUse", tool_name: tool }),
+        tmp,
+      );
+      expect(res.status).toBe(0);
+      expect(ls(id)).toEqual(["heartbeat"]);
+    }
+  });
+
+  it("R8 on-user-prompt writes heartbeat + resumed + ask-resolved (all parse, all 0o600)", () => {
+    const res = runHook(
+      onUserPrompt,
+      JSON.stringify({ session_id: "rs-sess", hook_event_name: "UserPromptSubmit" }),
+      tmp,
+    );
+    expect(res.status).toBe(0);
+    expect(res.stdout).toBe("");
+    expect(ls("rs-sess")).toEqual(["ask-resolved", "heartbeat", "resumed"]);
+    for (const f of ["ask-resolved", "heartbeat", "resumed"]) {
+      expect(parses("rs-sess", f)).toBe(true);
+      expect(modeOf("rs-sess", f)).toBe(0o600);
+    }
+  });
+
+  it("R9 one-writer rule: attention.json and asking.json are byte-identical after the resume writers run", () => {
+    fs.mkdirSync(sessDir("rs-sess"), { recursive: true });
+    const attn = path.join(sessDir("rs-sess"), "attention.json");
+    const ask = path.join(sessDir("rs-sess"), "asking.json");
+    const attnBody = JSON.stringify({ type: "permission_prompt", ts: new Date(Date.now() - 1000).toISOString() });
+    const askBody = JSON.stringify({ ts: new Date(Date.now() - 1000).toISOString() });
+    fs.writeFileSync(attn, attnBody, { mode: 0o600 });
+    fs.writeFileSync(ask, askBody, { mode: 0o600 });
+
+    expect(runHook(onActivity, JSON.stringify({ session_id: "rs-sess", hook_event_name: "Stop" }), tmp).status).toBe(0);
+    expect(
+      runHook(onUserPrompt, JSON.stringify({ session_id: "rs-sess", hook_event_name: "UserPromptSubmit" }), tmp).status,
+    ).toBe(0);
+    expect(
+      runHook(
+        onActivity,
+        JSON.stringify({ session_id: "rs-sess", hook_event_name: "PostToolUse", tool_name: "Bash", agent_id: "a1" }),
+        tmp,
+      ).status,
+    ).toBe(0);
+
+    expect(fs.readFileSync(attn, "utf8")).toBe(attnBody);
+    expect(fs.readFileSync(ask, "utf8")).toBe(askBody);
+  });
+
+  it("R10 atomic writes (WR-05): no temp leftovers, snapshots parse, every writer uses renameSync", () => {
+    const id = "rs-atomic";
+    for (let i = 0; i < 3; i++) {
+      const r = runHook(
+        onNotification,
+        JSON.stringify({ session_id: id, hook_event_name: "Notification", notification_type: "permission_prompt" }),
+        tmp,
+      );
+      expect(r.status).toBe(0);
+    }
+    expect(
+      runHook(
+        onAsk,
+        JSON.stringify({ session_id: id, hook_event_name: "PreToolUse", tool_name: "AskUserQuestion", tool_input: {} }),
+        tmp,
+      ).status,
+    ).toBe(0);
+    expect(
+      runHook(
+        onActivity,
+        JSON.stringify({ session_id: id, hook_event_name: "PostToolUse", tool_name: "AskUserQuestion" }),
+        tmp,
+      ).status,
+    ).toBe(0);
+    expect(
+      runHook(onUserPrompt, JSON.stringify({ session_id: id, hook_event_name: "UserPromptSubmit" }), tmp).status,
+    ).toBe(0);
+
+    for (const entry of ls(id)) {
+      expect(entry.startsWith(".")).toBe(false);
+      expect(entry.endsWith(".tmp")).toBe(false);
+    }
+    expect(() => JSON.parse(fs.readFileSync(path.join(sessDir(id), "attention.json"), "utf8"))).not.toThrow();
+    expect(() => JSON.parse(fs.readFileSync(path.join(sessDir(id), "asking.json"), "utf8"))).not.toThrow();
+    expect(modeOf(id, "attention.json")).toBe(0o600);
+
+    for (const script of [onNotification, onAsk, onActivity, onUserPrompt]) {
+      const code = fs
+        .readFileSync(script, "utf8")
+        .split("\n")
+        .filter((l) => !l.trim().startsWith("//"))
+        .join("\n");
+      expect(code, path.basename(script)).toContain("renameSync(");
     }
   });
 });
