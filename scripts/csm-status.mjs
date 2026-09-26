@@ -222,6 +222,23 @@ function readAttention(dir) {
   return undefined;
 }
 
+/**
+ * Read the asking snapshot shard {ts} written by on-ask.mjs on PreToolUse
+ * AskUserQuestion (260926-vfm, AQ-03), mirroring aggregate.readAsking and
+ * readAttention's try/catch self-heal (T-vfm-07): returns the ts string only
+ * when parsed.ts is a non-empty string; any throw / torn / absent file returns
+ * undefined. NEVER returns any other key (T-vfm-03, detail-free).
+ */
+function readAsking(dir) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(path.join(dir, "asking.json"), "utf8"));
+    if (typeof parsed?.ts === "string" && parsed.ts.length > 0) return parsed.ts;
+  } catch {
+    // absent/torn asking.json self-heals — the row still renders
+  }
+  return undefined;
+}
+
 /** Resolve the heartbeat sidecar last-seen ms (mirrors liveness.resolveLastSeen). */
 function resolveLastSeen(dir) {
   const hb = path.join(dir, "heartbeat");
@@ -276,7 +293,7 @@ const EXPOSED_GLYPH = "⇅";
 /** Declared-target-branch marker (U+2387) and mismatch flag (U+2260), TB-03; both >= 0x00A0 so sanitize keeps them. */
 const BRANCH_GLYPH = "⎇";
 const NEQ_GLYPH = "≠";
-/** Detail-free "waiting on the human" marker glyph (U+25C9 fisheye); >= 0x00A0 so sanitize keeps it. Matches the panel label. */
+/** Detail-free "needs you" marker glyph (U+25C9 fisheye); leads both the " ◉ asking" and " ◉ waiting" markers (260926-vfm). >= 0x00A0 so sanitize keeps it. Matches the panel label. */
 const ATTENTION_GLYPH = "◉";
 /** User-bucket heading literal (mirror Card.tsx:494 / D-02) — ASCII, constant. */
 const USER_BUCKET = "Sen (kullanici)";
@@ -515,8 +532,18 @@ async function main() {
     // Both strict; NaN ts self-heals to false. Reuses lastSeenMs, never recomputed.
     const attn = readAttention(dir);
     const attnMs = attn ? Date.parse(attn.ts) : NaN;
-    const attention =
+    const rawWaiting =
       !Number.isNaN(attnMs) && now - attnMs < attnWindowMs() && attnMs > lastSeenMs;
+
+    // AQ-03 asking gate (260926-vfm) — mirrors aggregate.readAll exactly: the
+    // SAME window + strictly-newer-than-lastSeenMs gate on asking.json, and
+    // asking WINS over attention (a Notification can fire while a question is
+    // open; the question is the more specific signal).
+    const askTs = readAsking(dir);
+    const askMs = askTs !== undefined ? Date.parse(askTs) : NaN;
+    const asking =
+      !Number.isNaN(askMs) && now - askMs < attnWindowMs() && askMs > lastSeenMs;
+    const attention = rawWaiting && !asking;
 
     rows.push({
       session_id: typeof state.session_id === "string" ? state.session_id : id,
@@ -532,6 +559,7 @@ async function main() {
       intent: readIntent(dir),
       target_branch: readTargetBranch(dir), // TB-03 declared target (current branch is state.branch)
       attention, // ATTN-04 pre-gated boolean: waiting on the human (detail-free)
+      asking, // AQ-03 pre-gated boolean: an open AskUserQuestion (detail-free, wins over attention)
       files, // [{file_path, tsMs}]
       startMs: Number.isNaN(startMs) ? now : startMs,
       sortMs,
@@ -581,9 +609,15 @@ async function main() {
     const uptime = fmtUptime(r.startMs, now);
     const you = callerId !== undefined && r.session_id === callerId ? " (you)" : "";
 
-    // ATTN-04 detail-free waiting marker: a FIXED glyph + literal (no type text,
-    // T-06-02/T-06-06) appended only when the pre-gated attention flag held.
-    const attnMarker = r.attention ? ` ${ATTENTION_GLYPH} waiting` : "";
+    // ATTN-04 / AQ-03 detail-free needs-you markers: asking and waiting are
+    // DISTINCT fixed glyph + literal markers (no type text, no ts, no question
+    // text — T-06-02/T-06-06/T-vfm-03), appended only when the pre-gated flag
+    // held. Asking wins (the reader already forces attention false then).
+    const attnMarker = r.asking
+      ? ` ${ATTENTION_GLYPH} asking`
+      : r.attention
+        ? ` ${ATTENTION_GLYPH} waiting`
+        : "";
 
     out.push(`${folder} · ${branch}${targetToken} · ${shortId} · ${intentCol} · ${filesCol} · ${uptime}${attnMarker}${you}`);
   }

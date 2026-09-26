@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { sessionsDir } from "./paths.js";
 import { numEnv } from "./env.js";
-import type { SessionState, TouchEvent, SkillEvent, AttentionState } from "./schema.js";
+import type { SessionState, TouchEvent, SkillEvent, AttentionState, AskingState } from "./schema.js";
 import {
   isProcessAlive,
   resolveLastSeen,
@@ -143,7 +143,9 @@ export type SessionRow = SessionState & {
    * the race-free clear — a resumed session (fresher heartbeat) or an expired
    * window flips this false on the next read tick, with no second writer. A
    * purely additive, card/presentation-only field that NEVER drives sort,
-   * liveness, dotState, or conflict detection (D-01/D-04).
+   * liveness, dotState, or conflict detection (D-01/D-04). It is forced false
+   * whenever `asking` is true (D-03 asking-wins precedence, 260926-vfm), so a
+   * row is counted once.
    */
   attention: boolean;
   /**
@@ -154,6 +156,17 @@ export type SessionRow = SessionState & {
   attention_type?: string;
   /** ISO-8601 ts of that attention snapshot, present only when `attention` is true. */
   attention_ts?: string;
+  /**
+   * Whether Claude asked this session's user a question via AskUserQuestion and
+   * it is still open (260926-vfm, AQ-02). PRE-GATED reader-side with the SAME
+   * gate as `attention` applied to the `asking.json` shard: within
+   * `attnWindowMs()` AND strictly NEWER than `lastSeenMs`. Asking takes
+   * precedence over attention. Card/presentation-only — it drives no sort,
+   * liveness, dotState, or conflict detection.
+   */
+  asking: boolean;
+  /** ISO-8601 ts the open question was asked, present only when `asking` is true. */
+  asking_ts?: string;
 };
 
 /**
@@ -398,6 +411,29 @@ function readAttention(dir: string): { attention_type?: string; attention_ts?: s
 }
 
 /**
+ * Read one session's "open question" snapshot from its `asking.json` shard
+ * (260926-vfm, AQ-02), written by scripts/on-ask.mjs on PreToolUse
+ * AskUserQuestion. Mirrors {@link readAttention}'s try/catch self-heal: an
+ * absent or torn asking.json returns `{}` and the session is never dropped
+ * (T-vfm-07). Returns `{ asking_ts }` only when the parsed object has a
+ * non-empty string `ts`; it reads ONLY `ts` and ignores any other key
+ * (T-vfm-03). The window/newer-than-activity GATE lives in readAll.
+ */
+function readAsking(dir: string): { asking_ts?: string } {
+  try {
+    const parsed = JSON.parse(
+      fs.readFileSync(path.join(dir, "asking.json"), "utf8"),
+    ) as Partial<AskingState>;
+    if (typeof parsed?.ts === "string" && parsed.ts.length > 0) {
+      return { asking_ts: parsed.ts };
+    }
+    return {};
+  } catch {
+    return {}; // absent/torn asking.json self-heals (T-vfm-07)
+  }
+}
+
+/**
  * The sole cross-session view (STATE-02): aggregate every session shard into
  * one array, apply the D-02 active window, and sort most-recently-active
  * first (D-09).
@@ -455,8 +491,20 @@ export function readAll(
     // (sort/liveness/dot/conflicts).
     const attn = readAttention(dir);
     const attnMs = attn.attention_ts !== undefined ? Date.parse(attn.attention_ts) : NaN;
-    const attention =
+    const rawWaiting =
       !Number.isNaN(attnMs) && now - attnMs < attnWindowMs() && attnMs > lastSeenMs;
+
+    // --- Asking gate (260926-vfm, AQ-02): the SAME gate on the asking.json
+    // shard, reusing the SAME lastSeenMs and attnWindowMs() (no new knob).
+    // Asking WINS over attention: permission_prompt / idle_prompt Notifications
+    // fire while a question is open, and the question is the more specific
+    // signal. Answering fires PostToolUse("*") → on-activity heartbeat →
+    // askMs <= lastSeenMs clears it on the next tick.
+    const ask = readAsking(dir);
+    const askMs = ask.asking_ts !== undefined ? Date.parse(ask.asking_ts) : NaN;
+    const asking =
+      !Number.isNaN(askMs) && now - askMs < attnWindowMs() && askMs > lastSeenMs;
+    const attention = rawWaiting && !asking;
     const fresh = now - lastSeenMs < staleMs(); // TTL authoritative (D-07)
     // PID-reuse guard (CR-01/WR-03): consult the captured `pid_started` identity
     // token. When the pid probes alive but its re-derived start-time differs from
@@ -506,6 +554,9 @@ export function readAll(
       attention,
       attention_type: attention ? attn.attention_type : undefined,
       attention_ts: attention ? attn.attention_ts : undefined,
+      // 260926-vfm (AQ-02) additive card-only fields — pre-gated, asking wins.
+      asking,
+      asking_ts: asking ? ask.asking_ts : undefined,
     });
   }
 

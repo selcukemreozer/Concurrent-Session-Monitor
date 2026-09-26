@@ -146,3 +146,21 @@ export interface AttentionState {
   /** ISO-8601 invocation timestamp (Date.parse on the read side; NOT epoch ms). */
   ts: string;
 }
+
+/**
+ * One session's "Claude asked the user a question" snapshot written to
+ * `asking.json` (quick task 260926-vfm, AQ-01/02).
+ *
+ * Written by `scripts/on-ask.mjs` on PreToolUse matcher "AskUserQuestion" — a
+ * SEPARATE one-writer-per-file shard (it never touches attention.json, which a
+ * later Notification would overwrite). Like on-notification, that writer never
+ * refreshes the heartbeat, so the reader's newer-than-activity gate can fire;
+ * answering the question completes the tool and on-activity's PostToolUse("*")
+ * heartbeat clears it. It is a SNAPSHOT (writeFileSync), not a log. A separate
+ * shard read needs no SessionState change, so SESSION_SCHEMA_VERSION is NOT
+ * bumped (exactly like attention.json).
+ */
+export interface AskingState {
+  /** ISO-8601 timestamp the question was opened (Date.parse on the read side; NOT epoch ms). */
+  ts: string;
+}

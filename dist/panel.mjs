@@ -38221,6 +38221,19 @@ function readAttention(dir) {
     return {};
   }
 }
+function readAsking(dir) {
+  try {
+    const parsed = JSON.parse(
+      fs4.readFileSync(path3.join(dir, "asking.json"), "utf8")
+    );
+    if (typeof parsed?.ts === "string" && parsed.ts.length > 0) {
+      return { asking_ts: parsed.ts };
+    }
+    return {};
+  } catch {
+    return {};
+  }
+}
 function readAll(now = Date.now(), probe = defaultProbe, startedProbe = defaultStartedProbe) {
   const root = sessionsDir();
   let ids;
@@ -38246,7 +38259,11 @@ function readAll(now = Date.now(), probe = defaultProbe, startedProbe = defaultS
     const lastSeenMs = heartbeatMs ?? Date.parse(lastActive ?? state.start_time);
     const attn = readAttention(dir);
     const attnMs = attn.attention_ts !== void 0 ? Date.parse(attn.attention_ts) : NaN;
-    const attention = !Number.isNaN(attnMs) && now - attnMs < attnWindowMs() && attnMs > lastSeenMs;
+    const rawWaiting = !Number.isNaN(attnMs) && now - attnMs < attnWindowMs() && attnMs > lastSeenMs;
+    const ask = readAsking(dir);
+    const askMs = ask.asking_ts !== void 0 ? Date.parse(ask.asking_ts) : NaN;
+    const asking = !Number.isNaN(askMs) && now - askMs < attnWindowMs() && askMs > lastSeenMs;
+    const attention = rawWaiting && !asking;
     const fresh = now - lastSeenMs < staleMs();
     const verdict = isProcessAlive(state.pid, probe, state.pid_started, startedProbe);
     const procAlive = verdict === "alive";
@@ -38280,7 +38297,10 @@ function readAll(now = Date.now(), probe = defaultProbe, startedProbe = defaultS
       // when the gate held, so the panel needs no re-check.
       attention,
       attention_type: attention ? attn.attention_type : void 0,
-      attention_ts: attention ? attn.attention_ts : void 0
+      attention_ts: attention ? attn.attention_ts : void 0,
+      // 260926-vfm (AQ-02) additive card-only fields — pre-gated, asking wins.
+      asking,
+      asking_ts: asking ? ask.asking_ts : void 0
     });
   }
   const key = (r) => Date.parse(r.last_active ?? r.start_time) || 0;
