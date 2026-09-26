@@ -93,12 +93,17 @@ function staleMs() {
   return numEnv("CSM_STALE_MS", 120000);
 }
 /**
- * Attention flag window (mirrors aggregate.attnWindowMs): how long a session's
- * "waiting on you" flag stays shown after the last Notification before it
- * auto-expires. Default 90000 (90s), > the ~60s idle-prompt re-fire cadence.
+ * Attention safety-net ceiling (mirrors aggregate.attnWindowMs, 260926-r7n):
+ * the longest a session's "waiting on you" flag can stay shown after the last
+ * Notification when no activity follows. Default 1800000 (30 min). This is a
+ * SAFETY NET, not the primary clear: the primary clear is any heartbeat newer
+ * than the attention ts — written by on-activity (PostToolUse "*" and Stop),
+ * on-tool, on-skill or on-user-prompt — so answering a question, approving a
+ * permission, a turn end or a new prompt drops the flag on the next read.
+ * A NaN/negative override degrades to the 30-minute default.
  */
 function attnWindowMs() {
-  return numEnv("CSM_ATTN_WINDOW_MS", 90000);
+  return numEnv("CSM_ATTN_WINDOW_MS", 1800000);
 }
 
 /**
