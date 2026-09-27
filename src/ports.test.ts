@@ -12,6 +12,12 @@ import {
   scanPorts,
   portScanMs,
   APPLE_AGENT_DENYLIST,
+  parsePsSnapshot,
+  isWarpCommand,
+  classifyOrigin,
+  chooseSignal,
+  portKey,
+  type ProcInfo,
   type ScannedPort,
 } from "./ports.js";
 import type { SessionRow } from "./aggregate.js";
@@ -59,12 +65,12 @@ function row(partial: Partial<SessionRow>): SessionRow {
 }
 
 const PS_FIXTURE = [
-  "  PID  PPID USER     COMMAND",
-  "  111     1 user     /System/rapportd",
-  "  222     1 user     /System/ControlCenter",
-  "  333   300 user     node server.js",
-  "  300     1 user     -zsh",
-  "  444   300 user     node twin.js",
+  "  PID  PPID TTY      COMMAND",
+  "  111     1 ??       /System/rapportd",
+  "  222     1 ??       /System/ControlCenter",
+  "  333   300 ttys001  node server.js",
+  "  300     1 ttys001  -zsh",
+  "  444   300 ttys001  node twin.js",
 ].join("\n");
 
 describe("parse: parseLsofF -FpcLn field blocks", () => {
@@ -246,6 +252,7 @@ describe("attribute: livePidMap + attribute render-time join", () => {
       command: "node",
       exposed: false,
       ancestryPids: [333, 300, 400],
+      origin: "other",
     };
     expect(attribute(p, live)).toBe(live.get(400));
 
@@ -262,5 +269,116 @@ describe("portScanMs cadence accessor (D-05)", () => {
   it("honors CSM_PORT_SCAN_MS", () => {
     process.env.CSM_PORT_SCAN_MS = "1234";
     expect(portScanMs()).toBe(1234);
+  });
+});
+
+const WARP = "/Applications/Warp.app/Contents/MacOS/stable";
+
+/** Warp → zsh → node chain (260927-8ge D-03). */
+const WARP_PS_FIXTURE = [
+  "  PID  PPID TTY      COMMAND",
+  `  900     1 ??       ${WARP}`,
+  `  901   900 ??       ${WARP} terminal-server`,
+  "  950   901 ttys013  -zsh",
+  "  960   950 ttys013  node server.js --port 3000",
+  "  970   950 ??       node detached.js",
+  "  980     1 ??       node daemon.js",
+].join("\n");
+
+describe("parsePsSnapshot (260927-8ge D-03)", () => {
+  it("maps pid -> {ppid, tty, command}, keeping spaces in commands and skipping header/malformed lines", () => {
+    const m = parsePsSnapshot(WARP_PS_FIXTURE + "\ngarbage line\n\n");
+    expect(m.get(960)).toEqual({ ppid: 950, tty: "ttys013", command: "node server.js --port 3000" });
+    expect(m.get(901)).toEqual({ ppid: 900, tty: "??", command: `${WARP} terminal-server` });
+    expect(m.size).toBe(6);
+  });
+
+  it("parses header-less input too", () => {
+    const m = parsePsSnapshot("  42  1 ttys002  vim a b");
+    expect(m.get(42)).toEqual({ ppid: 1, tty: "ttys002", command: "vim a b" });
+  });
+});
+
+describe("isWarpCommand", () => {
+  it("is true only for a /Warp.app/ path", () => {
+    expect(isWarpCommand(WARP)).toBe(true);
+    expect(isWarpCommand("stable")).toBe(false);
+    expect(isWarpCommand("node server.js")).toBe(false);
+    expect(isWarpCommand("")).toBe(false);
+  });
+});
+
+describe("classifyOrigin (260927-8ge D-03)", () => {
+  const procs: Map<number, ProcInfo> = parsePsSnapshot(WARP_PS_FIXTURE);
+  const ppid = parsePpidMap(WARP_PS_FIXTURE);
+
+  it("marks a Warp-descended listener warp with its tty", () => {
+    expect(classifyOrigin(ancestryChain(960, ppid), procs)).toEqual({ origin: "warp", tty: "ttys013" });
+  });
+
+  it("takes the tty from the nearest ancestor when the listener has none", () => {
+    expect(classifyOrigin(ancestryChain(970, ppid), procs)).toEqual({ origin: "warp", tty: "ttys013" });
+  });
+
+  it("the Warp app's own listener is other", () => {
+    expect(classifyOrigin(ancestryChain(900, ppid), procs)).toEqual({ origin: "other" });
+    expect(classifyOrigin(ancestryChain(901, ppid), procs)).toEqual({ origin: "other" });
+  });
+
+  it("a launchd-reparented daemon is other", () => {
+    expect(classifyOrigin(ancestryChain(980, ppid), procs)).toEqual({ origin: "other" });
+  });
+
+  it("pids missing from the map and an empty chain are other", () => {
+    expect(classifyOrigin([12345, 67890], procs)).toEqual({ origin: "other" });
+    expect(classifyOrigin([], procs)).toEqual({ origin: "other" });
+  });
+
+  it("warp with no real tty anywhere omits tty", () => {
+    const m = parsePsSnapshot([`  900  1 ??  ${WARP}`, "  910  900 -  node x"].join("\n"));
+    const r = classifyOrigin([910, 900], m);
+    expect(r).toEqual({ origin: "warp" });
+    expect("tty" in r).toBe(false);
+  });
+});
+
+describe("scanPorts origin (260927-8ge D-03)", () => {
+  it("sets origin warp + tty on a Warp-descended listener and other on Warp's own listener", async () => {
+    spawnState.lsof.stdout =
+      [
+        "p960", "cnode", "Luser", "f7", "n127.0.0.1:3000",
+        "p900", "cstable", "Luser", "f8", "n127.0.0.1:9277",
+      ].join("\n") + "\n";
+    spawnState.ps.stdout = WARP_PS_FIXTURE;
+    const res = await scanPorts(1000);
+    const node = res.find((p) => p.port === 3000)!;
+    const warpSelf = res.find((p) => p.port === 9277)!;
+    expect(node).toMatchObject({ origin: "warp", tty: "ttys013" });
+    expect(warpSelf.origin).toBe("other");
+    expect(warpSelf.tty).toBeUndefined();
+    const psCall = spawnState.calls.find((c) => c.cmd === "ps");
+    expect(psCall!.args.join(" ")).toContain("pid,ppid,tty,command");
+  });
+
+  it("a rejecting ps yields origin other and no tty", async () => {
+    spawnState.lsof.stdout = ["p960", "cnode", "Luser", "f7", "n127.0.0.1:3000"].join("\n") + "\n";
+    spawnState.ps.reject = true;
+    const res = await scanPorts(1000);
+    expect(res).toHaveLength(1);
+    expect(res[0].origin).toBe("other");
+    expect(res[0].tty).toBeUndefined();
+  });
+});
+
+describe("chooseSignal + portKey (260927-8ge D-05)", () => {
+  it("portKey joins port and pid", () => {
+    expect(portKey(3000, 42)).toBe("3000 42");
+  });
+
+  it("escalates to SIGKILL only on a strictly later generation", () => {
+    const sent = new Map<string, number>([["3000 42", 3]]);
+    expect(chooseSignal(new Map(), "3000 42", 9)).toBe("SIGTERM");
+    expect(chooseSignal(sent, "3000 42", 3)).toBe("SIGTERM");
+    expect(chooseSignal(sent, "3000 42", 4)).toBe("SIGKILL");
   });
 });

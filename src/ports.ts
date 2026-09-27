@@ -13,9 +13,17 @@ import type { SessionRow } from "./aggregate.js";
  * The scan is passive and non-fatal by construction: any `lsof`/`ps` failure
  * (including `lsof` exit code 1 on no-match) resolves to `[]` and NEVER throws.
  * This module touches no hook, no writer, no capture path — pure reader compute.
+ *
+ * 260927-8ge: each port also carries an `origin` ("warp" when some ancestor is
+ * the Warp terminal app, else "other") plus the nearest real `tty` for warp
+ * rows, and `killPort` is the single, guarded, injectable place that may send a
+ * signal to a listening process (all refusal logic lives here, never in the UI).
  */
 
 const pexec = promisify(execFile);
+
+/** Where an unattributed listener came from (260927-8ge D-03). */
+export type PortOrigin = "warp" | "other";
 
 /** One de-duplicated listening socket the panel renders. */
 export interface ScannedPort {
@@ -29,6 +37,10 @@ export interface ScannedPort {
   exposed: boolean;
   /** pid → ppid → … chain up to (not incl.) launchd(1); [self, …, ancestor]. */
   ancestryPids: number[];
+  /** "warp" iff some ANCESTOR (not the listener itself) is the Warp app; else "other". */
+  origin: PortOrigin;
+  /** Nearest real tty along the ancestry chain — set only on warp rows, pre-sanitize. */
+  tty?: string;
 }
 
 /**
@@ -90,7 +102,7 @@ export function parseLsofF(stdout: string): RawSock[] {
 }
 
 /**
- * Build a `pid → ppid` map from one `ps -axo pid,ppid,user,command` snapshot.
+ * Build a `pid → ppid` map from one `ps -axo pid,ppid,tty,command` snapshot.
  * Skips the header line; COMMAND is the trailing field and may contain spaces,
  * so only the first two whitespace tokens (pid, ppid) are read. Non-integer
  * pairs are dropped.
@@ -106,6 +118,70 @@ export function parsePpidMap(stdout: string): Map<number, number> {
     if (Number.isInteger(pid) && Number.isInteger(ppid)) m.set(pid, ppid);
   }
   return m;
+}
+
+/** One process from a `ps -axo pid,ppid,tty,command` snapshot. */
+export interface ProcInfo {
+  ppid: number;
+  tty: string;
+  command: string;
+}
+
+/** pid, ppid, a non-space tty token, then the remainder as the command. */
+const PS_LINE = /^\s*(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/;
+
+/**
+ * Parse a `ps -axo pid,ppid,tty,command` snapshot into pid → ProcInfo. The
+ * header (and any malformed line) simply fails the anchored regex, so both
+ * header and header-less output parse. COMMAND keeps its internal spaces.
+ */
+export function parsePsSnapshot(stdout: string): Map<number, ProcInfo> {
+  const m = new Map<number, ProcInfo>();
+  for (const line of stdout.split("\n")) {
+    const mm = PS_LINE.exec(line);
+    if (!mm) continue;
+    const pid = Number(mm[1]);
+    const ppid = Number(mm[2]);
+    if (!Number.isInteger(pid) || !Number.isInteger(ppid)) continue;
+    m.set(pid, { ppid, tty: mm[3], command: mm[4].trimEnd() });
+  }
+  return m;
+}
+
+/** True iff the command path points inside the Warp terminal app bundle. */
+export function isWarpCommand(cmd: string): boolean {
+  return cmd.includes("/Warp.app/");
+}
+
+/** A controlling tty that is an actual terminal (not `??` / `-` / empty). */
+function isRealTty(t: string | undefined): t is string {
+  return typeof t === "string" && t !== "" && t !== "??" && t !== "-";
+}
+
+/**
+ * Classify an unattributed listener's origin from its ancestry chain
+ * ([self, …, ancestor]). The listener itself being the Warp app → "other"
+ * (Warp's own sockets go to Diğer); any Warp ANCESTOR → "warp" with the tty of
+ * the first chain pid (self first) whose tty is real; otherwise "other".
+ * Pids missing from `procs` simply never match.
+ */
+export function classifyOrigin(
+  chain: number[],
+  procs: Map<number, ProcInfo>,
+): { origin: PortOrigin; tty?: string } {
+  if (chain.length === 0) return { origin: "other" };
+  const self = procs.get(chain[0]);
+  if (self && isWarpCommand(self.command)) return { origin: "other" };
+  const warpAncestor = chain.slice(1).some((pid) => {
+    const p = procs.get(pid);
+    return p !== undefined && isWarpCommand(p.command);
+  });
+  if (!warpAncestor) return { origin: "other" };
+  for (const pid of chain) {
+    const t = procs.get(pid)?.tty;
+    if (isRealTty(t)) return { origin: "warp", tty: t };
+  }
+  return { origin: "warp" };
 }
 
 /**
@@ -199,8 +275,10 @@ export function portScanMs(): number {
  *  - async `execFile` with an args ARRAY (no shell, uid stringified) — T-04.1-02.
  *  - per-call `{ timeout, maxBuffer }` guards — T-04.1-03.
  *  - ANY `lsof` rejection (exit 1 no-match / spawn fail) resolves `[]` — Pitfall 1.
- *  - a failing `ps` is non-fatal: ancestry falls back to self, all ports go to
- *    the user bucket.
+ *  - a failing `ps` is non-fatal: ancestry falls back to self, every port gets
+ *    origin "other" (no tty) and falls to the unattributed "Diğer" group.
+ *  - each port carries `origin` (+ `tty` on warp rows) via classifyOrigin over
+ *    the same ps snapshot (260927-8ge D-03).
  *  - `(port,pid)` twins (IPv4 + IPv6) collapse into one entry, exposed if EITHER
  *    twin is exposed.
  *  - sockets whose untruncated command is in APPLE_AGENT_DENYLIST are excluded.
@@ -216,15 +294,16 @@ export async function scanPorts(uid = process.getuid?.()): Promise<ScannedPort[]
     return []; // exit 1 (no match) or spawn failure → empty, never a crash
   }
   try {
-    ({ stdout: psOut } = await pexec("ps", ["-axo", "pid,ppid,user,command"], {
+    ({ stdout: psOut } = await pexec("ps", ["-axo", "pid,ppid,tty,command"], {
       timeout: 1500,
       maxBuffer: 1 << 21,
     }));
   } catch {
-    psOut = ""; // no ancestry snapshot → every port falls to the user bucket
+    psOut = ""; // no ancestry snapshot → every port is origin "other"
   }
 
   const ppid = parsePpidMap(psOut);
+  const procs = parsePsSnapshot(psOut);
   const socks = parseLsofF(lsofOut);
   const byKey = new Map<string, ScannedPort>(); // (port,pid) de-dup
   for (const s of socks) {
@@ -238,13 +317,161 @@ export async function scanPorts(uid = process.getuid?.()): Promise<ScannedPort[]
       prev.exposed = prev.exposed || exposed; // twin → keep exposed if either is
       continue;
     }
-    byKey.set(key, {
+    const chain = ancestryChain(s.pid, ppid);
+    const { origin, tty } = classifyOrigin(chain, procs);
+    const entry: ScannedPort = {
       port,
       pid: s.pid,
       command: s.command,
       exposed,
-      ancestryPids: ancestryChain(s.pid, ppid),
-    });
+      ancestryPids: chain,
+      origin,
+    };
+    if (tty !== undefined) entry.tty = tty;
+    byKey.set(key, entry);
   }
   return [...byKey.values()];
+}
+
+// ---------------------------------------------------------------------------
+// Guarded per-port kill (260927-8ge D-05 / D-06)
+// ---------------------------------------------------------------------------
+
+/** The two signals the panel may send (SIGTERM first, SIGKILL on escalation). */
+export type KillSignal = "SIGTERM" | "SIGKILL";
+
+/** The stable (port,pid) identity used to track a sent SIGTERM across scans. */
+export function portKey(port: number, pid: number): string {
+  return `${port} ${pid}`;
+}
+
+/**
+ * Pick the signal for a (port,pid): SIGKILL only when a SIGTERM was already
+ * sent for this key AND a strictly LATER scan generation still lists it
+ * (D-05: escalate only after the pair survived a re-scan); else SIGTERM.
+ */
+export function chooseSignal(
+  sent: ReadonlyMap<string, number>,
+  key: string,
+  gen: number,
+): KillSignal {
+  const at = sent.get(key);
+  return at !== undefined && gen > at ? "SIGKILL" : "SIGTERM";
+}
+
+/** What the user asked to stop. */
+export interface KillTarget {
+  port: number;
+  pid: number;
+  command: string;
+  signal: KillSignal;
+}
+
+/** Protected-process context supplied by the panel. */
+export interface KillContext {
+  /** Exact pids of live Claude sessions (their children stay killable). */
+  livePids: ReadonlySet<number>;
+  /** The panel's own pid (process.pid). */
+  selfPid: number;
+}
+
+/** Injectable side effects so the guard matrix is testable with no real spawn/kill. */
+export interface KillDeps {
+  exec(
+    cmd: string,
+    args: string[],
+    opts: { timeout: number; maxBuffer: number },
+  ): Promise<{ stdout: string }>;
+  kill(pid: number, signal: KillSignal): void;
+}
+
+/** Outcome shown as the panel's transient status line. */
+export interface KillResult {
+  ok: boolean;
+  message: string;
+}
+
+/** Real deps: execFile with an args array (no shell) and process.kill. */
+const defaultKillDeps: KillDeps = {
+  async exec(cmd, args, opts) {
+    const { stdout } = await pexec(cmd, args, opts);
+    return { stdout: String(stdout) };
+  },
+  kill(pid, signal) {
+    process.kill(pid, signal);
+  },
+};
+
+const PS_ARGS = ["-axo", "pid,ppid,tty,command"];
+
+/**
+ * Send `target.signal` to the process listening on `target.port` — but only
+ * after every guard passes. Never throws / rejects; every refusal is
+ * `{ ok: false, message }` with NO signal sent.
+ *
+ * Guards in order: pid integer > 1; port integer 1..65535; not the panel
+ * itself; not an exact live Claude session pid; a fresh ps snapshot must be
+ * obtainable (fail-closed); not an ancestor of the panel; not the Warp app;
+ * and — immediately before signalling — `lsof … -a -p <pid> -t` must confirm
+ * that pid still listens on that port (pid-reuse / stale-scan guard).
+ */
+export async function killPort(
+  target: KillTarget,
+  ctx: KillContext,
+  deps: KillDeps = defaultKillDeps,
+): Promise<KillResult> {
+  try {
+    const { port, pid, signal } = target;
+    if (!Number.isInteger(pid) || pid <= 1) return { ok: false, message: "reddedildi: geçersiz pid" };
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      return { ok: false, message: "reddedildi: geçersiz port" };
+    }
+    if (pid === ctx.selfPid) return { ok: false, message: "reddedildi: panelin kendisi" };
+    if (ctx.livePids.has(pid)) return { ok: false, message: `reddedildi: Claude oturumu (pid ${pid})` };
+
+    let psOut: string;
+    try {
+      ({ stdout: psOut } = await deps.exec("ps", PS_ARGS, { timeout: 1500, maxBuffer: 1 << 21 }));
+    } catch {
+      return { ok: false, message: "reddedildi: süreç ağacı doğrulanamadı" };
+    }
+    const procs = parsePsSnapshot(psOut);
+    if (procs.size === 0) return { ok: false, message: "reddedildi: süreç ağacı doğrulanamadı" };
+    const ppid = new Map<number, number>();
+    for (const [p, info] of procs) ppid.set(p, info.ppid);
+    if (ancestryChain(ctx.selfPid, ppid).includes(pid)) {
+      return { ok: false, message: `reddedildi: panelin üst süreci (pid ${pid})` };
+    }
+    const info = procs.get(pid);
+    if (info && isWarpCommand(info.command)) return { ok: false, message: "reddedildi: Warp uygulaması" };
+
+    const stale = { ok: false, message: "port artık bu pid'de değil" };
+    let lsofOut: string;
+    try {
+      ({ stdout: lsofOut } = await deps.exec(
+        "lsof",
+        ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-a", "-p", String(pid), "-t"],
+        { timeout: 1500, maxBuffer: 1 << 16 },
+      ));
+    } catch {
+      return stale; // lsof exit 1 = that pid no longer listens on that port
+    }
+    const listed = lsofOut
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l !== "");
+    if (!listed.includes(String(pid))) return stale;
+
+    try {
+      deps.kill(pid, signal);
+    } catch (err) {
+      const code = (err as { code?: unknown } | null)?.code;
+      if (code === "ESRCH") return { ok: false, message: `süreç zaten sonlanmış (pid ${pid})` };
+      if (code === "EPERM") return { ok: false, message: `izin yok (EPERM): pid ${pid}` };
+      return { ok: false, message: `sinyal gönderilemedi (pid ${pid})` };
+    }
+    return { ok: true, message: `${signal} → :${port} gönderildi` };
+  } catch {
+    return { ok: false, message: "sinyal gönderilemedi" };
+  }
 }

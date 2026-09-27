@@ -886,6 +886,7 @@ function makePort(over: Partial<ScannedPort> = {}): ScannedPort {
     command: "node",
     exposed: false,
     ancestryPids: [111],
+    origin: "other",
     ...over,
   };
 }

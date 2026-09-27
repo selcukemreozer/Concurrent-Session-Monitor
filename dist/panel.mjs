@@ -38425,6 +38425,40 @@ function parsePpidMap(stdout) {
   }
   return m;
 }
+var PS_LINE = /^\s*(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/;
+function parsePsSnapshot(stdout) {
+  const m = /* @__PURE__ */ new Map();
+  for (const line of stdout.split("\n")) {
+    const mm = PS_LINE.exec(line);
+    if (!mm) continue;
+    const pid = Number(mm[1]);
+    const ppid = Number(mm[2]);
+    if (!Number.isInteger(pid) || !Number.isInteger(ppid)) continue;
+    m.set(pid, { ppid, tty: mm[3], command: mm[4].trimEnd() });
+  }
+  return m;
+}
+function isWarpCommand(cmd) {
+  return cmd.includes("/Warp.app/");
+}
+function isRealTty(t) {
+  return typeof t === "string" && t !== "" && t !== "??" && t !== "-";
+}
+function classifyOrigin(chain, procs) {
+  if (chain.length === 0) return { origin: "other" };
+  const self = procs.get(chain[0]);
+  if (self && isWarpCommand(self.command)) return { origin: "other" };
+  const warpAncestor = chain.slice(1).some((pid) => {
+    const p = procs.get(pid);
+    return p !== void 0 && isWarpCommand(p.command);
+  });
+  if (!warpAncestor) return { origin: "other" };
+  for (const pid of chain) {
+    const t = procs.get(pid)?.tty;
+    if (isRealTty(t)) return { origin: "warp", tty: t };
+  }
+  return { origin: "warp" };
+}
 function ancestryChain(pid, ppid) {
   const chain = [];
   const seen = /* @__PURE__ */ new Set();
@@ -38481,7 +38515,7 @@ async function scanPorts(uid = process.getuid?.()) {
     return [];
   }
   try {
-    ({ stdout: psOut } = await pexec("ps", ["-axo", "pid,ppid,user,command"], {
+    ({ stdout: psOut } = await pexec("ps", ["-axo", "pid,ppid,tty,command"], {
       timeout: 1500,
       maxBuffer: 1 << 21
     }));
@@ -38489,6 +38523,7 @@ async function scanPorts(uid = process.getuid?.()) {
     psOut = "";
   }
   const ppid = parsePpidMap(psOut);
+  const procs = parsePsSnapshot(psOut);
   const socks = parseLsofF(lsofOut);
   const byKey = /* @__PURE__ */ new Map();
   for (const s of socks) {
@@ -38502,13 +38537,18 @@ async function scanPorts(uid = process.getuid?.()) {
       prev.exposed = prev.exposed || exposed;
       continue;
     }
-    byKey.set(key, {
+    const chain = ancestryChain(s.pid, ppid);
+    const { origin, tty: tty3 } = classifyOrigin(chain, procs);
+    const entry = {
       port,
       pid: s.pid,
       command: s.command,
       exposed,
-      ancestryPids: ancestryChain(s.pid, ppid)
-    });
+      ancestryPids: chain,
+      origin
+    };
+    if (tty3 !== void 0) entry.tty = tty3;
+    byKey.set(key, entry);
   }
   return [...byKey.values()];
 }

@@ -664,7 +664,7 @@ describe("port scan cadence (PORT-06, D-05)", () => {
   /** A mocked scanned port that lands in the user bucket (no live pid match), so
    * PortsPane renders `<port> · <command> · local` regardless of the roster. */
   function makePort(o: Partial<ScannedPort> = {}): ScannedPort {
-    return { port: 5173, pid: 999999, command: "vite", exposed: false, ancestryPids: [999999], ...o };
+    return { port: 5173, pid: 999999, command: "vite", exposed: false, ancestryPids: [999999], origin: "other", ...o };
   }
 
   beforeEach(() => {
