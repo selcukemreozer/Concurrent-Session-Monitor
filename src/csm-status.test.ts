@@ -872,7 +872,7 @@ describe("csm-status reader — running marker (260927-46l)", () => {
     }
   });
 
-  it("M8 parity: readAll.running agrees with the csm-status marker for every fixture", () => {
+  it("M8 parity: readAll running/waiting/asking/listed agree with the csm-status markers for every fixture", () => {
     const fixtures: Array<[string, SeedOpts]> = [
       ["mpara-a1-aaaa", { heartbeat: ago(5_000), turn: { state: "running", ts: ago(5_000) } }],
       ["mpara-b2-aaaa", { heartbeat: ago(5_000), turn: { state: "idle", ts: ago(5_000) } }],
@@ -891,7 +891,13 @@ describe("csm-status reader — running marker (260927-46l)", () => {
       ],
       ["mpara-f6-aaaa", { heartbeat: ago(5_000), turnRaw: '{"state":"runn' }],
       ["mpara-g7-aaaa", { heartbeat: ago(1_860_000), turn: { state: "running", ts: ago(1_860_000) } }],
+      // 260927-4tv idle-waiting fixtures (D-06).
+      ["mpara-h8-aaaa", { heartbeat: ago(20_000), turn: { state: "idle", ts: ago(20_000) } }],
+      ["mpara-i9-aaaa", { heartbeat: ago(300_000), turn: { state: "idle", ts: ago(360_000) } }],
+      ["mpara-j0-aaaa", { heartbeat: ago(3_000), turn: { state: "idle", ts: ago(3_000) } }],
+      ["mpara-k1-aaaa", { heartbeat: ago(1_860_000), turn: { state: "idle", ts: ago(1_860_000) } }],
     ];
+    const notListed = new Set(["mpara-g7-aaaa", "mpara-k1-aaaa"]);
     for (const [id, opts] of fixtures) seed(tmp, id, opts);
 
     const prior = process.env.CSM_STORE_DIR;
@@ -910,16 +916,102 @@ describe("csm-status reader — running marker (260927-46l)", () => {
       const row = rows.find((r) => r.session_id === id)!;
       expect(row, id).toBeDefined();
       const line = lineFor(res.stdout, id);
-      if (id === "mpara-g7-aaaa") {
+      if (notListed.has(id)) {
         expect(row.alive, id).toBe(false);
         expect(line, id).toBeUndefined();
         continue;
       }
       expect(line, id).toBeDefined();
       expect(row.running, id).toBe(line!.includes("▶ running"));
+      expect(row.attention, id).toBe(line!.includes("◉ waiting"));
+      expect(row.asking, id).toBe(line!.includes("◉ asking"));
     }
     // Sanity: the parity check covered both outcomes.
     expect(rows.find((r) => r.session_id === "mpara-a1-aaaa")!.running).toBe(true);
     expect(rows.find((r) => r.session_id === "mpara-c3-aaaa")!.running).toBe(true);
+    expect(rows.find((r) => r.session_id === "mpara-h8-aaaa")!.attention).toBe(true);
+    expect(rows.find((r) => r.session_id === "mpara-i9-aaaa")!.attention).toBe(true);
+    expect(rows.find((r) => r.session_id === "mpara-j0-aaaa")!.attention).toBe(false);
+  });
+});
+
+// --- Quick task 260927-4tv (D-06): /csm-status mirrors readAll's idle-waiting
+// gate. Every fixture sits at least 5s away from any threshold because the
+// spawned reader samples its own Date.now().
+describe("csm-status reader — idle-waiting (260927-4tv)", () => {
+  const env = { CSM_STALE_MS: "120000" };
+  const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+
+  it("S1 idle 20s → ' ◉ waiting' and no ▶", () => {
+    const id = "sone1111-aaaa";
+    seed(tmp, id, { heartbeat: ago(20_000), turn: { state: "idle", ts: ago(20_000) } });
+    const res = runStatus(id, tmp, env);
+    expect(res.status).toBe(0);
+    const line = lineFor(res.stdout, id);
+    expect(line).toContain(" ◉ waiting");
+    expect(line).not.toContain("▶");
+  });
+
+  it("S2 idle 3s → listed, no ◉", () => {
+    const id = "stwo2222-aaaa";
+    seed(tmp, id, { heartbeat: ago(3_000), turn: { state: "idle", ts: ago(3_000) } });
+    const line = lineFor(runStatus(id, tmp, env).stdout, id);
+    expect(line).toBeDefined();
+    expect(line).not.toContain("◉");
+  });
+
+  it("S3 keepalive: no pid, heartbeat 300s, idle 360s → listed with ' ◉ waiting'", () => {
+    const id = "sthree33-aaaa";
+    seed(tmp, id, { heartbeat: ago(300_000), turn: { state: "idle", ts: ago(360_000) } });
+    const line = lineFor(runStatus(id, tmp, env).stdout, id);
+    expect(line).toBeDefined();
+    expect(line).toContain(" ◉ waiting");
+  });
+
+  it("S4 ceiling: idle 31 min → not listed", () => {
+    const id = "sfour444-aaaa";
+    seed(tmp, id, { heartbeat: ago(1_860_000), turn: { state: "idle", ts: ago(1_860_000) } });
+    const res = runStatus(id, tmp, env);
+    expect(res.status).toBe(0);
+    expect(lineFor(res.stdout, id)).toBeUndefined();
+  });
+
+  it("S5 CSM_IDLE_WAIT_MS override: 60000 suppresses a 20s idle; 'abc' degrades to 10s", () => {
+    const id = "sfive555-aaaa";
+    seed(tmp, id, { heartbeat: ago(20_000), turn: { state: "idle", ts: ago(20_000) } });
+    const lineHi = lineFor(runStatus(id, tmp, { ...env, CSM_IDLE_WAIT_MS: "60000" }).stdout, id);
+    expect(lineHi).toBeDefined();
+    expect(lineHi).not.toContain("◉");
+    const lineNaN = lineFor(runStatus(id, tmp, { ...env, CSM_IDLE_WAIT_MS: "abc" }).stdout, id);
+    expect(lineNaN).toContain(" ◉ waiting");
+  });
+
+  it("S6 a known pid that has exited never idle-waits", () => {
+    const deadPid = spawnSync(process.execPath, ["-e", ""]).pid as number;
+    const a = "ssix666a-aaaa";
+    seed(tmp, a, { pid: deadPid, heartbeat: ago(5_000), turn: { state: "idle", ts: ago(20_000) } });
+    const b = "ssix666b-aaaa";
+    seed(tmp, b, { pid: deadPid, heartbeat: ago(300_000), turn: { state: "idle", ts: ago(300_000) } });
+    const res = runStatus(a, tmp, env);
+    expect(res.status).toBe(0);
+    const lineA = lineFor(res.stdout, a);
+    expect(lineA).toBeDefined();
+    expect(lineA).not.toContain("◉");
+    expect(lineFor(res.stdout, b)).toBeUndefined();
+  });
+
+  it("S7 precedence and self-heal: asking beats idle-waiting; torn turn.json lists without ◉", () => {
+    const a = "sseven7a-aaaa";
+    seed(tmp, a, { heartbeat: ago(30_000), asking: { ts: ago(5_000) }, turn: { state: "idle", ts: ago(20_000) } });
+    const b = "sseven7b-aaaa";
+    seed(tmp, b, { heartbeat: ago(5_000), turnRaw: '{"state":"idl' });
+    const res = runStatus(a, tmp, env);
+    expect(res.status).toBe(0);
+    const lineA = lineFor(res.stdout, a);
+    expect(lineA).toContain(" ◉ asking");
+    expect(lineA).not.toContain("◉ waiting");
+    const lineB = lineFor(res.stdout, b);
+    expect(lineB).toBeDefined();
+    expect(lineB).not.toContain("◉");
   });
 });
