@@ -17,7 +17,17 @@ import { describe, it, expect } from "vitest";
 // Status rows with a ▸ current-phase marker + dim-completed styling, a scroll
 // indicator, and the D-03 empty states (`no GSD projects` / `no roadmap`) — every
 // field routed through sanitize(), reserved palette avoided.
-import { osc8, SessionCard, CompactRow, dotColor, ConflictBand, PortsPane, PhasesPane } from "./Card.js";
+import {
+  osc8,
+  SessionCard,
+  CompactRow,
+  dotColor,
+  ConflictBand,
+  PortsPane,
+  PhasesPane,
+  SUBAGENT_GLYPH,
+  SUBAGENT_COLOR,
+} from "./Card.js";
 import { renderToString } from "ink";
 import chalk from "chalk";
 import type { SessionRow } from "../aggregate.js";
@@ -706,6 +716,104 @@ describe("SessionCard + CompactRow running indicator (260927-46l)", () => {
     expect(count(stripAnsi(bothRaw), "◉")).toBe(1);
     expect(stripAnsi(bothRaw)).not.toContain(RUN);
     expect(bothRaw).toContain(MAGENTA);
+  });
+});
+
+// --- Quick task 260927-73b (D-05): the subagent state (background agents still
+// running after the main turn ended) renders a bold turquoise (#40E0D0)
+// "↻ subagent" line (+ " ×N" when N > 1) with a turquoise border on SessionCard
+// and a leading turquoise ↻ token on CompactRow. Colour assertions run at chalk
+// level 3: at level 1 chalk downsamples #40E0D0 to plain cyan (ESC[36m).
+describe("SessionCard + CompactRow subagent indicator (260927-73b)", () => {
+  const TURQ = ESC + "[38;2;64;224;208m";
+  const BOLD = ESC + "[1m";
+  const MAGENTA = ESC + "[35m";
+
+  function rawAt3(node: React.ReactElement): string {
+    const prev = chalk.level;
+    chalk.level = 3;
+    try {
+      return renderToString(node);
+    } finally {
+      chalk.level = prev;
+    }
+  }
+  const lineWith = (raw: string, needle: string): string =>
+    raw.split("\n").find((l) => stripAnsi(l).includes(needle)) ?? "";
+  const count = (s: string, needle: string): number => s.split(needle).length - 1;
+  const top = (raw: string): string => lineWith(raw, "╭");
+
+  it("T0: exports the glyph and the reserved turquoise hue", () => {
+    expect(SUBAGENT_GLYPH).toBe("↻");
+    expect(SUBAGENT_COLOR).toBe("#40E0D0");
+  });
+
+  it("T1: SessionCard shows '↻ subagent' (no ×, no ◉, no ▶) for a single agent", () => {
+    const out = stripAnsi(
+      renderToString(<SessionCard s={makeRow({ subagent: true, subagent_count: 1 } as Partial<SessionRow>)} />),
+    );
+    expect(out).toContain("↻ subagent");
+    expect(out).not.toContain("×");
+    expect(out).not.toContain("◉");
+    expect(out).not.toContain("▶");
+  });
+
+  it("T2: '×N' only when the count is > 1", () => {
+    const three = stripAnsi(
+      renderToString(<SessionCard s={makeRow({ subagent: true, subagent_count: 3 } as Partial<SessionRow>)} />),
+    );
+    expect(three).toContain("↻ subagent ×3");
+
+    const none = stripAnsi(renderToString(<SessionCard s={makeRow({ subagent: true } as Partial<SessionRow>)} />));
+    expect(none).toContain("↻ subagent");
+    expect(none).not.toContain("×");
+  });
+
+  it("T3: the subagent line is bold turquoise and the top border is turquoise; an idle card is not", () => {
+    const raw = rawAt3(<SessionCard s={makeRow({ subagent: true, subagent_count: 2 } as Partial<SessionRow>)} />);
+    const line = lineWith(raw, "subagent");
+    expect(line).toContain(TURQ);
+    expect(line).toContain(BOLD);
+    expect(top(raw)).toContain(TURQ);
+
+    const idleTop = top(rawAt3(<SessionCard s={makeRow()} />));
+    expect(idleTop).not.toBe("");
+    expect(idleTop).not.toContain(TURQ);
+  });
+
+  it("T4: precedence — asking, waiting and running all beat subagent", () => {
+    const askRaw = rawAt3(<SessionCard s={makeRow({ asking: true, subagent: true } as Partial<SessionRow>)} />);
+    expect(top(askRaw)).toContain(MAGENTA);
+    const askOut = stripAnsi(askRaw);
+    expect(askOut).toContain("asking");
+    expect(askOut).not.toContain("↻");
+
+    const waitOut = stripAnsi(
+      renderToString(<SessionCard s={makeRow({ attention: true, subagent: true } as Partial<SessionRow>)} />),
+    );
+    expect(waitOut).toContain("waiting");
+    expect(waitOut).not.toContain("↻");
+
+    const runOut = stripAnsi(
+      renderToString(<SessionCard s={makeRow({ running: true, subagent: true } as Partial<SessionRow>)} />),
+    );
+    expect(runOut).toContain("▶ running");
+    expect(runOut).not.toContain("↻");
+  });
+
+  it("T5: CompactRow leads with a turquoise ↻ when subagent; none otherwise; asking wins", () => {
+    const subRaw = rawAt3(<CompactRow s={makeRow({ subagent: true, dotState: "active" } as Partial<SessionRow>)} />);
+    expect(stripAnsi(subRaw)).toContain("↻ ");
+    expect(subRaw).toContain(TURQ);
+
+    const offRaw = rawAt3(<CompactRow s={makeRow({ subagent: false } as Partial<SessionRow>)} />);
+    expect(stripAnsi(offRaw)).not.toContain("↻");
+
+    const bothOut = stripAnsi(
+      renderToString(<CompactRow s={makeRow({ asking: true, subagent: true } as Partial<SessionRow>)} />),
+    );
+    expect(count(bothOut, "◉")).toBe(1);
+    expect(bothOut).not.toContain("↻");
   });
 });
 

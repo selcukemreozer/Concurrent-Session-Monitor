@@ -159,6 +159,26 @@ describe("README running state (260927-46l)", () => {
   });
 });
 
+// Quick task 260927-73b (D-06): the README documents the turquoise subagent
+// state, its Stop/background_tasks source and its CSM_RUN_WINDOW_MS bound.
+describe("README subagent state (260927-73b)", () => {
+  const lines = README.split("\n");
+
+  it("one line documents ↻ subagent with #40E0D0, Stop, background_tasks and CSM_RUN_WINDOW_MS", () => {
+    const line = lines.find((l) => l.includes("↻ subagent") && l.includes("#40E0D0"));
+    expect(line).toBeDefined();
+    expect(line).toContain("Stop");
+    expect(line).toContain("background_tasks");
+    expect(line).toContain("CSM_RUN_WINDOW_MS");
+  });
+
+  it("the CSM_RUN_WINDOW_MS env-table row mentions the subagent state", () => {
+    const row = lines.find((l) => l.startsWith("| `CSM_RUN_WINDOW_MS`"));
+    expect(row).toBeDefined();
+    expect(row).toContain("subagent");
+  });
+});
+
 // Quick 260927-4tv: the 10 s idle-waiting knob is documented in the env table.
 describe("README documents CSM_IDLE_WAIT_MS (260927-4tv)", () => {
   const lines = readRel("../README.md").split("\n");

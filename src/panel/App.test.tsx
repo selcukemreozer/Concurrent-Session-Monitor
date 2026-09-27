@@ -446,6 +446,80 @@ describe("App asking counter (AQ-04)", () => {
   });
 });
 
+// --- Quick task 260927-73b (D-05): the header gains an "N subagent" counter
+// (turquoise #40E0D0 + bold when > 0) beside "N asking", counting non-ended
+// rows with the pre-gated row.subagent (rows, not agents).
+describe("App subagent counter (260927-73b)", () => {
+  const TURQ = ESC + "[38;2;64;224;208m";
+
+  beforeEach(() => {
+    (readAll as unknown as { mockReset: () => void }).mockReset();
+    (pruneSession as unknown as { mockReset: () => void }).mockReset();
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  const setRows = (rows: SessionRow[]) =>
+    (readAll as unknown as { mockReturnValue: (v: unknown) => unknown }).mockReturnValue(rows);
+
+  it("P11: counts non-ended subagent rows (not agents) — '2 subagent', '0 waiting', '0 asking'", () => {
+    setRows([
+      makeRow({ session_id: "sub-a", alive: true, dotState: "active", subagent: true, subagent_count: 2 } as Partial<SessionRow>),
+      makeRow({ session_id: "sub-b", alive: true, dotState: "active", subagent: true, subagent_count: 1 } as Partial<SessionRow>),
+      makeRow({
+        session_id: "sub-ended",
+        alive: false,
+        readyToPrune: true,
+        dotState: "stale",
+        subagent: true,
+        subagent_count: 4,
+      } as Partial<SessionRow>),
+    ]);
+    const { inst, frame } = renderCapture();
+    expect(frame()).toContain("2 subagent");
+    expect(frame()).toContain("0 waiting");
+    expect(frame()).toContain("0 asking");
+    inst.unmount();
+  });
+
+  it("P12: renders '0 subagent' on the single header line at 80 columns", () => {
+    setRows([makeRow({ session_id: "calm", alive: true, dotState: "active" } as Partial<SessionRow>)]);
+    const { inst, frame } = renderCapture();
+    const out = frame();
+    expect(out).toContain("0 subagent");
+    const header = stripAnsi(out)
+      .split("\n")
+      .find((l) => l.includes("conflicts"));
+    expect(header).toBeDefined();
+    expect(header).toContain("0 subagent");
+    inst.unmount();
+  });
+
+  it("P13: the header line is turquoise only when nSubagent > 0", () => {
+    const headerAt3 = (rows: SessionRow[]): string => {
+      setRows(rows);
+      const prev = chalk.level;
+      chalk.level = 3;
+      try {
+        const { inst, frame } = renderCapture();
+        const raw = frame();
+        inst.unmount();
+        return raw.split("\n").find((l) => stripAnsi(l).includes("conflicts")) ?? "";
+      } finally {
+        chalk.level = prev;
+      }
+    };
+    const withSub = headerAt3([
+      makeRow({ session_id: "sub", alive: true, dotState: "active", subagent: true, subagent_count: 1 } as Partial<SessionRow>),
+    ]);
+    expect(withSub).not.toBe("");
+    expect(withSub).toContain(TURQ);
+
+    const noSub = headerAt3([makeRow({ session_id: "calm", alive: true, dotState: "active" } as Partial<SessionRow>)]);
+    expect(noSub).not.toBe("");
+    expect(noSub).not.toContain(TURQ);
+  });
+});
+
 describe("App conflict surface (PANEL-04 SC-1/SC-3, D-06/D-07)", () => {
   beforeEach(() => {
     (readAll as unknown as { mockReset: () => void }).mockReset();
