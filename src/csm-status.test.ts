@@ -872,7 +872,7 @@ describe("csm-status reader — running marker (260927-46l)", () => {
     }
   });
 
-  it("M8 parity: readAll running/waiting/asking/listed agree with the csm-status markers for every fixture", () => {
+  it("M8 parity: readAll running/waiting/asking/subagent/listed agree with the csm-status markers for every fixture", () => {
     const fixtures: Array<[string, SeedOpts]> = [
       ["mpara-a1-aaaa", { heartbeat: ago(5_000), turn: { state: "running", ts: ago(5_000) } }],
       ["mpara-b2-aaaa", { heartbeat: ago(5_000), turn: { state: "idle", ts: ago(5_000) } }],
@@ -896,6 +896,27 @@ describe("csm-status reader — running marker (260927-46l)", () => {
       ["mpara-i9-aaaa", { heartbeat: ago(300_000), turn: { state: "idle", ts: ago(360_000) } }],
       ["mpara-j0-aaaa", { heartbeat: ago(3_000), turn: { state: "idle", ts: ago(3_000) } }],
       ["mpara-k1-aaaa", { heartbeat: ago(1_860_000), turn: { state: "idle", ts: ago(1_860_000) } }],
+      // 260927-73b subagent fixtures (D-04).
+      ["mpara-l2-aaaa", { heartbeat: ago(5_000), turn: { state: "idle", ts: ago(20_000), agents: 1 } }],
+      ["mpara-m3-aaaa", { heartbeat: ago(5_000), turn: { state: "idle", ts: ago(20_000), agents: 3 } }],
+      [
+        "mpara-n4-aaaa",
+        {
+          heartbeat: ago(5_000),
+          turn: { state: "idle", ts: ago(60_000), agents: 1 },
+          resumed: ago(60_000),
+          attention: { type: "idle_prompt", ts: ago(10_000) },
+        },
+      ],
+      [
+        "mpara-o5-aaaa",
+        {
+          heartbeat: ago(5_000),
+          turn: { state: "idle", ts: ago(60_000), agents: 1 },
+          resumed: ago(60_000),
+          attention: { type: "permission_prompt", ts: ago(10_000) },
+        },
+      ],
     ];
     const notListed = new Set(["mpara-g7-aaaa", "mpara-k1-aaaa"]);
     for (const [id, opts] of fixtures) seed(tmp, id, opts);
@@ -925,6 +946,10 @@ describe("csm-status reader — running marker (260927-46l)", () => {
       expect(row.running, id).toBe(line!.includes("▶ running"));
       expect(row.attention, id).toBe(line!.includes("◉ waiting"));
       expect(row.asking, id).toBe(line!.includes("◉ asking"));
+      expect(row.subagent, id).toBe(line!.includes("↻ subagent"));
+      if (row.subagent && (row.subagent_count ?? 0) > 1) {
+        expect(line, id).toContain("×" + row.subagent_count);
+      }
     }
     // Sanity: the parity check covered both outcomes.
     expect(rows.find((r) => r.session_id === "mpara-a1-aaaa")!.running).toBe(true);
@@ -932,6 +957,12 @@ describe("csm-status reader — running marker (260927-46l)", () => {
     expect(rows.find((r) => r.session_id === "mpara-h8-aaaa")!.attention).toBe(true);
     expect(rows.find((r) => r.session_id === "mpara-i9-aaaa")!.attention).toBe(true);
     expect(rows.find((r) => r.session_id === "mpara-j0-aaaa")!.attention).toBe(false);
+    expect(rows.find((r) => r.session_id === "mpara-l2-aaaa")!.subagent).toBe(true);
+    expect(rows.find((r) => r.session_id === "mpara-m3-aaaa")!.subagent).toBe(true);
+    expect(rows.find((r) => r.session_id === "mpara-m3-aaaa")!.subagent_count).toBe(3);
+    expect(rows.find((r) => r.session_id === "mpara-n4-aaaa")!.subagent).toBe(true);
+    expect(rows.find((r) => r.session_id === "mpara-o5-aaaa")!.attention).toBe(true);
+    expect(rows.find((r) => r.session_id === "mpara-o5-aaaa")!.subagent).toBe(false);
   });
 });
 
@@ -1013,5 +1044,111 @@ describe("csm-status reader — idle-waiting (260927-4tv)", () => {
     const lineB = lineFor(res.stdout, b);
     expect(lineB).toBeDefined();
     expect(lineB).not.toContain("◉");
+  });
+});
+
+// --- Quick task 260927-73b (D-04): /csm-status mirrors readAll's subagent gate
+// and prints ' ↻ subagent' (+ ' ×N' when N > 1), detail-free. Every fixture sits
+// at least 5s away from any threshold.
+describe("csm-status reader — subagent (260927-73b)", () => {
+  const env = { CSM_STALE_MS: "120000" };
+  const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+
+  it("B1 idle 20s with agents 1 → ' ↻ subagent', no ×, no ◉, no ▶", () => {
+    const id = "bsub1111-aaaa";
+    seed(tmp, id, { heartbeat: ago(5_000), turn: { state: "idle", ts: ago(20_000), agents: 1 } });
+    const res = runStatus(id, tmp, env);
+    expect(res.status).toBe(0);
+    const line = lineFor(res.stdout, id);
+    expect(line).toContain(" ↻ subagent");
+    expect(line).not.toContain("×");
+    expect(line).not.toContain("◉");
+    expect(line).not.toContain("▶");
+  });
+
+  it("B2 agents 2 → ' ↻ subagent ×2'", () => {
+    const id = "bsub2222-aaaa";
+    seed(tmp, id, { heartbeat: ago(5_000), turn: { state: "idle", ts: ago(20_000), agents: 2 } });
+    const line = lineFor(runStatus(id, tmp, env).stdout, id);
+    expect(line).toContain(" ↻ subagent ×2");
+  });
+
+  it("B3 an idle_prompt Notification is suppressed → ' ↻ subagent', no ◉", () => {
+    const id = "bsub3333-aaaa";
+    seed(tmp, id, {
+      heartbeat: ago(5_000),
+      turn: { state: "idle", ts: ago(60_000), agents: 1 },
+      resumed: ago(60_000),
+      attention: { type: "idle_prompt", ts: ago(10_000) },
+    });
+    const line = lineFor(runStatus(id, tmp, env).stdout, id);
+    expect(line).toContain(" ↻ subagent");
+    expect(line).not.toContain("◉");
+  });
+
+  it("B4 a permission_prompt still wins → ' ◉ waiting', no ↻", () => {
+    const id = "bsub4444-aaaa";
+    seed(tmp, id, {
+      heartbeat: ago(5_000),
+      turn: { state: "idle", ts: ago(60_000), agents: 1 },
+      resumed: ago(60_000),
+      attention: { type: "permission_prompt", ts: ago(10_000) },
+    });
+    const line = lineFor(runStatus(id, tmp, env).stdout, id);
+    expect(line).toContain(" ◉ waiting");
+    expect(line).not.toContain("↻");
+  });
+
+  it("B5 an open question wins → ' ◉ asking', no ↻", () => {
+    const id = "bsub5555-aaaa";
+    seed(tmp, id, {
+      heartbeat: ago(30_000),
+      asking: { ts: ago(5_000) },
+      turn: { state: "idle", ts: ago(20_000), agents: 1 },
+    });
+    const line = lineFor(runStatus(id, tmp, env).stdout, id);
+    expect(line).toContain(" ◉ asking");
+    expect(line).not.toContain("↻");
+  });
+
+  it("B6 keepalive keeps a quiet subagent row listed; CSM_RUN_WINDOW_MS expiry falls back to waiting", () => {
+    const a = "bsub6a66-aaaa";
+    seed(tmp, a, { heartbeat: ago(300_000), turn: { state: "idle", ts: ago(300_000), agents: 1 } });
+    const lineA = lineFor(runStatus(a, tmp, { ...env, CSM_ATTN_WINDOW_MS: "60000" }).stdout, a);
+    expect(lineA).toBeDefined();
+    expect(lineA).toContain(" ↻ subagent");
+
+    const b = "bsub6b66-aaaa";
+    seed(tmp, b, { heartbeat: ago(90_000), turn: { state: "idle", ts: ago(90_000), agents: 1 } });
+    const lineB = lineFor(runStatus(b, tmp, { ...env, CSM_RUN_WINDOW_MS: "60000" }).stdout, b);
+    expect(lineB).toBeDefined();
+    expect(lineB).toContain(" ◉ waiting");
+    expect(lineB).not.toContain("↻");
+  });
+
+  it("B7 a known pid that has exited never shows subagent", () => {
+    const deadPid = spawnSync(process.execPath, ["-e", ""]).pid as number;
+    const id = "bsub7777-aaaa";
+    seed(tmp, id, { pid: deadPid, heartbeat: ago(5_000), turn: { state: "idle", ts: ago(20_000), agents: 1 } });
+    const line = lineFor(runStatus(id, tmp, env).stdout, id);
+    expect(line).toBeDefined();
+    expect(line).not.toContain("↻");
+  });
+
+  it("B8 detail-free and sanitized: extra turn keys never print; a string count is ignored", () => {
+    const a = "bsub8a88-aaaa";
+    seed(tmp, a, {
+      heartbeat: ago(5_000),
+      turn: { state: "idle", ts: ago(20_000), agents: 1, description: "SENTINEL_73b" },
+    });
+    const b = "bsub8b88-aaaa";
+    seed(tmp, b, { heartbeat: ago(5_000), turn: { state: "idle", ts: ago(20_000), agents: "3" } });
+    const res = runStatus(a, tmp, env);
+    expect(res.status).toBe(0);
+    expect(res.stdout).not.toContain("SENTINEL_73b");
+    expect(lineFor(res.stdout, a)).toContain(" ↻ subagent");
+    const lineB = lineFor(res.stdout, b);
+    expect(lineB).not.toContain("↻");
+    expect(lineB).toContain(" ◉ waiting");
   });
 });

@@ -1301,3 +1301,171 @@ describe("idle-waiting (260927-4tv)", () => {
     expect(r.attention_ts).toBe(notifTs);
   });
 });
+
+// --- Quick task 260927-73b (D-03): subagent state. A main-thread Stop that
+// recorded still-running background subagents/workflows (turn.json idle with
+// agents > 0) shows ↻ subagent instead of idle-waiting / an idle_prompt
+// Notification, bounded by CSM_RUN_WINDOW_MS from max(turn ts, heartbeat). A
+// permission prompt and asking still win; a dead known pid never shows it.
+describe("subagent state (260927-73b)", () => {
+  function writeTurn(dir: string, snap: Record<string, unknown>): void {
+    fs.writeFileSync(path.join(dir, "turn.json"), JSON.stringify(snap), { mode: 0o600 });
+  }
+  const ago = (now: number, ms: number) => new Date(now - ms).toISOString();
+  const rowOf = (id: string, now: number, probe = deadProbe) =>
+    readAll(now, probe).find((x) => x.session_id === id)!;
+
+  beforeEach(() => {
+    process.env.CSM_STALE_MS = "120000";
+  });
+
+  it("A1 gate on: idle turn 20s with agents 2 → subagent ×2, no idle-waiting, active dot", () => {
+    const now = Date.now();
+    const dir = seedSession("a1", ago(now, 600_000), { heartbeat: ago(now, 5_000) });
+    writeTurn(dir, { state: "idle", ts: ago(now, 20_000), agents: 2 });
+    const r = rowOf("a1", now);
+    expect(r.subagent).toBe(true);
+    expect(r.subagent_count).toBe(2);
+    expect(r.attention).toBe(false);
+    expect(r.attention_type).toBeUndefined();
+    expect(r.attention_ts).toBeUndefined();
+    expect(r.running).toBe(false);
+    expect(r.asking).toBe(false);
+    expect(r.dotState).toBe("active");
+    expect(r.alive).toBe(true);
+  });
+
+  it("A2 gate off: missing/0/string/negative/fraction/null agents, a running turn, or no turn.json", () => {
+    const now = Date.now();
+    const variants: Array<[string, unknown]> = [
+      ["a2-missing", undefined],
+      ["a2-zero", 0],
+      ["a2-str", "2"],
+      ["a2-neg", -1],
+      ["a2-frac", 1.5],
+      ["a2-null", null],
+    ];
+    for (const [id, agents] of variants) {
+      const dir = seedSession(id, ago(now, 600_000), { heartbeat: ago(now, 5_000) });
+      const snap: Record<string, unknown> = { state: "idle", ts: ago(now, 20_000) };
+      if (agents !== undefined) snap.agents = agents;
+      writeTurn(dir, snap);
+      const r = rowOf(id, now);
+      expect(r.subagent, id).toBe(false);
+      expect(r.subagent_count, id).toBeUndefined();
+      expect(r.attention, id).toBe(true);
+    }
+
+    const run = seedSession("a2-running", ago(now, 600_000), { heartbeat: ago(now, 5_000) });
+    writeTurn(run, { state: "running", ts: ago(now, 20_000), agents: 2 });
+    const rr = rowOf("a2-running", now);
+    expect(rr.running).toBe(true);
+    expect(rr.subagent).toBe(false);
+
+    seedSession("a2-noturn", ago(now, 600_000), { heartbeat: ago(now, 5_000) });
+    expect(rowOf("a2-noturn", now).subagent).toBe(false);
+  });
+
+  it("A3 an idle_prompt Notification is suppressed while the subagent gate holds", () => {
+    const now = Date.now();
+    const dir = seedSession("a3", ago(now, 600_000), { heartbeat: ago(now, 5_000) });
+    writeTurn(dir, { state: "idle", ts: ago(now, 90_000), agents: 1 });
+    fs.writeFileSync(path.join(dir, "resumed"), ago(now, 90_000), { mode: 0o600 });
+    fs.writeFileSync(
+      path.join(dir, "attention.json"),
+      JSON.stringify({ type: "idle_prompt", ts: ago(now, 30_000) }),
+      { mode: 0o600 },
+    );
+    const r = rowOf("a3", now);
+    expect(r.subagent).toBe(true);
+    expect(r.attention).toBe(false);
+  });
+
+  it("A4 a permission_prompt (or generic waiting) Notification still wins over subagent", () => {
+    const now = Date.now();
+    for (const type of ["permission_prompt", "waiting"]) {
+      const id = `a4-${type}`;
+      const dir = seedSession(id, ago(now, 600_000), { heartbeat: ago(now, 5_000) });
+      writeTurn(dir, { state: "idle", ts: ago(now, 90_000), agents: 1 });
+      fs.writeFileSync(path.join(dir, "resumed"), ago(now, 90_000), { mode: 0o600 });
+      const notifTs = ago(now, 30_000);
+      fs.writeFileSync(path.join(dir, "attention.json"), JSON.stringify({ type, ts: notifTs }), { mode: 0o600 });
+      const r = rowOf(id, now);
+      expect(r.attention, type).toBe(true);
+      expect(r.attention_type, type).toBe(type);
+      expect(r.attention_ts, type).toBe(notifTs);
+      expect(r.subagent, type).toBe(false);
+      expect(r.subagent_count, type).toBeUndefined();
+    }
+  });
+
+  it("A5 an open question beats subagent", () => {
+    const now = Date.now();
+    const dir = seedSession("a5", ago(now, 600_000), { heartbeat: ago(now, 30_000) });
+    writeTurn(dir, { state: "idle", ts: ago(now, 20_000), agents: 1 });
+    fs.writeFileSync(path.join(dir, "asking.json"), JSON.stringify({ ts: ago(now, 5_000) }), { mode: 0o600 });
+    const r = rowOf("a5", now);
+    expect(r.asking).toBe(true);
+    expect(r.subagent).toBe(false);
+    expect(r.attention).toBe(false);
+  });
+
+  it("A6 expiry measured from max(turn ts, heartbeat); falls back to idle-waiting / TTL", () => {
+    const now = Date.now();
+    process.env.CSM_RUN_WINDOW_MS = "60000";
+    const a = seedSession("a6-a", ago(now, 600_000), { heartbeat: ago(now, 90_000) });
+    writeTurn(a, { state: "idle", ts: ago(now, 90_000), agents: 1 });
+    const ra = rowOf("a6-a", now);
+    expect(ra.subagent).toBe(false);
+    expect(ra.attention).toBe(true);
+    expect(ra.alive).toBe(true); // 2-min TTL
+
+    const b = seedSession("a6-b", ago(now, 600_000), { heartbeat: ago(now, 30_000) });
+    writeTurn(b, { state: "idle", ts: ago(now, 90_000), agents: 1 });
+    expect(rowOf("a6-b", now).subagent).toBe(true);
+
+    delete process.env.CSM_RUN_WINDOW_MS;
+    const c = seedSession("a6-c", ago(now, 7_200_000), { heartbeat: ago(now, 1_860_000) });
+    writeTurn(c, { state: "idle", ts: ago(now, 1_860_000), agents: 1 });
+    const rc = rowOf("a6-c", now);
+    expect(rc.subagent).toBe(false);
+    expect(rc.alive).toBe(false);
+    expect(rc.readyToPrune).toBe(true);
+  });
+
+  it("A7 keepalive isolated from idle-waiting (attn window 60s): subagent keeps the row alive + active", () => {
+    const now = Date.now();
+    process.env.CSM_ATTN_WINDOW_MS = "60000";
+    const a = seedSession("a7-a", ago(now, 600_000), { heartbeat: ago(now, 300_000) });
+    writeTurn(a, { state: "idle", ts: ago(now, 300_000), agents: 1 });
+    const b = seedSession("a7-b", ago(now, 600_000), { pid: 4242, heartbeat: ago(now, 300_000) });
+    writeTurn(b, { state: "idle", ts: ago(now, 300_000), agents: 1 });
+    for (const [id, probe] of [
+      ["a7-a", deadProbe],
+      ["a7-b", aliveProbe],
+    ] as const) {
+      const r = rowOf(id, now, probe);
+      expect(r.subagent, id).toBe(true);
+      expect(r.alive, id).toBe(true);
+      expect(r.readyToPrune, id).toBe(false);
+      expect(r.dotState, id).toBe("active");
+    }
+  });
+
+  it("A8 a dead known pid never shows subagent", () => {
+    const now = Date.now();
+    const a = seedSession("a8-a", ago(now, 600_000), { pid: 4242, heartbeat: ago(now, 5_000) });
+    writeTurn(a, { state: "idle", ts: ago(now, 20_000), agents: 2 });
+    const ra = rowOf("a8-a", now, deadProbe);
+    expect(ra.subagent).toBe(false);
+    expect(ra.subagent_count).toBeUndefined();
+    expect(ra.dotState).toBe("stale");
+    expect(ra.alive).toBe(true); // fresh-heartbeat TTL
+
+    const b = seedSession("a8-b", ago(now, 600_000), { pid: 4242, heartbeat: ago(now, 300_000) });
+    writeTurn(b, { state: "idle", ts: ago(now, 300_000), agents: 2 });
+    const rb = rowOf("a8-b", now, deadProbe);
+    expect(rb.alive).toBe(false);
+    expect(rb.readyToPrune).toBe(true);
+  });
+});

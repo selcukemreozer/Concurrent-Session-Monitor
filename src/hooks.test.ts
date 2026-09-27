@@ -1628,3 +1628,93 @@ describe("subagent count writer (260927-73b D-01)", () => {
     }
   });
 });
+
+// --- Quick task 260927-73b: subagent state end-to-end with the REAL hook
+// scripts. Time is derived from the written turn.json ts (readAll(ts + offset)).
+describe("subagent end-to-end (260927-73b)", () => {
+  const sessDir = (id: string) => path.join(tmp, "sessions", id);
+  let prior: string | undefined;
+
+  beforeEach(() => {
+    prior = process.env.CSM_STORE_DIR;
+    process.env.CSM_STORE_DIR = tmp;
+  });
+
+  afterEach(() => {
+    if (prior === undefined) delete process.env.CSM_STORE_DIR;
+    else process.env.CSM_STORE_DIR = prior;
+  });
+
+  function seed(id: string): void {
+    fs.mkdirSync(sessDir(id), { recursive: true });
+    fs.writeFileSync(
+      path.join(sessDir(id), "session.json"),
+      JSON.stringify({
+        schema_version: 1,
+        session_id: id,
+        folder: id,
+        branch: "main",
+        model: "unknown",
+        start_time: new Date(Date.now() - 10_000).toISOString(),
+      }),
+      { mode: 0o600 },
+    );
+    run(onUserPrompt, { session_id: id, hook_event_name: "UserPromptSubmit" });
+  }
+
+  function run(script: string, payload: Record<string, unknown>): void {
+    const res = runHook(script, JSON.stringify(payload), tmp);
+    expect(res.status).toBe(0);
+    expect(res.stdout).toBe("");
+  }
+
+  const twoRunning = [
+    { type: "subagent", status: "running" },
+    { type: "subagent", status: "running" },
+  ];
+  const readTurnFile = (id: string): { state: string; ts: string; agents?: number } =>
+    JSON.parse(fs.readFileSync(path.join(sessDir(id), "turn.json"), "utf8"));
+  const rowAt = (id: string, at: number) => readAll(at).find((r) => r.session_id === id)!;
+
+  it("X1 Stop with running agents → subagent (idle_prompt suppressed) → Stop with none → idle-waiting", () => {
+    const id = "x1";
+    seed(id);
+    run(onActivity, { session_id: id, hook_event_name: "Stop", stop_hook_active: false, background_tasks: twoRunning });
+    const idle = readTurnFile(id);
+    expect(idle.state).toBe("idle");
+    expect(idle.agents).toBe(2);
+    const T = Date.parse(idle.ts);
+
+    let r = rowAt(id, T + 11_000);
+    expect(r.subagent).toBe(true);
+    expect(r.subagent_count).toBe(2);
+    expect(r.attention).toBe(false);
+    expect(r.running).toBe(false);
+    expect(r.dotState).toBe("active");
+
+    run(onNotification, { session_id: id, hook_event_name: "Notification", notification_type: "idle_prompt" });
+    r = rowAt(id, T + 11_000);
+    expect(r.subagent).toBe(true);
+    expect(r.attention).toBe(false);
+
+    run(onActivity, { session_id: id, hook_event_name: "Stop", stop_hook_active: false, background_tasks: [] });
+    const idle2 = readTurnFile(id);
+    const T2 = Date.parse(idle2.ts);
+    r = rowAt(id, T2 + 11_000);
+    expect(r.subagent).toBe(false);
+    expect(r.subagent_count).toBeUndefined();
+    expect(r.attention).toBe(true);
+    expect(r.attention_type).toBe("idle_prompt");
+    expect(r.attention_ts).toBe(idle2.ts);
+  });
+
+  it("X2 a subagent Stop carrying background_tasks leaves the turn running → no subagent state", () => {
+    const id = "x2";
+    seed(id);
+    run(onActivity, { session_id: id, hook_event_name: "Stop", agent_id: "agent-x", background_tasks: twoRunning });
+    expect(readTurnFile(id).state).toBe("running");
+    const r = rowAt(id, Date.now());
+    expect(r.running).toBe(true);
+    expect(r.subagent).toBe(false);
+  });
+});
