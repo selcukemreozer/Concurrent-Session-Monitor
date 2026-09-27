@@ -37,6 +37,7 @@ import {
 } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
 // Is `linkTarget` our OWN launcher from a different version of THIS plugin?
 // CLAUDE_PLUGIN_ROOT is version-pinned (.../cache/<mp>/<plugin>/<version>), so a
@@ -59,13 +60,13 @@ function main() {
   const localBin = path.join(home, ".local", "bin");
   const target = path.join(localBin, "csm");
 
-  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
-  if (!pluginRoot) {
-    console.error(
-      "csm: CLAUDE_PLUGIN_ROOT is not set — run /csm-setup from inside Claude Code so the plugin path resolves.",
-    );
-    return;
-  }
+  // Claude Code substitutes ${CLAUDE_PLUGIN_ROOT} textually in the command's `!`
+  // line but does not export it to this process, so fall back to our own
+  // location (<root>/scripts/csm-setup.mjs -> <root>). The launcher-exists check
+  // below still guards against a wrong root.
+  const pluginRoot =
+    process.env.CLAUDE_PLUGIN_ROOT ||
+    path.dirname(path.dirname(fileURLToPath(import.meta.url)));
   const launcher = path.join(pluginRoot, "bin", "csm.mjs");
 
   // Don't create a dangling link if the launcher is missing (bad plugin root).
