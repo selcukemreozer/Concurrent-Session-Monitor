@@ -5,13 +5,18 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
-// /csm-goto focus script (scripts/csm-goto.mjs). Runs as
-// `node csm-goto.mjs "<caller_id>" "<query>"` — mirror src/csm-branch.test.ts's
-// spawnSync harness. The CSM_OPEN_CMD test seam points the opener at a fixture
-// shell script that logs its argv, so no real Warp pane is ever focused.
+// /csm-goto (scripts/csm-goto.mjs) — 260927-59z: takes NO arguments and brings
+// the terminal running the CSM panel to the front, using the panel.json the
+// panel writes at the store root on start. The CSM_OPEN_CMD test seam points
+// the opener at a fixture shell script that logs its argv (one line per argv
+// entry), so nothing is ever really focused.
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
 const csmGoto = path.join(repoRoot, "scripts", "csm-goto.mjs");
+const commandMd = path.join(repoRoot, "commands", "csm-goto.md");
+
+const ESC = String.fromCharCode(0x1b);
+const BEL = String.fromCharCode(0x07);
 
 let tmp: string;
 let openStub: string;
@@ -29,35 +34,25 @@ afterEach(() => {
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
-type Seed = {
-  id: string;
-  folder: string;
-  warp?: { focus_url?: string; session_uuid?: string } | null;
-  heartbeat?: string; // ISO; defaults to "now" (live)
-};
-
-function seed({ id, folder, warp, heartbeat }: Seed) {
-  const dir = path.join(tmp, "sessions", id);
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(
-    path.join(dir, "session.json"),
-    JSON.stringify({
-      schema_version: 1,
-      session_id: id,
-      cwd: `/work/${folder}`,
-      folder,
-      branch: "main",
-      model: "unknown",
-      start_time: new Date(Date.now() - 60_000).toISOString(),
-      warp: warp === undefined ? { focus_url: `warp://session/${id}`, session_uuid: id } : warp,
-    }),
-  );
-  fs.writeFileSync(path.join(dir, "heartbeat"), heartbeat ?? new Date().toISOString());
+function panelFile(): string {
+  return path.join(tmp, "panel.json");
 }
 
-function runGoto(callerId: string, query: string) {
-  return spawnSync(process.execPath, [csmGoto, callerId, query], {
-    env: { ...process.env, CSM_STORE_DIR: tmp, CSM_OPEN_CMD: openStub },
+function writePanel(obj: unknown) {
+  fs.writeFileSync(panelFile(), JSON.stringify(obj));
+}
+
+function writeRaw(text: string) {
+  fs.writeFileSync(panelFile(), text);
+}
+
+function runGoto(...extraArgs: string[]) {
+  return runGotoEnv({}, ...extraArgs);
+}
+
+function runGotoEnv(envOverrides: Record<string, string>, ...extraArgs: string[]) {
+  return spawnSync(process.execPath, [csmGoto, ...extraArgs], {
+    env: { ...process.env, CSM_STORE_DIR: tmp, CSM_OPEN_CMD: openStub, ...envOverrides },
     encoding: "utf8",
   });
 }
@@ -67,133 +62,204 @@ function opened(): string[] {
   return fs.readFileSync(openLog, "utf8").split("\n").filter(Boolean);
 }
 
-describe("csm-goto (Warp-only, focus-only)", () => {
-  it("exact folder match: opens that session's warp focus_url and reports it", () => {
-    seed({ id: "aaaa1111", folder: "alpha" });
-    seed({ id: "bbbb2222", folder: "beta" });
-    const res = runGoto("caller-x", "beta");
-    expect(res.status).toBe(0);
-    expect(opened()).toEqual(["warp://session/bbbb2222"]);
-    expect(res.stdout).toContain("Focused beta (bbbb2222)");
-  });
+function resetLog() {
+  fs.rmSync(openLog, { force: true });
+}
 
-  it("folder match is case-insensitive and falls back to a unique substring", () => {
-    seed({ id: "aaaa1111", folder: "Concurrent-Session-Monitor" });
-    seed({ id: "bbbb2222", folder: "other" });
-    const res = runGoto("caller-x", "session-mon");
-    expect(res.status).toBe(0);
-    expect(opened()).toEqual(["warp://session/aaaa1111"]);
-  });
+const LIVE = process.pid; // the vitest worker — alive for the whole run
+const DEAD = (() => {
+  const r = spawnSync(process.execPath, ["-e", ""]);
+  return r.pid as number; // finished → no longer alive
+})();
 
-  it("session id prefix match selects that session", () => {
-    seed({ id: "aaaa1111", folder: "same" });
-    seed({ id: "bbbb2222", folder: "same" });
-    const res = runGoto("caller-x", "bbbb");
-    expect(res.status).toBe(0);
-    expect(opened()).toEqual(["warp://session/bbbb2222"]);
-  });
+const WARP_PANEL = {
+  schema_version: 1,
+  pid: LIVE,
+  started: "2026-09-27T10:00:00.000Z",
+  term_program: "WarpTerminal",
+  warp_focus_url: "warp://session/p1",
+  tty: "ttys003",
+};
 
-  it("multiple matches: opens nothing and lists the candidates", () => {
-    seed({ id: "aaaa1111", folder: "proj" });
-    seed({ id: "bbbb2222", folder: "proj" });
-    const res = runGoto("caller-x", "proj");
+describe("csm-goto focuses the CSM panel's terminal (260927-59z)", () => {
+  it("G1 no panel.json → no-panel message, nothing opened", () => {
+    const res = runGoto();
     expect(res.status).toBe(0);
     expect(opened()).toEqual([]);
-    expect(res.stdout).toContain("matches 2 live sessions");
-    expect(res.stdout).toContain("aaaa1111");
-    expect(res.stdout).toContain("bbbb2222");
+    expect(res.stdout).toContain("No CSM panel is running");
+    expect(res.stdout).toContain("start it with `csm`");
+
+    const res2 = runGotoEnv({ CSM_STORE_DIR: path.join(tmp, "does-not-exist") });
+    expect(res2.status).toBe(0);
+    expect(opened()).toEqual([]);
+    expect(res2.stdout).toContain("No CSM panel is running");
   });
 
-  it("same-folder match drops the caller's own session when another matches", () => {
-    seed({ id: "aaaa1111", folder: "proj" });
-    seed({ id: "bbbb2222", folder: "proj" });
-    const res = runGoto("aaaa1111", "proj");
+  it("G2 dead pid → no-panel message, nothing opened", () => {
+    writePanel({ pid: DEAD, term_program: "WarpTerminal", warp_focus_url: "warp://session/p1" });
+    const res = runGoto();
     expect(res.status).toBe(0);
-    expect(opened()).toEqual(["warp://session/bbbb2222"]);
+    expect(res.stdout).toContain("No CSM panel is running");
+    expect(opened()).toEqual([]);
   });
 
-  it("no focus_url (session not in Warp): opens nothing and says Warp-only", () => {
-    seed({ id: "aaaa1111", folder: "plain", warp: null });
-    const res = runGoto("caller-x", "plain");
+  it("G3 Warp: opens the panel's exact pane via its focus URL", () => {
+    writePanel(WARP_PANEL);
+    const res = runGoto();
+    expect(res.status).toBe(0);
+    expect(opened()).toEqual(["warp://session/p1"]);
+    expect(res.stdout).toContain("Focused the CSM panel (Warp)");
+  });
+
+  it("G4 known terminals without a focus URL → app-level fallback", () => {
+    const table: Array<[string, string]> = [
+      ["Apple_Terminal", "Terminal"],
+      ["iTerm.app", "iTerm"],
+      ["WarpTerminal", "Warp"],
+      ["ghostty", "Ghostty"],
+      ["vscode", "Visual Studio Code"],
+    ];
+    for (const [term, app] of table) {
+      resetLog();
+      writePanel({ pid: LIVE, term_program: term, warp_focus_url: null, tty: "ttys001" });
+      const res = runGoto();
+      expect(res.status, term).toBe(0);
+      expect(opened(), term).toEqual(["-a", app]);
+      expect(res.stdout).toContain(`Brought ${app} to the front`);
+      expect(res.stdout).toContain("only the app could be focused");
+    }
+  });
+
+  it("G5 unknown terminal → explains, shows pid/tty/terminal, opens nothing", () => {
+    writePanel({ pid: LIVE, term_program: "tmux", warp_focus_url: null, tty: "ttys009" });
+    const res = runGoto();
     expect(res.status).toBe(0);
     expect(opened()).toEqual([]);
-    expect(res.stdout).toContain("no Warp focus URL");
-  });
+    expect(res.stdout).toContain("can't be focused automatically");
+    expect(res.stdout).toContain(`pid ${LIVE}`);
+    expect(res.stdout).toContain("ttys009");
+    expect(res.stdout).toContain("tmux");
 
-  it("empty focus_url is treated as absent", () => {
-    seed({ id: "aaaa1111", folder: "plain", warp: { focus_url: "", session_uuid: "" } });
-    const res = runGoto("caller-x", "plain");
-    expect(res.status).toBe(0);
+    writePanel({ pid: LIVE, term_program: null, warp_focus_url: null, tty: null });
+    const res2 = runGoto();
+    expect(res2.stdout).toContain("tty unknown");
+    expect(res2.stdout).toContain("terminal unknown");
     expect(opened()).toEqual([]);
-    expect(res.stdout).toContain("no Warp focus URL");
   });
 
-  it("invalid focus_url (non-warp scheme, whitespace, control bytes, junk) is never opened", () => {
-    const ESC = String.fromCharCode(0x1b);
-    const bad = [
+  it("G6 a hostile focus URL is never opened (app fallback only)", () => {
+    const bad: unknown[] = [
       "https://evil.example/",
       "file:///etc/passwd",
       "warp://x y",
       "warp://x" + ESC + "[31m",
       "not a url",
+      "warp://" + "a".repeat(3000),
+      42,
     ];
-    for (const [i, url] of bad.entries()) {
-      seed({ id: `bad${i}`, folder: `f${i}`, warp: { focus_url: url } });
-      const res = runGoto("caller-x", `f${i}`);
+    for (const url of bad) {
+      resetLog();
+      writePanel({ pid: LIVE, term_program: "WarpTerminal", warp_focus_url: url, tty: null });
+      const res = runGoto();
       expect(res.status).toBe(0);
-      expect(res.stdout).toContain("no Warp focus URL");
+      expect(opened(), JSON.stringify(url).slice(0, 40)).toEqual(["-a", "Warp"]);
     }
+  });
+
+  it("G7 a hostile term_program never becomes an app; echoes are sanitized + bounded", () => {
+    const hostile: unknown[] = [
+      "__proto__",
+      "constructor",
+      "toString",
+      "Terminal",
+      "Apple_Terminal; open -a Calculator",
+      "WarpTerminal\n",
+      ESC + "[31m",
+      42,
+      {},
+    ];
+    for (const term of hostile) {
+      resetLog();
+      writePanel({ pid: LIVE, term_program: term, warp_focus_url: null, tty: null });
+      const res = runGoto();
+      expect(res.status).toBe(0);
+      expect(opened(), JSON.stringify(term)).toEqual([]);
+      expect(res.stdout).toContain("can't be focused automatically");
+      expect(res.stdout).not.toContain(ESC);
+    }
+
+    for (const tty of ["tt" + ESC + "]0;pwn" + BEL + "ys1", "t".repeat(500)]) {
+      writePanel({ pid: LIVE, term_program: "tmux", warp_focus_url: null, tty });
+      const res = runGoto();
+      expect(res.stdout).not.toContain(ESC);
+      expect(res.stdout).not.toContain(BEL);
+      expect(res.stdout.length).toBeLessThan(600);
+    }
+  });
+
+  it("G8 malformed panel.json → no-panel message, nothing opened", () => {
+    for (const raw of ["{", "null", "[]", '"str"']) {
+      writeRaw(raw);
+      const res = runGoto();
+      expect(res.status).toBe(0);
+      expect(res.stdout, raw).toContain("No CSM panel is running");
+    }
+    const base = { term_program: "WarpTerminal", warp_focus_url: "warp://session/p1" };
+    for (const pid of [String(LIVE), -5, 1.5, 0, 1]) {
+      writePanel({ ...base, pid });
+      const res = runGoto();
+      expect(res.stdout, String(pid)).toContain("No CSM panel is running");
+    }
+    writePanel(base); // missing pid
+    expect(runGoto().stdout).toContain("No CSM panel is running");
     expect(opened()).toEqual([]);
   });
 
-  it("stale session (old heartbeat, no pid) is not a match target", () => {
-    seed({ id: "aaaa1111", folder: "gone", heartbeat: new Date(Date.now() - 3_600_000).toISOString() });
-    const res = runGoto("caller-x", "gone");
+  it("G9 extra argv is ignored", () => {
+    writePanel(WARP_PANEL);
+    const res = runGoto("some-folder", "abc");
     expect(res.status).toBe(0);
-    expect(opened()).toEqual([]);
-    expect(res.stdout).toContain("No live sessions");
+    expect(opened()).toEqual(["warp://session/p1"]);
   });
 
-  it("no match: opens nothing, lists live sessions, exits 0", () => {
-    seed({ id: "aaaa1111", folder: "alpha" });
-    const res = runGoto("caller-x", "zzz");
+  it("G10 a failing opener still exits 0 with a clear message", () => {
+    writePanel(WARP_PANEL);
+    const res = runGotoEnv({ CSM_OPEN_CMD: "/usr/bin/false" });
     expect(res.status).toBe(0);
-    expect(opened()).toEqual([]);
-    expect(res.stdout).toContain('No live session matches "zzz"');
-    expect(res.stdout).toContain("alpha (aaaa1111)");
+    expect(res.stdout).toContain("Could not focus the CSM panel");
   });
 
-  it("empty query: prints usage + roster and opens nothing", () => {
-    seed({ id: "aaaa1111", folder: "alpha", warp: null });
-    const res = runGoto("aaaa1111", "");
-    expect(res.status).toBe(0);
-    expect(opened()).toEqual([]);
-    expect(res.stdout).toContain("Usage: /csm-goto");
-    expect(res.stdout).toContain("alpha (aaaa1111) (you)  [no Warp focus]");
+  it("G11 read-only: panel.json unchanged, no new store entries", () => {
+    writePanel(WARP_PANEL);
+    const before = fs.readFileSync(panelFile());
+    runGoto();
+    expect(fs.readFileSync(panelFile()).equals(before)).toBe(true);
+    expect(fs.readdirSync(tmp).sort()).toEqual(["open-stub.sh", "open.log", "panel.json"]);
   });
 
-  it("missing store and a failing opener both still exit 0", () => {
-    const res = spawnSync(process.execPath, [csmGoto, "caller-x", "alpha"], {
-      env: { ...process.env, CSM_STORE_DIR: path.join(tmp, "nope"), CSM_OPEN_CMD: openStub },
-      encoding: "utf8",
-    });
-    expect(res.status).toBe(0);
-    expect(res.stdout).toContain("No live sessions");
+  it("G12 source + command guards (stdlib only, no shell, no-arg command)", () => {
+    const src = fs.readFileSync(csmGoto, "utf8");
+    const specs = [...src.matchAll(/import\s[^;]*?from\s+["']([^"']+)["']/g)].map((m) => m[1]);
+    expect(specs.length).toBeGreaterThan(0);
+    for (const s of specs) {
+      expect(s.startsWith("node:"), s).toBe(true);
+      expect(s).not.toContain("src/");
+    }
+    expect(src).not.toMatch(/\bshell\s*:/);
+    expect(src).not.toMatch(/\bexecSync\b/);
+    expect(src).not.toMatch(/\bexec\(/);
 
-    seed({ id: "aaaa1111", folder: "alpha" });
-    const fail = spawnSync(process.execPath, [csmGoto, "caller-x", "alpha"], {
-      env: { ...process.env, CSM_STORE_DIR: tmp, CSM_OPEN_CMD: "/usr/bin/false" },
-      encoding: "utf8",
-    });
-    expect(fail.status).toBe(0);
-    expect(fail.stdout).toContain("Could not focus alpha");
-  });
-
-  it("query control bytes are stripped before being echoed back", () => {
-    seed({ id: "aaaa1111", folder: "alpha" });
-    const ESC = String.fromCharCode(0x1b);
-    const res = runGoto("caller-x", "zz" + ESC + "[31mq");
-    expect(res.status).toBe(0);
-    expect(res.stdout.includes(ESC)).toBe(false);
+    const md = fs.readFileSync(commandMd, "utf8");
+    const lines = md.split("\n");
+    const first = lines.indexOf("---");
+    const second = lines.indexOf("---", first + 1);
+    expect(first).toBe(0);
+    expect(second).toBeGreaterThan(first);
+    const front = lines.slice(first + 1, second).join("\n");
+    expect(front).not.toMatch(/argument-hint/);
+    expect(front).toMatch(/^description:.*panel/m);
+    expect(md).not.toContain("$ARGUMENTS");
+    const bang = lines.filter((l) => l.startsWith("!"));
+    expect(bang).toEqual(['!`node "${CLAUDE_PLUGIN_ROOT}/scripts/csm-goto.mjs"`']);
   });
 });
