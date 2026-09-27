@@ -2,7 +2,14 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { sessionsDir } from "./paths.js";
 import { numEnv } from "./env.js";
-import type { SessionState, TouchEvent, SkillEvent, AttentionState, AskingState } from "./schema.js";
+import type {
+  SessionState,
+  TouchEvent,
+  SkillEvent,
+  AttentionState,
+  AskingState,
+  TurnState,
+} from "./schema.js";
 import {
   isProcessAlive,
   resolveLastSeen,
@@ -71,6 +78,19 @@ function skillWindowMs(): number {
  */
 function attnWindowMs(): number {
   return numEnv("CSM_ATTN_WINDOW_MS", 1_800_000);
+}
+
+/**
+ * The running-state safety net (260927-46l D-02), config-adjustable via
+ * CSM_RUN_WINDOW_MS (default 1_800_000ms / 30 min). A turn marker older than
+ * this, measured from the NEWER of the turn ts and the heartbeat, stops
+ * counting as running. It bounds the Esc case (a user interrupt fires no Stop
+ * hook, so turn.json keeps saying "running") and the running keepalive.
+ * Routed through `numEnv` so a NaN/negative override degrades to the 30-min
+ * default. Read lazily (not module-const) so tests can flip the env per-case.
+ */
+function runWindowMs(): number {
+  return numEnv("CSM_RUN_WINDOW_MS", 1_800_000);
 }
 
 /** One file a session is actively touching within the window. */
@@ -179,6 +199,18 @@ export type SessionRow = SessionState & {
   asking: boolean;
   /** ISO-8601 ts the open question was asked, present only when `asking` is true. */
   asking_ts?: string;
+  /**
+   * Whether this session is working a turn right now (260927-46l D-02).
+   * PRE-GATED display flag: true only while `turn.json` says "running", its ts
+   * parses, the pid verdict is not "dead", and now minus max(turn ts,
+   * heartbeat) is under `runWindowMs()`. Forced false when `asking` or
+   * `attention` holds (D-04 precedence asking > waiting > running, one status
+   * line). The raw gate (before precedence) is liveness evidence: it keeps the
+   * row fresh (not stale, not readyToPrune) and, when displayed, the dot
+   * active. It drives no sort or conflict logic. Additive;
+   * SESSION_SCHEMA_VERSION unchanged.
+   */
+  running: boolean;
 };
 
 /**
@@ -446,6 +478,28 @@ function readAsking(dir: string): { asking_ts?: string } {
 }
 
 /**
+ * Read one session's turn-state snapshot from its `turn.json` shard
+ * (260927-46l D-01), written by on-user-prompt ("running") and by on-activity
+ * on a main-thread Stop ("idle"). Mirrors {@link readAsking}'s try/catch
+ * self-heal: absent or torn turn.json returns `{}`. Returns
+ * `{ turn_state, turn_ts }` only when `state` is exactly "running" or "idle"
+ * AND `ts` is a non-empty string; nothing else passes through. The window /
+ * pid GATE lives in readAll.
+ */
+function readTurn(dir: string): { turn_state?: TurnState["state"]; turn_ts?: string } {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(path.join(dir, "turn.json"), "utf8")) as Partial<TurnState>;
+    const state = parsed?.state;
+    if ((state === "running" || state === "idle") && typeof parsed.ts === "string" && parsed.ts.length > 0) {
+      return { turn_state: state, turn_ts: parsed.ts };
+    }
+    return {};
+  } catch {
+    return {}; // absent/torn turn.json self-heals (T-46l-04)
+  }
+}
+
+/**
  * The sole cross-session view (STATE-02): aggregate every session shard into
  * one array, apply the D-02 active window, and sort most-recently-active
  * first (D-09).
@@ -541,15 +595,36 @@ export function readAll(
     // so the reader must defer to the TTL/heartbeat for the dot rather than
     // asserting "stale" and mislabelling a genuinely-live session.
     const procDead = verdict === "dead";
+
+    // --- Running gate (260927-46l D-02). turn.json "running" (on-user-prompt)
+    // until a main-thread Stop writes "idle". The window reference is the newer
+    // of the turn ts and the heartbeat sidecar (DISC-5; NOT the start_time
+    // fallback), so a long turn with ongoing tool activity keeps running while
+    // an interrupted one (Esc fires no Stop) expires after runWindowMs(). A
+    // dead known pid never runs. `running` is the pre-gated display flag
+    // (asking > waiting > running, DISC-3); `rawRunning` feeds liveness.
+    const turn = readTurn(dir);
+    const turnMs = turn.turn_ts !== undefined ? Date.parse(turn.turn_ts) : NaN;
+    const runRefMs = Math.max(turnMs, heartbeatMs ?? -Infinity);
+    const rawRunning =
+      turn.turn_state === "running" &&
+      !Number.isNaN(turnMs) &&
+      !procDead &&
+      now - runRefMs < runWindowMs();
+    const running = rawRunning && !asking && !attention;
+
     const heartbeatFresh = now - lastSeenMs < staleMs(); // TTL authoritative (D-07)
     // Needs-you keepalive (260927-1zw WR-01 / D-03): a session blocked on the
     // human emits no heartbeat, so an active marker is liveness evidence. It
     // keeps the row fresh (not stale, not readyToPrune, never pruned by App)
     // while the marker gate holds, which bounds it by attnWindowMs(). DISC-4: an
     // authoritatively dead pid gets no keepalive, so a crashed session is still
-    // reaped normally.
+    // reaped normally. A running turn (260927-46l D-03) is liveness evidence
+    // too: a session deep in a long Bash / web fetch / thinking emits no
+    // heartbeat, so rawRunning (already excluding a dead pid, bounded by
+    // runWindowMs()) keeps it fresh as well.
     const needsYouKeepalive = (asking || rawWaiting) && !procDead;
-    const fresh = heartbeatFresh || needsYouKeepalive;
+    const fresh = heartbeatFresh || needsYouKeepalive || rawRunning;
     const alive = fresh || procAlive; // shown while EITHER says alive (SC-4)
     const readyToPrune = !fresh && !procAlive; // D-06: dead/unknown AND stale (SC-3)
 
@@ -561,6 +636,10 @@ export function readAll(
     let dotState: "active" | "idle" | "stale";
     if (!fresh || procDead) {
       dotState = "stale";
+    } else if (running) {
+      // 260927-46l D-03 / DISC-4: a displayed running turn is the active state.
+      // Needs-you rows keep their idle/recent-touch dot (no green dot beside ◉).
+      dotState = "active";
     } else {
       const touchMs = lastActive ? Date.parse(lastActive) : NaN;
       const recentTouch = !Number.isNaN(touchMs) && now - touchMs < activeMs();
@@ -587,6 +666,8 @@ export function readAll(
       // 260926-vfm (AQ-02) additive card-only fields — pre-gated, asking wins.
       asking,
       asking_ts: asking ? ask.asking_ts : undefined,
+      // 260927-46l additive card-only flag — pre-gated (asking > waiting > running).
+      running,
     });
   }
 

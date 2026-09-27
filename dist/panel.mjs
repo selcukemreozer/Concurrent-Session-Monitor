@@ -38075,6 +38075,9 @@ function skillWindowMs() {
 function attnWindowMs() {
   return numEnv("CSM_ATTN_WINDOW_MS", 18e5);
 }
+function runWindowMs() {
+  return numEnv("CSM_RUN_WINDOW_MS", 18e5);
+}
 function activeFiles(dir, now) {
   let raw;
   try {
@@ -38237,6 +38240,18 @@ function readAsking(dir) {
     return {};
   }
 }
+function readTurn(dir) {
+  try {
+    const parsed = JSON.parse(fs4.readFileSync(path3.join(dir, "turn.json"), "utf8"));
+    const state = parsed?.state;
+    if ((state === "running" || state === "idle") && typeof parsed.ts === "string" && parsed.ts.length > 0) {
+      return { turn_state: state, turn_ts: parsed.ts };
+    }
+    return {};
+  } catch {
+    return {};
+  }
+}
 function readAll(now = Date.now(), probe = defaultProbe, startedProbe = defaultStartedProbe) {
   const root = sessionsDir();
   let ids;
@@ -38272,14 +38287,21 @@ function readAll(now = Date.now(), probe = defaultProbe, startedProbe = defaultS
     const verdict = isProcessAlive(state.pid, probe, state.pid_started, startedProbe);
     const procAlive = verdict === "alive";
     const procDead = verdict === "dead";
+    const turn = readTurn(dir);
+    const turnMs = turn.turn_ts !== void 0 ? Date.parse(turn.turn_ts) : NaN;
+    const runRefMs = Math.max(turnMs, heartbeatMs ?? -Infinity);
+    const rawRunning = turn.turn_state === "running" && !Number.isNaN(turnMs) && !procDead && now - runRefMs < runWindowMs();
+    const running = rawRunning && !asking && !attention;
     const heartbeatFresh = now - lastSeenMs < staleMs();
     const needsYouKeepalive = (asking || rawWaiting) && !procDead;
-    const fresh = heartbeatFresh || needsYouKeepalive;
+    const fresh = heartbeatFresh || needsYouKeepalive || rawRunning;
     const alive = fresh || procAlive;
     const readyToPrune = !fresh && !procAlive;
     let dotState;
     if (!fresh || procDead) {
       dotState = "stale";
+    } else if (running) {
+      dotState = "active";
     } else {
       const touchMs = lastActive ? Date.parse(lastActive) : NaN;
       const recentTouch = !Number.isNaN(touchMs) && now - touchMs < activeMs();
@@ -38307,7 +38329,9 @@ function readAll(now = Date.now(), probe = defaultProbe, startedProbe = defaultS
       attention_ts: attention ? attn.attention_ts : void 0,
       // 260926-vfm (AQ-02) additive card-only fields — pre-gated, asking wins.
       asking,
-      asking_ts: asking ? ask.asking_ts : void 0
+      asking_ts: asking ? ask.asking_ts : void 0,
+      // 260927-46l additive card-only flag — pre-gated (asking > waiting > running).
+      running
     });
   }
   const key = (r) => Date.parse(r.last_active ?? r.start_time) || 0;
@@ -38627,6 +38651,7 @@ var SKILL_SEP = " \u203A ";
 var BRANCH_GLYPH = "\u2387";
 var NEQ_GLYPH = "\u2260";
 var ATTENTION_GLYPH = "\u25C9";
+var RUN_GLYPH = "\u25B6";
 function osc8(url, label2) {
   const u = sanitize(url);
   const l = sanitize(label2);
@@ -38679,7 +38704,7 @@ function SessionCard({ s }) {
     {
       flexDirection: "column",
       borderStyle: "round",
-      borderColor: s.asking ? "magenta" : s.attention ? "yellowBright" : void 0,
+      borderColor: s.asking ? "magenta" : s.attention ? "yellowBright" : s.running ? "green" : void 0,
       paddingX: 1,
       marginBottom: 1,
       children: [
@@ -38699,7 +38724,7 @@ function SessionCard({ s }) {
           focusUrl ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "cyan", children: " \xB7 " + osc8(focusUrl, "\u21AA go to pane") }) : null,
           targetSegment
         ] }),
-        s.asking ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "magenta", bold: true, children: "  " + ATTENTION_GLYPH + " asking" }) : s.attention ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "yellowBright", bold: true, children: "  " + ATTENTION_GLYPH + " waiting" }) : null,
+        s.asking ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "magenta", bold: true, children: "  " + ATTENTION_GLYPH + " asking" }) : s.attention ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "yellowBright", bold: true, children: "  " + ATTENTION_GLYPH + " waiting" }) : s.running ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "green", children: "  " + RUN_GLYPH + " running" }) : null,
         intentLine,
         typeof s.skill === "string" && s.skill.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: "  " + SKILL_GLYPH + " " + (s.skill_subagent ? sanitize(s.skill_subagent) + SKILL_SEP : "") + sanitize(s.skill) }) : null,
         s.files.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: "  (no active files)" }) : s.files.map((f, i) => {
@@ -38727,7 +38752,7 @@ function SessionCard({ s }) {
 function CompactRow({ s }) {
   const uptime = sanitize(fmtUptime(Date.parse(s.start_time), Date.now()));
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Text, { children: [
-    s.asking ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "magenta", bold: true, children: ATTENTION_GLYPH + " " }) : s.attention ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "yellowBright", bold: true, children: ATTENTION_GLYPH + " " }) : null,
+    s.asking ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "magenta", bold: true, children: ATTENTION_GLYPH + " " }) : s.attention ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "yellowBright", bold: true, children: ATTENTION_GLYPH + " " }) : s.running ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "green", children: RUN_GLYPH + " " }) : null,
     sanitize(s.folder),
     " \xB7 ",
     sanitize(s.branch) || "\u2014",

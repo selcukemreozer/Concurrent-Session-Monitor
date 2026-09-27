@@ -100,6 +100,18 @@ const NEQ_GLYPH = "≠";
 const ATTENTION_GLYPH = "◉";
 
 /**
+ * The running indicator glyph (260927-46l D-05): the bare `▶` (U+25B6, no
+ * variation selector, so it stays text-presentation and one cell wide). It
+ * leads the SessionCard "running" status line and the CompactRow token. It is
+ * >= 0x00A0 so `sanitize()` keeps it, and it is distinct from `●` `◇` `◆` `⚠`
+ * `↔` `↪` `»` `⇅` `⚙` `▸` `⎇` `≠` `◉`. Rendered green (a deliberate reuse of the
+ * liveness green, since running IS the live/active state) and never bold (it is
+ * not a needs-you state). Lowest precedence: asking, then waiting, then running.
+ * The row consumes the pre-gated `s.running` boolean with no re-check here.
+ */
+const RUN_GLYPH = "▶";
+
+/**
  * Wrap a URL + label in an OSC-8 hyperlink escape so terminals like Warp render
  * a clickable go-to-pane affordance (D-06):  ESC ]8;; URL ST label ESC ]8;; ST.
  *
@@ -168,6 +180,9 @@ function splitPath(rp: string): { name: string; dir: string } {
  * Below the write lines, each active READ path (`s.reads`, card-only per D-10)
  * is rendered on its own line with a distinct blue `◇` glyph (PANEL-06 D-08/D-09)
  * — purely additive, guarded by `s.reads ?? []`, each path sanitized.
+ * Under the header at most ONE status line shows, asking > waiting > running:
+ * a magenta bold `◉ asking`, a yellowBright bold `◉ waiting`, or a green
+ * `▶ running` (260927-46l); the round border takes the same color.
  *
  * Every displayed string is passed through `sanitize()` before Ink render,
  * INCLUDING the shortId (T-02-30 / WR-04). `osc8()` is the sole exemption and
@@ -232,8 +247,10 @@ export function SessionCard({ s }: { s: SessionRow }) {
     <Box
       flexDirection="column"
       borderStyle="round"
-      // Frame mirrors the needs-you marker below: asking wins over waiting.
-      borderColor={s.asking ? "magenta" : s.attention ? "yellowBright" : undefined}
+      // Frame mirrors the status line below: asking wins, then waiting, then running.
+      borderColor={
+        s.asking ? "magenta" : s.attention ? "yellowBright" : s.running ? "green" : undefined
+      }
       paddingX={1}
       marginBottom={1}
     >
@@ -259,6 +276,8 @@ export function SessionCard({ s }: { s: SessionRow }) {
         <Text color="magenta" bold>{"  " + ATTENTION_GLYPH + " asking"}</Text>
       ) : s.attention ? (
         <Text color="yellowBright" bold>{"  " + ATTENTION_GLYPH + " waiting"}</Text>
+      ) : s.running ? (
+        <Text color="green">{"  " + RUN_GLYPH + " running"}</Text>
       ) : null}
       {intentLine}
       {typeof s.skill === "string" && s.skill.length > 0 ? (
@@ -312,6 +331,8 @@ export function SessionCard({ s }: { s: SessionRow }) {
  * -file count. Rendered as one flat `<Text>` (the dot is a nested colored
  * `<Text>`) so it never wraps to a second visual line. Every field passes
  * through `sanitize()` (T-02-30); the dot uses the same steady `dotColor` map.
+ * A leading status token shows at most one state, asking > waiting > running:
+ * a magenta `◉`, a yellowBright `◉`, or a green `▶` (260927-46l).
  */
 export function CompactRow({ s }: { s: SessionRow }) {
   const uptime = sanitize(fmtUptime(Date.parse(s.start_time), Date.now()));
@@ -321,6 +342,8 @@ export function CompactRow({ s }: { s: SessionRow }) {
         <Text color="magenta" bold>{ATTENTION_GLYPH + " "}</Text>
       ) : s.attention ? (
         <Text color="yellowBright" bold>{ATTENTION_GLYPH + " "}</Text>
+      ) : s.running ? (
+        <Text color="green">{RUN_GLYPH + " "}</Text>
       ) : null}
       {sanitize(s.folder)}
       {" · "}
