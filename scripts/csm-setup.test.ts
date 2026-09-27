@@ -133,4 +133,24 @@ describe("csm-setup symlink helper (D-02, idempotent + non-clobbering)", () => {
     expect(fs.readlinkSync(target)).toBe(newLauncher); // repointed to current
     expect(res.stdout.toLowerCase()).toContain("refresh");
   });
+  // Claude Code substitutes ${CLAUDE_PLUGIN_ROOT} textually in the command's `!`
+  // line but does NOT export it to the subprocess env, so the script must fall
+  // back to its own location (<root>/scripts/csm-setup.mjs -> <root>).
+  it("falls back to the script's own plugin root when CLAUDE_PLUGIN_ROOT is unset", () => {
+    fs.mkdirSync(path.join(dirs.pluginRoot, "scripts"), { recursive: true });
+    const copied = path.join(dirs.pluginRoot, "scripts", "csm-setup.mjs");
+    fs.copyFileSync(script, copied);
+
+    const env: NodeJS.ProcessEnv = { ...process.env, HOME: dirs.home };
+    delete env.CLAUDE_PLUGIN_ROOT;
+    const res = spawnSync(process.execPath, [copied], { env, encoding: "utf8" });
+    expect(res.status).toBe(0);
+
+    const target = path.join(dirs.home, ".local", "bin", "csm");
+    expect(fs.lstatSync(target).isSymbolicLink()).toBe(true);
+    // Node resolves the main script's realpath (/var -> /private/var on macOS).
+    expect(fs.realpathSync(fs.readlinkSync(target))).toBe(
+      fs.realpathSync(dirs.launcher),
+    );
+  });
 });
