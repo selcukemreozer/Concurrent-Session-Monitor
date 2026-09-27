@@ -4,6 +4,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+// 260927-46l M8 parity only: the panel reader, compared against csm-status.
+import { readAll } from "./aggregate.js";
 
 // RED: the reader script does not exist yet. It lands in Task 2 (GREEN):
 //   scripts/csm-status.mjs  (INT-02 cross-session roster reader, plain text)
@@ -66,6 +68,10 @@ interface SeedOpts {
   resumed?: string;
   /** ISO-8601 written into the plain `ask-resolved` sidecar (260927-1zw); omitted => absent. */
   askResolved?: string;
+  /** Turn snapshot written VERBATIM as JSON to turn.json (260927-46l); omitted => absent. */
+  turn?: Record<string, unknown>;
+  /** Raw (possibly torn) turn.json content (260927-46l); wins over `turn`. */
+  turnRaw?: string;
 }
 
 /** Seed one session shard directly on disk (no src/ import — self-contained). */
@@ -118,6 +124,11 @@ function seed(storeDir: string, id: string, opts: SeedOpts = {}): void {
   }
   if (opts.askResolved !== undefined) {
     fs.writeFileSync(path.join(dir, "ask-resolved"), opts.askResolved, { mode: 0o600 });
+  }
+  if (opts.turnRaw !== undefined) {
+    fs.writeFileSync(path.join(dir, "turn.json"), opts.turnRaw, { mode: 0o600 });
+  } else if (opts.turn !== undefined) {
+    fs.writeFileSync(path.join(dir, "turn.json"), JSON.stringify(opts.turn), { mode: 0o600 });
   }
 }
 
@@ -765,5 +776,150 @@ describe("csm-status reader — resume signals + keepalive (260927-1zw)", () => 
     const res = runStatus(id, tmp, env);
     expect(res.status).toBe(0);
     expect(lineFor(res.stdout, id)).toBeUndefined();
+  });
+});
+
+// --- Quick task 260927-46l (D-06): csm-status hand-mirrors the running gate,
+// the running keepalive and the asking > waiting > running precedence of
+// aggregate.readAll, and appends a detail-free " ▶ running" marker.
+describe("csm-status reader — running marker (260927-46l)", () => {
+  const env = { CSM_STALE_MS: "120000" };
+  const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+
+  it("M1 live session with a running turn shows ' ▶ running' and no ◉", () => {
+    const id = "mone1111-aaaa";
+    seed(tmp, id, { heartbeat: ago(5_000), turn: { state: "running", ts: ago(5_000) } });
+    const res = runStatus(id, tmp, env);
+    expect(res.status).toBe(0);
+    const line = lineFor(res.stdout, id);
+    expect(line).toContain(" ▶ running");
+    expect(line).not.toContain("◉");
+  });
+
+  it("M2 an idle turn shows no ▶", () => {
+    const id = "mtwo2222-aaaa";
+    seed(tmp, id, { heartbeat: ago(5_000), turn: { state: "idle", ts: ago(5_000) } });
+    const line = lineFor(runStatus(id, tmp, env).stdout, id);
+    expect(line).toBeDefined();
+    expect(line).not.toContain("▶");
+  });
+
+  it("M3 keepalive: no pid, heartbeat 300s, turn running 360s → listed with ' ▶ running'", () => {
+    const id = "mthree33-aaaa";
+    seed(tmp, id, { heartbeat: ago(300_000), turn: { state: "running", ts: ago(360_000) } });
+    const line = lineFor(runStatus(id, tmp, env).stdout, id);
+    expect(line).toBeDefined();
+    expect(line).toContain(" ▶ running");
+  });
+
+  it("M4 window: 31 min expires it; a 60s override leaves a TTL-live row without ▶", () => {
+    const a = "mfour44a-aaaa";
+    seed(tmp, a, { heartbeat: ago(1_860_000), turn: { state: "running", ts: ago(1_860_000) } });
+    const resA = runStatus(a, tmp, env);
+    expect(resA.status).toBe(0);
+    expect(lineFor(resA.stdout, a)).toBeUndefined();
+
+    const b = "mfour44b-aaaa";
+    seed(tmp, b, { heartbeat: ago(90_000), turn: { state: "running", ts: ago(90_000) } });
+    const line = lineFor(runStatus(b, tmp, { ...env, CSM_RUN_WINDOW_MS: "60000" }).stdout, b);
+    expect(line).toBeDefined();
+    expect(line).not.toContain("▶");
+  });
+
+  it("M5 a known pid that has exited never runs", () => {
+    const deadPid = spawnSync(process.execPath, ["-e", ""]).pid as number;
+    const a = "mfive55a-aaaa";
+    seed(tmp, a, { pid: deadPid, heartbeat: ago(300_000), turn: { state: "running", ts: ago(300_000) } });
+    const b = "mfive55b-aaaa";
+    seed(tmp, b, { pid: deadPid, heartbeat: ago(5_000), turn: { state: "running", ts: ago(5_000) } });
+    const res = runStatus(a, tmp, env);
+    expect(res.status).toBe(0);
+    expect(lineFor(res.stdout, a)).toBeUndefined();
+    const lineB = lineFor(res.stdout, b);
+    expect(lineB).toBeDefined();
+    expect(lineB).not.toContain("▶");
+  });
+
+  it("M6 precedence: asking and waiting beat running", () => {
+    const a = "msix666a-aaaa";
+    seed(tmp, a, { heartbeat: ago(30_000), asking: { ts: ago(5_000) }, turn: { state: "running", ts: ago(60_000) } });
+    const w = "msix666b-aaaa";
+    seed(tmp, w, {
+      heartbeat: ago(30_000),
+      attention: { type: "permission_prompt", ts: ago(5_000) },
+      turn: { state: "running", ts: ago(60_000) },
+    });
+    const res = runStatus(a, tmp, env);
+    const lineA = lineFor(res.stdout, a);
+    expect(lineA).toContain("◉ asking");
+    expect(lineA).not.toContain("▶");
+    const lineW = lineFor(res.stdout, w);
+    expect(lineW).toContain("◉ waiting");
+    expect(lineW).not.toContain("▶");
+  });
+
+  it("M7 self-heal: torn turn.json and an unknown state list the row without ▶", () => {
+    const a = "mseven7a-aaaa";
+    seed(tmp, a, { heartbeat: ago(5_000), turnRaw: '{"state":"runn' });
+    const b = "mseven7b-aaaa";
+    seed(tmp, b, { heartbeat: ago(5_000), turn: { state: "busy", ts: ago(5_000) } });
+    const res = runStatus(a, tmp, env);
+    expect(res.status).toBe(0);
+    for (const id of [a, b]) {
+      const line = lineFor(res.stdout, id);
+      expect(line, id).toBeDefined();
+      expect(line, id).not.toContain("▶");
+    }
+  });
+
+  it("M8 parity: readAll.running agrees with the csm-status marker for every fixture", () => {
+    const fixtures: Array<[string, SeedOpts]> = [
+      ["mpara-a1-aaaa", { heartbeat: ago(5_000), turn: { state: "running", ts: ago(5_000) } }],
+      ["mpara-b2-aaaa", { heartbeat: ago(5_000), turn: { state: "idle", ts: ago(5_000) } }],
+      ["mpara-c3-aaaa", { heartbeat: ago(300_000), turn: { state: "running", ts: ago(300_000) } }],
+      [
+        "mpara-d4-aaaa",
+        { heartbeat: ago(30_000), asking: { ts: ago(5_000) }, turn: { state: "running", ts: ago(60_000) } },
+      ],
+      [
+        "mpara-e5-aaaa",
+        {
+          heartbeat: ago(30_000),
+          attention: { type: "permission_prompt", ts: ago(5_000) },
+          turn: { state: "running", ts: ago(60_000) },
+        },
+      ],
+      ["mpara-f6-aaaa", { heartbeat: ago(5_000), turnRaw: '{"state":"runn' }],
+      ["mpara-g7-aaaa", { heartbeat: ago(1_860_000), turn: { state: "running", ts: ago(1_860_000) } }],
+    ];
+    for (const [id, opts] of fixtures) seed(tmp, id, opts);
+
+    const prior = process.env.CSM_STORE_DIR;
+    process.env.CSM_STORE_DIR = tmp;
+    let rows;
+    try {
+      rows = readAll(Date.now());
+    } finally {
+      if (prior === undefined) delete process.env.CSM_STORE_DIR;
+      else process.env.CSM_STORE_DIR = prior;
+    }
+    const res = runStatus("mpara-a1-aaaa", tmp);
+    expect(res.status).toBe(0);
+
+    for (const [id] of fixtures) {
+      const row = rows.find((r) => r.session_id === id)!;
+      expect(row, id).toBeDefined();
+      const line = lineFor(res.stdout, id);
+      if (id === "mpara-g7-aaaa") {
+        expect(row.alive, id).toBe(false);
+        expect(line, id).toBeUndefined();
+        continue;
+      }
+      expect(line, id).toBeDefined();
+      expect(row.running, id).toBe(line!.includes("▶ running"));
+    }
+    // Sanity: the parity check covered both outcomes.
+    expect(rows.find((r) => r.session_id === "mpara-a1-aaaa")!.running).toBe(true);
+    expect(rows.find((r) => r.session_id === "mpara-c3-aaaa")!.running).toBe(true);
   });
 });

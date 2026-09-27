@@ -21,7 +21,7 @@ function readRel(rel: string): string {
 
 const README = readRel("../README.md");
 
-/** The 13 live, user-facing CSM_* env knobs (source-verified). */
+/** The 14 live, user-facing CSM_* env knobs (source-verified). */
 const ENV_KNOBS = [
   "CSM_STORE_DIR",
   "CSM_STALE_MS",
@@ -32,6 +32,7 @@ const ENV_KNOBS = [
   "CSM_READ_WINDOW_MS",
   "CSM_SKILL_WINDOW_MS",
   "CSM_ATTN_WINDOW_MS",
+  "CSM_RUN_WINDOW_MS",
   "CSM_PORT_SCAN_MS",
   "CSM_PHASE_SCAN_MS",
   "CSM_BRANCH_SCAN_MS",
@@ -113,5 +114,25 @@ describe("README needs-you clear semantics (260927-1zw WR-03/WR-04)", () => {
 
   it("keeps the 30-minute safety-net default", () => {
     expect(README).toContain("1800000");
+  });
+});
+
+// Quick task 260927-46l (D-07): the README documents the running state, its
+// CSM_RUN_WINDOW_MS ceiling and the Esc limitation (no Stop hook on interrupt).
+describe("README running state (260927-46l)", () => {
+  const lines = README.split("\n");
+
+  it("one line documents ▶ running together with Esc, Stop and CSM_RUN_WINDOW_MS", () => {
+    const line = lines.find((l) => l.includes("▶ running"));
+    expect(line).toBeDefined();
+    expect(line).toContain("Esc");
+    expect(line).toContain("Stop");
+    expect(line).toContain("CSM_RUN_WINDOW_MS");
+  });
+
+  it("the env table documents CSM_RUN_WINDOW_MS with its 1800000 default", () => {
+    const row = lines.find((l) => l.startsWith("| `CSM_RUN_WINDOW_MS`"));
+    expect(row).toBeDefined();
+    expect(row).toContain("1800000");
   });
 });
