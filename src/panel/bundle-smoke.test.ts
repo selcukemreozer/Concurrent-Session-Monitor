@@ -76,10 +76,15 @@ describe("bundled panel smoke boot (SC-2, D-01)", () => {
     );
     expect(JSON.parse(readFileSync(panelFile, "utf8")).pid).toBe(child.pid);
 
-    // Clean teardown: SIGTERM triggers the entry.ts shutdown → exit 0.
+    // Clean teardown: SIGTERM triggers the entry.ts shutdown → exit 0. Assert
+    // the HANDLED path explicitly (05-REVIEW WR-04): a process killed by the
+    // default SIGTERM action (handler missing/broken) exits with code === null
+    // and signalCode === "SIGTERM", so accepting null would hide that regression.
+    // entry.ts registers its handler before run(), so there is no boot race.
     child.kill("SIGTERM");
     const code = await exitPromise;
-    expect(code === 0 || code === null).toBe(true);
+    expect(code, "entry.ts SIGTERM handler must run and exit 0").toBe(0);
+    expect(child.signalCode).toBeNull();
 
     // 260927-59z D-01: a clean exit removes our own registration.
     expect(existsSync(panelFile), "panel.json survived a clean exit").toBe(
