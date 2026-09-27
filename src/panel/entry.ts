@@ -28,7 +28,10 @@ import { registerPanel, unregisterPanel } from "./registration.js";
 // runs Ink's alt-screen exit + showCursor, restoring the normal buffer (D-14).
 // SIGHUP (terminal tab closed) joins them so panel.json is cleaned up too.
 let instance: Instance | undefined;
+let shuttingDown = false; // several signals may arrive; unmount + exit runs at most once
 const shutdown = () => {
+  if (shuttingDown) return;
+  shuttingDown = true;
   try {
     instance?.unmount();
   } finally {

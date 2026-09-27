@@ -39451,7 +39451,10 @@ function unregisterPanel(pid = process.pid) {
 
 // src/panel/entry.ts
 var instance;
+var shuttingDown = false;
 var shutdown = () => {
+  if (shuttingDown) return;
+  shuttingDown = true;
   try {
     instance?.unmount();
   } finally {
