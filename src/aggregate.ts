@@ -93,6 +93,20 @@ function runWindowMs(): number {
   return numEnv("CSM_RUN_WINDOW_MS", 1_800_000);
 }
 
+/**
+ * The idle-waiting threshold (260927-4tv D-02), config-adjustable via
+ * CSM_IDLE_WAIT_MS (default 10_000ms / 10 s). Once a main-thread Stop has left
+ * `turn.json` "idle" for at least this long, the session is treated as waiting
+ * on the human (◉ waiting), without waiting for Claude Code's ~60 s idle_prompt
+ * Notification. Bounded above by `attnWindowMs()`: an idle turn older than the
+ * ceiling no longer idle-waits. Routed through `numEnv` so a NaN/negative
+ * override degrades to the 10 s default (0 is accepted). Read lazily (not
+ * module-const) so tests can flip the env per-case.
+ */
+function idleWaitMs(): number {
+  return numEnv("CSM_IDLE_WAIT_MS", 10_000);
+}
+
 /** One file a session is actively touching within the window. */
 export interface ActiveFile {
   file_path: string;
@@ -176,12 +190,21 @@ export type SessionRow = SessionState & {
    * neither stale nor readyToPrune while the marker holds. It is forced false
    * whenever `asking` is true (D-03 asking-wins precedence, 260926-vfm), so a
    * row is counted once.
+   *
+   * It is ALSO true for idle-waiting (260927-4tv D-02/D-03): `turn.json` has
+   * said "idle" (a main-thread Stop) for at least CSM_IDLE_WAIT_MS and less
+   * than `attnWindowMs()`, and the pid verdict is not "dead". Idle-waiting is
+   * liveness evidence exactly like the Notification gate (D-05); the next
+   * prompt (turn.json "running") clears it.
    */
   attention: boolean;
   /**
    * The narrowed attention kind ("permission_prompt" | "idle_prompt" |
    * "waiting"), passed through from the shard only when `attention` is true;
-   * undefined otherwise. Card-only passthrough — drives nothing else.
+   * undefined otherwise. Card-only passthrough — drives nothing else. When
+   * waiting comes from idle-waiting alone (260927-4tv D-03), "idle_prompt" is
+   * synthesized and `attention_ts` is the turn.json ts; when the Notification
+   * gate also holds, the Notification's own type/ts win.
    */
   attention_type?: string;
   /** ISO-8601 ts of that attention snapshot, present only when `attention` is true. */
@@ -484,7 +507,8 @@ function readAsking(dir: string): { asking_ts?: string } {
  * self-heal: absent or torn turn.json returns `{}`. Returns
  * `{ turn_state, turn_ts }` only when `state` is exactly "running" or "idle"
  * AND `ts` is a non-empty string; nothing else passes through. The window /
- * pid GATE lives in readAll.
+ * pid GATE lives in readAll. "running" feeds the running gate; "idle" feeds
+ * the idle-waiting gate (260927-4tv).
  */
 function readTurn(dir: string): { turn_state?: TurnState["state"]; turn_ts?: string } {
   try {
@@ -580,7 +604,6 @@ export function readAll(
     const askMs = ask.asking_ts !== undefined ? Date.parse(ask.asking_ts) : NaN;
     const asking =
       !Number.isNaN(askMs) && now - askMs < attnWindowMs() && askMs > askResolvedMs;
-    const attention = rawWaiting && !asking;
     // PID-reuse guard (CR-01/WR-03): consult the captured `pid_started` identity
     // token. When the pid probes alive but its re-derived start-time differs from
     // what SessionStart recorded, the numeric pid has been recycled by another
@@ -605,6 +628,22 @@ export function readAll(
     // (asking > waiting > running, DISC-3); `rawRunning` feeds liveness.
     const turn = readTurn(dir);
     const turnMs = turn.turn_ts !== undefined ? Date.parse(turn.turn_ts) : NaN;
+    // --- Idle-waiting gate (260927-4tv D-02). A main-thread Stop wrote
+    // turn.json "idle": once that has held for at least idleWaitMs() (and still
+    // under the attnWindowMs() ceiling, pid not known-dead), the session is
+    // waiting on the human — well before Claude Code's ~60 s idle_prompt
+    // Notification. The clear is the next prompt flipping turn.json to
+    // "running". There is deliberately NO `resumed`-sidecar comparison: the
+    // same main-thread Stop writes `resumed` and turn.json idle in the same
+    // instant, so such a check would depend on write order.
+    const rawIdleWaiting =
+      turn.turn_state === "idle" &&
+      !Number.isNaN(turnMs) &&
+      !procDead &&
+      now - turnMs >= idleWaitMs() &&
+      now - turnMs < attnWindowMs();
+    // D-03 / D-04: waiting = (Notification gate OR idle-waiting), asking wins.
+    const attention = (rawWaiting || rawIdleWaiting) && !asking;
     const runRefMs = Math.max(turnMs, heartbeatMs ?? -Infinity);
     const rawRunning =
       turn.turn_state === "running" &&
@@ -622,8 +661,9 @@ export function readAll(
     // reaped normally. A running turn (260927-46l D-03) is liveness evidence
     // too: a session deep in a long Bash / web fetch / thinking emits no
     // heartbeat, so rawRunning (already excluding a dead pid, bounded by
-    // runWindowMs()) keeps it fresh as well.
-    const needsYouKeepalive = (asking || rawWaiting) && !procDead;
+    // runWindowMs()) keeps it fresh as well. Idle-waiting (260927-4tv D-05) is
+    // a needs-you marker like the Notification gate, bounded by attnWindowMs().
+    const needsYouKeepalive = (asking || rawWaiting || rawIdleWaiting) && !procDead;
     const fresh = heartbeatFresh || needsYouKeepalive || rawRunning;
     const alive = fresh || procAlive; // shown while EITHER says alive (SC-4)
     const readyToPrune = !fresh && !procAlive; // D-06: dead/unknown AND stale (SC-3)
@@ -659,10 +699,12 @@ export function readAll(
       readyToPrune,
       dotState,
       // ATTN-02/03 additive card-only fields — pre-gated; type/ts only survive
-      // when the gate held, so the panel needs no re-check.
+      // when the gate held, so the panel needs no re-check. 260927-4tv D-03:
+      // the Notification's type/ts win; idle-waiting alone synthesizes
+      // "idle_prompt" + the turn ts.
       attention,
-      attention_type: attention ? attn.attention_type : undefined,
-      attention_ts: attention ? attn.attention_ts : undefined,
+      attention_type: attention ? (rawWaiting ? attn.attention_type : "idle_prompt") : undefined,
+      attention_ts: attention ? (rawWaiting ? attn.attention_ts : turn.turn_ts) : undefined,
       // 260926-vfm (AQ-02) additive card-only fields — pre-gated, asking wins.
       asking,
       asking_ts: asking ? ask.asking_ts : undefined,

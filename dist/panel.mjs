@@ -38078,6 +38078,9 @@ function attnWindowMs() {
 function runWindowMs() {
   return numEnv("CSM_RUN_WINDOW_MS", 18e5);
 }
+function idleWaitMs() {
+  return numEnv("CSM_IDLE_WAIT_MS", 1e4);
+}
 function activeFiles(dir, now) {
   let raw;
   try {
@@ -38283,17 +38286,18 @@ function readAll(now = Date.now(), probe = defaultProbe, startedProbe = defaultS
     const ask = readAsking(dir);
     const askMs = ask.asking_ts !== void 0 ? Date.parse(ask.asking_ts) : NaN;
     const asking = !Number.isNaN(askMs) && now - askMs < attnWindowMs() && askMs > askResolvedMs;
-    const attention = rawWaiting && !asking;
     const verdict = isProcessAlive(state.pid, probe, state.pid_started, startedProbe);
     const procAlive = verdict === "alive";
     const procDead = verdict === "dead";
     const turn = readTurn(dir);
     const turnMs = turn.turn_ts !== void 0 ? Date.parse(turn.turn_ts) : NaN;
+    const rawIdleWaiting = turn.turn_state === "idle" && !Number.isNaN(turnMs) && !procDead && now - turnMs >= idleWaitMs() && now - turnMs < attnWindowMs();
+    const attention = (rawWaiting || rawIdleWaiting) && !asking;
     const runRefMs = Math.max(turnMs, heartbeatMs ?? -Infinity);
     const rawRunning = turn.turn_state === "running" && !Number.isNaN(turnMs) && !procDead && now - runRefMs < runWindowMs();
     const running = rawRunning && !asking && !attention;
     const heartbeatFresh = now - lastSeenMs < staleMs();
-    const needsYouKeepalive = (asking || rawWaiting) && !procDead;
+    const needsYouKeepalive = (asking || rawWaiting || rawIdleWaiting) && !procDead;
     const fresh = heartbeatFresh || needsYouKeepalive || rawRunning;
     const alive = fresh || procAlive;
     const readyToPrune = !fresh && !procAlive;
@@ -38323,10 +38327,12 @@ function readAll(now = Date.now(), probe = defaultProbe, startedProbe = defaultS
       readyToPrune,
       dotState,
       // ATTN-02/03 additive card-only fields — pre-gated; type/ts only survive
-      // when the gate held, so the panel needs no re-check.
+      // when the gate held, so the panel needs no re-check. 260927-4tv D-03:
+      // the Notification's type/ts win; idle-waiting alone synthesizes
+      // "idle_prompt" + the turn ts.
       attention,
-      attention_type: attention ? attn.attention_type : void 0,
-      attention_ts: attention ? attn.attention_ts : void 0,
+      attention_type: attention ? rawWaiting ? attn.attention_type : "idle_prompt" : void 0,
+      attention_ts: attention ? rawWaiting ? attn.attention_ts : turn.turn_ts : void 0,
       // 260926-vfm (AQ-02) additive card-only fields — pre-gated, asking wins.
       asking,
       asking_ts: asking ? ask.asking_ts : void 0,
