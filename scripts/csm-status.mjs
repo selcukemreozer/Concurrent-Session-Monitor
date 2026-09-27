@@ -108,6 +108,16 @@ function staleMs() {
 function attnWindowMs() {
   return numEnv("CSM_ATTN_WINDOW_MS", 1800000);
 }
+/**
+ * Running-state safety net (mirrors aggregate.runWindowMs, 260927-46l): a turn
+ * marker older than this, measured from the newer of the turn ts and the
+ * heartbeat, stops counting as running. Bounds the Esc case (no Stop hook on
+ * interrupt) and the running keepalive. Default 1800000 (30 min); a
+ * NaN/negative override degrades to the default.
+ */
+function runWindowMs() {
+  return numEnv("CSM_RUN_WINDOW_MS", 1800000);
+}
 
 /**
  * Render-boundary control-character strip (T-04-06, ASVS V5). Drops C0
@@ -243,6 +253,26 @@ function readAsking(dir) {
 }
 
 /**
+ * Read the turn-state snapshot {state, ts} written by on-user-prompt
+ * ("running") and on-activity on a main-thread Stop ("idle") (260927-46l),
+ * mirroring aggregate.readTurn: returns { state, ts } only when state is
+ * exactly "running" or "idle" and ts is a non-empty string; any throw / torn /
+ * absent / unknown file returns undefined. NEVER returns any other key.
+ */
+function readTurn(dir) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(path.join(dir, "turn.json"), "utf8"));
+    const state = parsed?.state;
+    if ((state === "running" || state === "idle") && typeof parsed.ts === "string" && parsed.ts.length > 0) {
+      return { state, ts: parsed.ts };
+    }
+  } catch {
+    // absent/torn turn.json self-heals — the row still renders
+  }
+  return undefined;
+}
+
+/**
  * Resolve an ISO-text timestamp sidecar (`heartbeat`, `resumed`,
  * `ask-resolved`) to ms (mirrors liveness.resolveSidecarMs): Date.parse of the
  * trimmed content, else the file mtime, else undefined. Never throws.
@@ -307,6 +337,8 @@ const BRANCH_GLYPH = "⎇";
 const NEQ_GLYPH = "≠";
 /** Detail-free "needs you" marker glyph (U+25C9 fisheye); leads both the " ◉ asking" and " ◉ waiting" markers (260926-vfm). >= 0x00A0 so sanitize keeps it. Matches the panel label. */
 const ATTENTION_GLYPH = "◉";
+/** Detail-free running marker glyph (U+25B6, 260927-46l); >= 0x00A0 so sanitize keeps it. Matches the panel label. */
+const RUN_GLYPH = "▶";
 /** User-bucket heading literal (mirror Card.tsx:494 / D-02) — ASCII, constant. */
 const USER_BUCKET = "Sen (kullanici)";
 
@@ -559,16 +591,30 @@ async function main() {
       !Number.isNaN(askMs) && now - askMs < attnWindowMs() && askMs > askResolvedMs;
     const attention = rawWaiting && !asking;
 
-    // Cheap liveness (T-04-09b): heartbeat-fresh OR needs-you keepalive OR pid
-    // alive. No lstart guard. WR-01 / D-03: a session blocked on the human emits
-    // no heartbeat, so an active marker keeps it listed; the marker gate bounds
-    // this by attnWindowMs(). DISC-4: a known pid that probes dead gets no
-    // keepalive, so a crashed session still drops off the roster.
+    // Cheap liveness (T-04-09b): heartbeat-fresh OR keepalive OR pid alive. No
+    // lstart guard. WR-01 / D-03: a session blocked on the human emits no
+    // heartbeat, so an active marker keeps it listed; the marker gate bounds
+    // this by attnWindowMs(). 260927-46l D-03: a running turn (a long Bash, a
+    // web fetch, thinking) emits no heartbeat either, so the raw running gate
+    // keeps it listed too, bounded by runWindowMs(). DISC-4: a known pid that
+    // probes dead gets no keepalive, so a crashed session still drops off.
     const heartbeatFresh = !Number.isNaN(lastSeenMs) && now - lastSeenMs < staleMs();
     const pidValid = typeof state.pid === "number" && Number.isInteger(state.pid) && state.pid > 0;
     const procAlive = pidAlive(state.pid);
     const procDead = pidValid && !procAlive;
-    const keepalive = (asking || rawWaiting) && !procDead;
+
+    // Running gate (260927-46l D-02) — mirrors aggregate.readAll exactly: turn
+    // "running", ts parses, pid not dead, and now minus the newer of the turn
+    // ts and the heartbeat (NOT the start_time fallback) under runWindowMs().
+    // `running` is pre-gated: asking > waiting > running (one marker).
+    const turn = readTurn(dir);
+    const turnMs = turn ? Date.parse(turn.ts) : NaN;
+    const runRefMs = Math.max(turnMs, heartbeatMs ?? -Infinity);
+    const rawRunning =
+      turn?.state === "running" && !Number.isNaN(turnMs) && !procDead && now - runRefMs < runWindowMs();
+    const running = rawRunning && !asking && !attention;
+
+    const keepalive = ((asking || rawWaiting) && !procDead) || rawRunning;
     const alive = heartbeatFresh || keepalive || procAlive;
     if (!alive) continue; // live-only roster (D-04)
 
@@ -590,6 +636,7 @@ async function main() {
       target_branch: readTargetBranch(dir), // TB-03 declared target (current branch is state.branch)
       attention, // ATTN-04 pre-gated boolean: waiting on the human (detail-free)
       asking, // AQ-03 pre-gated boolean: an open AskUserQuestion (detail-free, wins over attention)
+      running, // 260927-46l pre-gated boolean: working a turn (detail-free, lowest precedence)
       files, // [{file_path, tsMs}]
       startMs: Number.isNaN(startMs) ? now : startMs,
       sortMs,
@@ -639,17 +686,20 @@ async function main() {
     const uptime = fmtUptime(r.startMs, now);
     const you = callerId !== undefined && r.session_id === callerId ? " (you)" : "";
 
-    // ATTN-04 / AQ-03 detail-free needs-you markers: asking and waiting are
-    // DISTINCT fixed glyph + literal markers (no type text, no ts, no question
-    // text — T-06-02/T-06-06/T-vfm-03), appended only when the pre-gated flag
-    // held. Asking wins (the reader already forces attention false then).
-    const attnMarker = r.asking
+    // ATTN-04 / AQ-03 / 260927-46l detail-free status markers: asking, waiting
+    // and running are DISTINCT fixed glyph + literal markers (no type text, no
+    // ts, no question or prompt text — T-06-02/T-06-06/T-vfm-03/T-46l-04),
+    // appended only when the pre-gated flag held. At most one shows, with the
+    // precedence asking > waiting > running (the reader already pre-gates).
+    const statusMarker = r.asking
       ? ` ${ATTENTION_GLYPH} asking`
       : r.attention
         ? ` ${ATTENTION_GLYPH} waiting`
-        : "";
+        : r.running
+          ? ` ${RUN_GLYPH} running`
+          : "";
 
-    out.push(`${folder} · ${branch}${targetToken} · ${shortId} · ${intentCol} · ${filesCol} · ${uptime}${attnMarker}${you}`);
+    out.push(`${folder} · ${branch}${targetToken} · ${shortId} · ${intentCol} · ${filesCol} · ${uptime}${statusMarker}${you}`);
   }
 
   // ---- Conflicts relevant to you (self-excluded) --------------------------
