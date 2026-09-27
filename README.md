@@ -101,6 +101,16 @@ Use these from inside any Claude Code session:
   **not** end the session.
 - `/csm-status`: print the live cross-session roster plus any conflicts relevant
   to you, as plain text, right in the conversation.
+- `/csm-goto <folder | session-id>`: bring another live session's terminal pane
+  to the front, the in-chat version of the panel's go-to-pane link. It matches
+  an exact session id, then an id prefix, then an exact folder name, then a
+  folder-name substring (case-insensitive). When several sessions match it
+  focuses nothing and lists them so you can pick by id; in a folder shared with
+  your own session, it picks the other one. Run it with no argument to list the
+  live sessions. **Warp only**: it opens the Warp focus URL recorded when the
+  session started, so sessions in other terminals are reported as not
+  focusable. It only focuses the pane; nothing is typed or sent into that
+  session.
 
 ## Configuration
 
@@ -129,6 +139,10 @@ back to the default. Times are in milliseconds.
 
 - **macOS is the primary, supported platform.** The panel expects a standard
   terminal emulator. Other Unix-likes may work but are not the target.
+- **Jumping to a session (`/csm-goto` and the panel's go-to-pane link) works in
+  Warp only.** Warp is the only terminal that gives a session a focus URL. A
+  session started in another terminal still shows up everywhere else, but
+  cannot be focused.
 - **The model shown per session is best-effort.** It comes from the Claude Code
   `SessionStart` hook, which may not always include the model; when it is
   unavailable the panel simply omits it.

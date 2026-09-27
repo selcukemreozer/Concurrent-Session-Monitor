@@ -69,6 +69,13 @@ describe("README end-user docs (SC-4 doc-lint gate)", () => {
     expect(README).toContain("/csm-status");
   });
 
+  it("documents /csm-goto and its Warp-only, focus-only limits", () => {
+    const line = README.split("\n").find((l) => l.startsWith("- `/csm-goto"));
+    expect(line).toBeDefined();
+    expect(README).toMatch(/\*\*Warp only\*\*/);
+    expect(README).toMatch(/nothing is typed or sent/);
+  });
+
   it("carries a macOS platform note", () => {
     expect(README).toMatch(/macOS/);
   });
