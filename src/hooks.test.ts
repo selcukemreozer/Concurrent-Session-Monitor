@@ -723,7 +723,8 @@ describe("resume signals: hook writers (260927-1zw CR-01/WR-02/WR-05)", () => {
     expect(res.status).toBe(0);
     expect(res.stdout).toBe("");
     expect(res.stderr).toBe("");
-    expect(ls("rs-sess")).toEqual(["ask-resolved", "heartbeat", "resumed"]);
+    // 260927-46l D-01: a main-thread Stop also ends the turn (turn.json idle).
+    expect(ls("rs-sess")).toEqual(["ask-resolved", "heartbeat", "resumed", "turn.json"]);
   });
 
   it("R5 subagent AskUserQuestion PostToolUse writes ONLY the heartbeat (D-02 main-thread wording)", () => {
@@ -780,9 +781,11 @@ describe("resume signals: hook writers (260927-1zw CR-01/WR-02/WR-05)", () => {
     );
     expect(res.status).toBe(0);
     expect(res.stdout).toBe("");
-    expect(ls("rs-sess")).toEqual(["ask-resolved", "heartbeat", "resumed"]);
-    for (const f of ["ask-resolved", "heartbeat", "resumed"]) {
-      expect(parses("rs-sess", f)).toBe(true);
+    // 260927-46l D-01: a prompt also starts a turn (turn.json running).
+    expect(ls("rs-sess")).toEqual(["ask-resolved", "heartbeat", "resumed", "turn.json"]);
+    for (const f of ["ask-resolved", "heartbeat", "resumed", "turn.json"]) {
+      // turn.json is JSON, not ISO text; its content is pinned by U1.
+      if (f !== "turn.json") expect(parses("rs-sess", f)).toBe(true);
       expect(modeOf("rs-sess", f)).toBe(0o600);
     }
   });
@@ -856,6 +859,154 @@ describe("resume signals: hook writers (260927-1zw CR-01/WR-02/WR-05)", () => {
         .join("\n");
       expect(code, path.basename(script)).toContain("renameSync(");
     }
+  });
+});
+
+// --- Quick task 260927-46l D-01: the turn.json running/idle snapshot.
+// on-user-prompt writes {state:"running"} (a prompt starts a turn); on-activity
+// writes {state:"idle"} on a main-thread Stop only (the turn ended). Subagent
+// Stop-shaped payloads and every PostToolUse leave it untouched.
+describe("turn state writers (260927-46l D-01)", () => {
+  const sessDir = (id: string) => path.join(tmp, "sessions", id);
+  const ls = (id: string) => fs.readdirSync(sessDir(id)).sort();
+  const turnPath = (id: string) => path.join(sessDir(id), "turn.json");
+  const turnRaw = (id: string) => fs.readFileSync(turnPath(id), "utf8");
+  const readTurn = (id: string) => JSON.parse(turnRaw(id)) as Record<string, unknown>;
+  const prompt = (id: string, extra: Record<string, unknown> = {}) =>
+    runHook(onUserPrompt, JSON.stringify({ session_id: id, hook_event_name: "UserPromptSubmit", ...extra }), tmp);
+  const stop = (id: string, extra: Record<string, unknown> = {}) =>
+    runHook(
+      onActivity,
+      JSON.stringify({ session_id: id, hook_event_name: "Stop", stop_hook_active: false, ...extra }),
+      tmp,
+    );
+
+  it("U1 on-user-prompt writes turn.json {state:'running', ts} (exactly two keys, 0o600), silent exit 0", () => {
+    const res = prompt("tu-1");
+    expect(res.status).toBe(0);
+    expect(res.stdout).toBe("");
+    expect(res.stderr).toBe("");
+    const turn = readTurn("tu-1");
+    expect(Object.keys(turn).sort()).toEqual(["state", "ts"]);
+    expect(turn.state).toBe("running");
+    expect(Number.isFinite(Date.parse(turn.ts as string))).toBe(true);
+    expect(fs.statSync(turnPath("tu-1")).mode & 0o777).toBe(0o600);
+  });
+
+  it("U2 a main-thread Stop flips turn.json to idle (Stop-safety: exit 0, empty stdout/stderr)", () => {
+    expect(prompt("tu-2").status).toBe(0);
+    const runningTs = Date.parse(readTurn("tu-2").ts as string);
+    const res = stop("tu-2");
+    expect(res.status).toBe(0);
+    expect(res.stdout).toBe("");
+    expect(res.stderr).toBe("");
+    const turn = readTurn("tu-2");
+    expect(turn.state).toBe("idle");
+    const idleTs = Date.parse(turn.ts as string);
+    expect(Number.isFinite(idleTs)).toBe(true);
+    expect(idleTs).toBeGreaterThanOrEqual(runningTs);
+  });
+
+  it("U3 a Stop-shaped payload with a truthy agent_id leaves turn.json byte-identical", () => {
+    expect(prompt("tu-3").status).toBe(0);
+    const before = turnRaw("tu-3");
+    const res = stop("tu-3", { agent_id: "agent-x" });
+    expect(res.status).toBe(0);
+    expect(turnRaw("tu-3")).toBe(before);
+    expect(readTurn("tu-3").state).toBe("running");
+  });
+
+  it("U4 no PostToolUse (main-thread or subagent) touches turn.json; tools never create it", () => {
+    expect(prompt("tu-4").status).toBe(0);
+    const before = turnRaw("tu-4");
+    const payloads: Record<string, unknown>[] = [
+      { tool_name: "Bash" },
+      { tool_name: "AskUserQuestion" },
+      { tool_name: "Task" },
+      { tool_name: "Bash", agent_id: "agent-x" },
+    ];
+    for (const p of payloads) {
+      const res = runHook(
+        onActivity,
+        JSON.stringify({ session_id: "tu-4", hook_event_name: "PostToolUse", ...p }),
+        tmp,
+      );
+      expect(res.status).toBe(0);
+      expect(turnRaw("tu-4")).toBe(before);
+    }
+
+    const fresh = runHook(
+      onActivity,
+      JSON.stringify({ session_id: "tu-4-fresh", hook_event_name: "PostToolUse", tool_name: "Bash" }),
+      tmp,
+    );
+    expect(fresh.status).toBe(0);
+    expect(ls("tu-4-fresh")).toEqual(["heartbeat", "resumed"]);
+  });
+
+  it("U5 detail-free: neither the prompt text nor last_assistant_message reaches turn.json", () => {
+    expect(prompt("tu-5", { prompt: "SENTINEL_46l" }).status).toBe(0);
+    expect(turnRaw("tu-5")).not.toContain("SENTINEL_46l");
+    let turn = readTurn("tu-5");
+    expect(Object.keys(turn).sort()).toEqual(["state", "ts"]);
+    expect(turn.state).toBe("running");
+
+    expect(stop("tu-5", { last_assistant_message: "SENTINEL_46l" }).status).toBe(0);
+    expect(turnRaw("tu-5")).not.toContain("SENTINEL_46l");
+    turn = readTurn("tu-5");
+    expect(Object.keys(turn).sort()).toEqual(["state", "ts"]);
+    expect(turn.state).toBe("idle");
+  });
+
+  it("U6 atomic: prompt -> Stop -> prompt leaves no temp files and turn.json parses", () => {
+    expect(prompt("tu-6").status).toBe(0);
+    expect(stop("tu-6").status).toBe(0);
+    expect(prompt("tu-6").status).toBe(0);
+    for (const entry of ls("tu-6")) {
+      expect(entry.startsWith(".")).toBe(false);
+      expect(entry.endsWith(".tmp")).toBe(false);
+    }
+    expect(readTurn("tu-6").state).toBe("running");
+  });
+
+  it("U7 wiring unchanged: no SubagentStop; UserPromptSubmit -> on-user-prompt (async, timeout 5)", () => {
+    const hooksJson = JSON.parse(fs.readFileSync(path.join(repoRoot, "hooks", "hooks.json"), "utf8"));
+    expect(Object.keys(hooksJson.hooks).sort()).toEqual([
+      "Notification",
+      "PostToolUse",
+      "PreToolUse",
+      "SessionEnd",
+      "SessionStart",
+      "Stop",
+      "UserPromptSubmit",
+    ]);
+    const ups = hooksJson.hooks.UserPromptSubmit[0].hooks[0];
+    expect(ups.command).toContain("scripts/on-user-prompt.mjs");
+    expect(ups.async).toBe(true);
+    expect(ups.timeout).toBe(5);
+  });
+
+  it("U8 unsafe session ids never produce a turn.json anywhere", () => {
+    for (const bad of ["../evil", "..", "", 42]) {
+      const a = runHook(onUserPrompt, JSON.stringify({ session_id: bad, hook_event_name: "UserPromptSubmit" }), tmp);
+      expect(a.status).toBe(0);
+      expect(a.stdout).toBe("");
+      const b = runHook(onActivity, JSON.stringify({ session_id: bad, hook_event_name: "Stop" }), tmp);
+      expect(b.status).toBe(0);
+      expect(b.stdout).toBe("");
+    }
+    // "../evil" would resolve to <tmp>/evil, so walking tmp covers every escape.
+    const found: string[] = [];
+    const walk = (d: string) => {
+      if (!fs.existsSync(d)) return;
+      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        const p = path.join(d, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (e.name === "turn.json") found.push(p);
+      }
+    };
+    walk(tmp);
+    expect(found).toEqual([]);
   });
 });
 
