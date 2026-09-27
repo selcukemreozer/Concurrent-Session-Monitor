@@ -21,7 +21,7 @@ function readRel(rel: string): string {
 
 const README = readRel("../README.md");
 
-/** The 14 live, user-facing CSM_* env knobs (source-verified). */
+/** The 15 live, user-facing CSM_* env knobs (source-verified). */
 const ENV_KNOBS = [
   "CSM_STORE_DIR",
   "CSM_STALE_MS",
@@ -33,6 +33,7 @@ const ENV_KNOBS = [
   "CSM_SKILL_WINDOW_MS",
   "CSM_ATTN_WINDOW_MS",
   "CSM_RUN_WINDOW_MS",
+  "CSM_IDLE_WAIT_MS",
   "CSM_PORT_SCAN_MS",
   "CSM_PHASE_SCAN_MS",
   "CSM_BRANCH_SCAN_MS",
@@ -141,5 +142,15 @@ describe("README running state (260927-46l)", () => {
     const row = lines.find((l) => l.startsWith("| `CSM_RUN_WINDOW_MS`"));
     expect(row).toBeDefined();
     expect(row).toContain("1800000");
+  });
+});
+
+// Quick 260927-4tv: the 10 s idle-waiting knob is documented in the env table.
+describe("README documents CSM_IDLE_WAIT_MS (260927-4tv)", () => {
+  const lines = readRel("../README.md").split("\n");
+  it("the env table documents CSM_IDLE_WAIT_MS with its 10000 default", () => {
+    const row = lines.find((l) => l.startsWith("| `CSM_IDLE_WAIT_MS`"));
+    expect(row).toBeDefined();
+    expect(row).toContain("`10000`");
   });
 });
