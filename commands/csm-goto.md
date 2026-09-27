@@ -1,21 +1,20 @@
 ---
-description: Bring a live session's Warp pane to the front (Warp-only, focus-only)
-argument-hint: "[folder | session-id]"
+description: Bring the terminal running the CSM panel (csm) to the front — exact pane in Warp, app-level elsewhere
 allowed-tools: Bash(node ${CLAUDE_PLUGIN_ROOT}/scripts/csm-goto.mjs *)
 ---
 <!-- Source: code.claude.com/docs/en/slash-commands (inject-dynamic-context, string substitutions) -->
 <!--
-  /csm-goto — the in-chat counterpart of the panel's clickable go-to-pane link.
-  The `!` line runs the read-only script at command-expansion time and inlines
-  its stdout into context. Substitutions resolve first:
-    argv[1] = ${CLAUDE_SESSION_ID}  (caller id — re-gated by SAFE_ID; marks "(you)")
-    argv[2] = $ARGUMENTS            (folder name or session id — sanitized as untrusted)
-  Both are double-quoted: the script owns the untrusted-text handling; quoting
-  bounds the shell surface. The script opens the session's warp.focus_url via
-  macOS `open` (execFileSync, no shell). WARP-ONLY: sessions outside Warp have no
-  focus handle and are reported as such. FOCUS-ONLY: nothing is typed or sent
-  into the target session. With no argument it lists live sessions.
-  No registration in plugin.json/hooks.json is required: commands auto-discover
-  from commands/.
+  /csm-goto — jump back to the CSM panel from any chat (260927-59z).
+  The command takes NO arguments: the `!` line runs the read-only script at
+  command-expansion time with no argv and inlines its stdout into context. The
+  script reads panel.json, which the panel writes at the store root when it
+  starts (and removes on a clean exit). In Warp it opens the panel's recorded
+  warp: focus URL, bringing the exact pane forward; in Terminal, iTerm2,
+  Ghostty or VS Code it can only activate the app (not the exact window or
+  tab); in any other terminal it reports the panel's pid/tty instead. With no
+  live panel it says so. FOCUS-ONLY: nothing is typed or sent anywhere. There
+  is no argument substitution — only the fixed, trusted script path is
+  invoked, double-quoted to bound the shell surface. No registration in
+  plugin.json/hooks.json is required: commands auto-discover from commands/.
 -->
-!`node "${CLAUDE_PLUGIN_ROOT}/scripts/csm-goto.mjs" "${CLAUDE_SESSION_ID}" "$ARGUMENTS"`
+!`node "${CLAUDE_PLUGIN_ROOT}/scripts/csm-goto.mjs"`

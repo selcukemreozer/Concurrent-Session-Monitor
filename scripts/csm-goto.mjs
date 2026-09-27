@@ -1,41 +1,62 @@
 #!/usr/bin/env node
-// /csm-goto — bring a live session's Warp pane to the front from inside a chat.
+// /csm-goto — bring the terminal running the CSM panel (`csm`) to the front, so
+// you can jump back to the panel from any chat (260927-59z). Takes NO arguments;
+// any argv is ignored.
 //
-// Self-contained (Node stdlib only, T-1-SC): NO import from src/. It re-derives
-// the storeRoot / SAFE_ID / sanitize / staleMs / pidAlive / heartbeat-liveness
-// semantics of scripts/csm-status.mjs inline. Invoked by commands/csm-goto.md as
-//   node csm-goto.mjs "<caller_session_id>" "<query>"
-// where <query> is a folder name (exact, else unique substring, case-insensitive)
-// or a session id (exact, else unique prefix).
+// Source: <storeRoot>/panel.json, written by the panel itself when it starts
+// (src/panel/registration.ts) and removed on a clean exit. With several panels
+// open the most recently started one wins (last writer).
 //
-// WARP-ONLY: the only focus handle a session has is the `warp.focus_url` that
-// on-session-start.mjs captures from $WARP_FOCUS_URL when TERM_PROGRAM is
-// WarpTerminal. Sessions in any other terminal have `warp: null` and cannot be
-// focused — the script says so instead of guessing (no AppleScript, no window
-// titles, no other terminals).
+// Focus strategy:
+//   - Warp: the panel recorded its $WARP_FOCUS_URL → `open <warp: URL>` brings
+//     the panel's exact pane forward.
+//   - Terminal / iTerm2 / Warp (no URL) / Ghostty / VS Code: `open -a <App>` —
+//     only the app can be activated, not the exact window or tab.
+//   - Any other terminal: nothing is opened; the panel's pid / tty / terminal
+//     are printed instead.
+//   - No panel.json, torn/malformed file, or a dead pid: says no panel is
+//     running.
 //
-// FOCUS-ONLY: opening the warp:// URL just brings that pane forward. Nothing is
-// typed, sent, or submitted into the target session, and no session state is
-// written — the script is strictly read-only over the store.
+// FOCUS-ONLY and READ-ONLY: nothing is typed or sent anywhere and the store is
+// never written. panel.json is a same-user-writable file, so EVERY field is
+// re-validated here: pid must be an integer > 1 that is alive; the focus URL
+// must be a well-formed warp: URL; the app name comes only from a fixed Map
+// keyed by exact TERM_PROGRAM values (never from the file); echoed text is
+// control-byte stripped and length-capped. The opener is run via execFileSync
+// with an args ARRAY and no shell, so no field can inject a command.
 //
-// The URL is handed to macOS `open` via execFileSync with an args ARRAY (NO
-// shell), so a crafted focus_url can never inject a command; it is additionally
-// validated as a well-formed warp: URL before use. The whole body is wrapped so
-// it ALWAYS exits 0.
+// Self-contained (Node stdlib only, T-1-SC): NO import from src/. The whole body
+// is wrapped so it ALWAYS exits 0.
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";
 
-// T-04-07: allowlist untrusted session ids before any path/compare use.
-const SAFE_ID = /^[A-Za-z0-9._-]{1,128}$/;
-
-/** Upper bound on an accepted focus_url (a real Warp URL is well under this). */
+/** Upper bound on an accepted focus URL (a real Warp URL is well under this). */
 const MAX_URL_LEN = 2048;
+/** Cap on echoed term_program / tty text. */
+const MAX_ECHO = 64;
+
+const NO_PANEL = "No CSM panel is running — start it with `csm`.";
+const WARP_OK = "Focused the CSM panel (Warp).";
+const OPEN_FAIL = "Could not focus the CSM panel (open failed).";
+const NOT_MAC = "/csm-goto needs macOS `open` to focus the CSM panel.";
+
+/**
+ * Exact TERM_PROGRAM → macOS app name. A Map (not an object lookup) so
+ * prototype names like __proto__ / constructor / toString never resolve.
+ */
+const APP_BY_TERM = new Map([
+  ["Apple_Terminal", "Terminal"],
+  ["iTerm.app", "iTerm"],
+  ["WarpTerminal", "Warp"],
+  ["ghostty", "Ghostty"],
+  ["vscode", "Visual Studio Code"],
+]);
 
 // Internal TEST-ONLY seam (NOT documented — analogous to CSM_LSOF_CMD in
 // csm-status.mjs). Lets a spawnSync-based test point the opener at a fixture
-// script instead of really focusing a Warp pane.
+// script instead of really focusing anything.
 function openCmd() {
   return process.env.CSM_OPEN_CMD || "open";
 }
@@ -46,24 +67,10 @@ function storeRoot() {
   if (override) return override;
   return path.join(os.homedir(), ".claude", "csm");
 }
-function sessionsDir() {
-  return path.join(storeRoot(), "sessions");
-}
-
-/** Numeric env tunable with NaN/negative degrade-to-default (mirrors src/env.numEnv). */
-function numEnv(name, def) {
-  const raw = process.env[name];
-  if (raw === undefined) return def;
-  const n = Number(raw);
-  return Number.isFinite(n) && n >= 0 ? n : def;
-}
-function staleMs() {
-  return numEnv("CSM_STALE_MS", 120000);
-}
 
 /**
  * Render-boundary control-character strip (T-04-06): drops C0 (0x00-0x1F) and
- * C1 (0x80-0x9F) so a crafted folder/query cannot inject terminal escapes into
+ * C1 (0x80-0x9F) so a crafted panel.json cannot inject terminal escapes into
  * the caller's context. Mirrors csm-status.mjs / src/sanitize.ts.
  */
 function sanitize(s) {
@@ -76,25 +83,12 @@ function sanitize(s) {
   return out;
 }
 
-/** Heartbeat sidecar last-seen ms (mirrors csm-status.resolveSidecarMs): ISO text, else mtime. */
-function resolveLastSeen(dir) {
-  const file = path.join(dir, "heartbeat");
-  let content;
-  try {
-    content = fs.readFileSync(file, "utf8");
-  } catch {
-    return undefined;
-  }
-  const parsed = Date.parse(content.trim());
-  if (!Number.isNaN(parsed)) return parsed;
-  try {
-    return fs.statSync(file).mtimeMs;
-  } catch {
-    return undefined;
-  }
+/** Sanitized, length-capped echo of an untrusted string field ("" otherwise). */
+function safeText(v, max) {
+  return typeof v === "string" ? sanitize(v).slice(0, max) : "";
 }
 
-/** Cheap pid liveness (mirrors csm-status.pidAlive) — kill -0; no lstart guard. */
+/** Cheap pid liveness (mirrors csm-status.pidAlive) — kill -0; EPERM = alive. */
 function pidAlive(pid) {
   if (typeof pid !== "number" || !Number.isInteger(pid) || pid <= 0) return false;
   try {
@@ -120,137 +114,67 @@ function validFocusUrl(raw) {
   }
 }
 
-/** Live sessions (heartbeat-fresh OR pid alive), newest start first. */
-function liveSessions(now) {
-  let ids;
-  try {
-    ids = fs.readdirSync(sessionsDir());
-  } catch {
-    return []; // store not created yet
-  }
-  const out = [];
-  for (const id of ids) {
-    if (!SAFE_ID.test(id) || id === "." || id === "..") continue;
-    const dir = path.join(sessionsDir(), id);
-    let state;
-    try {
-      state = JSON.parse(fs.readFileSync(path.join(dir, "session.json"), "utf8"));
-    } catch {
-      continue; // torn/missing snapshot self-heals next tick
-    }
-    const startMs = Date.parse(state?.start_time);
-    const lastSeenMs = resolveLastSeen(dir) ?? startMs;
-    const heartbeatFresh = !Number.isNaN(lastSeenMs) && now - lastSeenMs < staleMs();
-    if (!heartbeatFresh && !pidAlive(state?.pid)) continue;
-    const cwd = typeof state?.cwd === "string" ? state.cwd : "";
-    const folder =
-      typeof state?.folder === "string" && state.folder.length > 0 ? state.folder : path.basename(cwd);
-    out.push({
-      id,
-      folder,
-      focusUrl: state?.warp?.focus_url,
-      startMs: Number.isNaN(startMs) ? 0 : startMs,
-    });
-  }
-  out.sort((a, b) => b.startMs - a.startMs);
-  return out;
-}
-
 /**
- * Resolve the query to candidates, most specific tier first: exact id, id
- * prefix, exact folder, folder substring (folder tiers case-insensitive). The
- * first tier with any hit wins. In the folder tiers the caller's own session is
- * dropped when another session also matches — "go to <this folder>" from one of
- * two sessions in the same folder means the other one.
+ * The live panel's registration, or undefined when panel.json is missing,
+ * torn, malformed, or names a pid that is not an integer > 1 or is dead.
+ * (pid 1 is launchd: kill -0 on it is EPERM = "alive" and would lie.)
  */
-function resolveQuery(sessions, query, callerId) {
-  const q = query.toLowerCase();
-  const tiers = [
-    [(s) => s.id === query, false],
-    [(s) => s.id.startsWith(query), false],
-    [(s) => s.folder.toLowerCase() === q, true],
-    [(s) => s.folder.toLowerCase().includes(q), true],
-  ];
-  for (const [pred, dropSelf] of tiers) {
-    let hits = sessions.filter(pred);
-    if (hits.length === 0) continue;
-    if (dropSelf && hits.length > 1 && callerId) {
-      const others = hits.filter((s) => s.id !== callerId);
-      if (others.length > 0) hits = others;
-    }
-    return hits;
+function readPanel() {
+  let rec;
+  try {
+    rec = JSON.parse(fs.readFileSync(path.join(storeRoot(), "panel.json"), "utf8"));
+  } catch {
+    return undefined;
   }
-  return [];
+  if (rec === null || typeof rec !== "object" || Array.isArray(rec)) return undefined;
+  const pid = rec.pid;
+  if (typeof pid !== "number" || !Number.isInteger(pid) || pid <= 1) return undefined;
+  if (!pidAlive(pid)) return undefined;
+  return rec;
 }
 
-function label(s, callerId) {
-  const you = s.id === callerId ? " (you)" : "";
-  const warp = validFocusUrl(s.focusUrl) ? "" : "  [no Warp focus]";
-  return `${sanitize(s.folder) || "?"} (${sanitize(s.id.slice(0, 8))})${you}${warp}`;
-}
-
-function listLines(sessions, callerId) {
-  return sessions.map((s) => `  - ${label(s, callerId)}`).join("\n");
+function say(line) {
+  process.stdout.write(`${line}\n`);
 }
 
 function main() {
-  const now = Date.now();
-  const rawCaller = process.argv[2];
-  const callerId =
-    typeof rawCaller === "string" && SAFE_ID.test(rawCaller) && rawCaller !== "." && rawCaller !== ".."
-      ? rawCaller
-      : undefined;
-  const query = sanitize(process.argv[3] ?? "").trim().slice(0, 200);
-
-  const sessions = liveSessions(now);
-  if (sessions.length === 0) {
-    process.stdout.write("No live sessions.\n");
+  const rec = readPanel();
+  if (!rec) {
+    say(NO_PANEL);
     return;
   }
 
-  if (query.length === 0) {
-    process.stdout.write(
-      `Usage: /csm-goto <folder | session-id>\nLive sessions:\n${listLines(sessions, callerId)}\n`,
+  const url = validFocusUrl(rec.warp_focus_url);
+  const app = typeof rec.term_program === "string" ? APP_BY_TERM.get(rec.term_program) : undefined;
+
+  if (!url && !app) {
+    const tty = safeText(rec.tty, MAX_ECHO) || "unknown";
+    const term = safeText(rec.term_program, MAX_ECHO) || "unknown";
+    say(
+      `The CSM panel is running (pid ${rec.pid}, tty ${tty}, terminal ${term}) but its terminal can't be focused automatically.`,
     );
     return;
   }
 
-  const hits = resolveQuery(sessions, query, callerId);
-  if (hits.length === 0) {
-    process.stdout.write(
-      `No live session matches "${query}".\nLive sessions:\n${listLines(sessions, callerId)}\n`,
-    );
-    return;
-  }
-  if (hits.length > 1) {
-    process.stdout.write(
-      `"${query}" matches ${hits.length} live sessions — use a session id to pick one:\n${listLines(hits, callerId)}\n`,
-    );
-    return;
-  }
-
-  const target = hits[0];
-  const name = `${sanitize(target.folder) || "?"} (${sanitize(target.id.slice(0, 8))})`;
-  const url = validFocusUrl(target.focusUrl);
-  if (!url) {
-    // Warp-only: no (valid) focus_url means the session is not in Warp, or Warp
-    // did not export WARP_FOCUS_URL — there is no other handle to focus it by.
-    process.stdout.write(
-      `${name} has no Warp focus URL — /csm-goto can only focus sessions running in Warp.\n`,
-    );
-    return;
-  }
   if (process.platform !== "darwin" && !process.env.CSM_OPEN_CMD) {
-    process.stdout.write(`/csm-goto needs macOS \`open\` to focus ${name}.\n`);
+    say(NOT_MAC);
     return;
   }
 
   try {
-    // Args array, no shell: the URL is a single argv entry, never interpreted.
-    execFileSync(openCmd(), [url], { timeout: 3000, stdio: ["ignore", "ignore", "ignore"] });
-    process.stdout.write(`Focused ${name} in Warp.\n`);
+    // Args array with no shell — the URL / app name is a single argv entry, never
+    // interpreted. The app name comes from APP_BY_TERM, never from the file.
+    execFileSync(openCmd(), url ? [url] : ["-a", app], {
+      timeout: 3000,
+      stdio: ["ignore", "ignore", "ignore"],
+    });
+    say(
+      url
+        ? WARP_OK
+        : `Brought ${app} to the front — the CSM panel runs there, but only the app could be focused, not its exact window or tab.`,
+    );
   } catch {
-    process.stdout.write(`Could not focus ${name} (open failed).\n`);
+    say(OPEN_FAIL);
   }
 }
 
