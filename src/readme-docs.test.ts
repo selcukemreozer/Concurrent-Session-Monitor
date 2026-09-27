@@ -12,7 +12,9 @@ import { fileURLToPath } from "node:url";
 //
 // The env-knob list below is the SOURCE-VERIFIED live set (grep of src/ + scripts/
 // for `CSM_` reads). CSM_TEST_NUM is a test-only knob and MUST NOT be documented
-// nor asserted here.
+// nor asserted here. CSM_CONFLICT_MS is RESERVED (not read anywhere — see the
+// detectConflicts JSDoc in src/conflicts.ts), so it lives in the README's
+// "Reserved (not yet wired)" note instead of the active config table (05 IN-01).
 
 /** Read a file resolved relative to THIS test file. */
 function readRel(rel: string): string {
@@ -21,13 +23,12 @@ function readRel(rel: string): string {
 
 const README = readRel("../README.md");
 
-/** The 15 live, user-facing CSM_* env knobs (source-verified). */
+/** The 14 live, user-facing CSM_* env knobs (source-verified). */
 const ENV_KNOBS = [
   "CSM_STORE_DIR",
   "CSM_STALE_MS",
   "CSM_GRACE_MS",
   "CSM_ACTIVE_MS",
-  "CSM_CONFLICT_MS",
   "CSM_WINDOW_MS",
   "CSM_READ_WINDOW_MS",
   "CSM_SKILL_WINDOW_MS",
@@ -39,6 +40,9 @@ const ENV_KNOBS = [
   "CSM_BRANCH_SCAN_MS",
   "CSM_GSD_TOOLS",
 ] as const;
+
+/** Reserved knobs: documented as inert, never as a row of the active table. */
+const RESERVED_KNOBS = ["CSM_CONFLICT_MS"] as const;
 
 describe("README end-user docs (SC-4 doc-lint gate)", () => {
   it("documents the marketplace-add install step", () => {
@@ -106,6 +110,39 @@ describe("README end-user docs (SC-4 doc-lint gate)", () => {
 
   it("does NOT document the test-only CSM_TEST_NUM knob", () => {
     expect(README).not.toContain("CSM_TEST_NUM");
+  });
+});
+
+// 05 IN-01: an inert knob must not sit in the active config table (users would
+// tune it expecting an effect), but it must stay documented as reserved so the
+// default-equals-CSM_WINDOW_MS contract is not silently lost.
+describe("README reserved env knobs (05 IN-01)", () => {
+  const lines = README.split("\n");
+  const start = lines.findIndex((l) => l.startsWith("### Reserved (not yet wired)"));
+  let end = lines.length;
+  for (let i = start + 1; start >= 0 && i < lines.length; i++) {
+    if (lines[i].startsWith("#")) {
+      end = i;
+      break;
+    }
+  }
+  const reserved = start >= 0 ? lines.slice(start, end).join("\n") : "";
+
+  it("has a Reserved (not yet wired) subsection", () => {
+    expect(start).toBeGreaterThanOrEqual(0);
+  });
+
+  it.each(RESERVED_KNOBS)("%s is NOT a row of the active config table", (knob) => {
+    expect(lines.some((l) => l.startsWith(`| \`${knob}\``))).toBe(false);
+  });
+
+  it.each(RESERVED_KNOBS)("%s is documented in the reserved subsection", (knob) => {
+    expect(reserved).toContain(knob);
+  });
+
+  it("the reserved note says the effective window equals CSM_WINDOW_MS", () => {
+    expect(reserved).toContain("CSM_WINDOW_MS");
+    expect(reserved).toMatch(/no effect/);
   });
 });
 

@@ -130,11 +130,16 @@ back to the default. Times are in milliseconds.
 | `CSM_STALE_MS` | `120000` (2 min) | Liveness TTL: a session with no heartbeat for this long is treated as inactive. A session with an "asking" or "waiting" flag up is kept visible regardless, bounded by `CSM_ATTN_WINDOW_MS`. A session with a running turn is also kept visible regardless, bounded by `CSM_RUN_WINDOW_MS`. A session in the subagent state is also kept visible, bounded by `CSM_RUN_WINDOW_MS`. |
 | `CSM_ACTIVE_MS` | `30000` (30 s) | Recency threshold for the green/yellow activity dot. A running turn or the subagent state always shows the green dot. |
 | `CSM_GRACE_MS` | `1200` (1.2 s) | Grace window: a vanished session is shown dim-grey as "ended" for this long before it is pruned, so you see it die rather than blink out. |
-| `CSM_CONFLICT_MS` | tracks `CSM_WINDOW_MS` | Conflict-detection window. Not independently wired in v1; the effective window equals the active-file window (`CSM_WINDOW_MS`). |
 | `CSM_PORT_SCAN_MS` | `2500` (2.5 s) | Cadence of the listening-port scan feeding the PORTS pane. |
 | `CSM_PHASE_SCAN_MS` | `4000` (4 s) | Cadence of the GSD phase-progress scan feeding the FAZLAR pane. |
 | `CSM_BRANCH_SCAN_MS` | `1500` (1.5 s) | Cadence of the live current-branch scan that derives each session's checked-out branch from its working directory. |
 | `CSM_GSD_TOOLS` | auto-detected | Absolute path to the `gsd-tools` binary used by the phases pane. Set it to override auto-detection. |
+
+### Reserved (not yet wired)
+
+- `CSM_CONFLICT_MS` is reserved for a separate conflict-detection window but is
+  not read yet, so setting it has no effect. The effective conflict window
+  equals the active-file window (`CSM_WINDOW_MS`).
 
 ## Platform and caveats
 
