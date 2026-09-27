@@ -1,5 +1,8 @@
-import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { describe, it, expect, afterEach } from "vitest";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Source-level regression guard for the single-ink-instance invariant, now
@@ -48,5 +51,66 @@ describe("launcher single-ink-instance invariant (bundled architecture)", () => 
     const main = readRel("./main.tsx");
     expect(main).toMatch(/export\s+function\s+run/);
     expect(main).toContain("render(");
+  });
+});
+
+// 05 IN-02: a missing bundle gets a one-line actionable message (exit 1, no
+// stack); anything else thrown while importing the bundle is re-thrown so real
+// boot errors keep their full stack. Runs a COPY of bin/csm.mjs in a temp
+// install dir with process.execPath — stdlib only, no PTY.
+describe("launcher missing-bundle handling (05 IN-02)", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+
+  /** Temp install root with bin/csm.mjs copied in and an optional dist/panel.mjs. */
+  function install(panel?: string): string {
+    const root = mkdtempSync(path.join(tmpdir(), "csm-launcher-"));
+    dirs.push(root);
+    mkdirSync(path.join(root, "bin"));
+    copyFileSync(
+      fileURLToPath(new URL("../../bin/csm.mjs", import.meta.url)),
+      path.join(root, "bin", "csm.mjs"),
+    );
+    if (panel !== undefined) {
+      mkdirSync(path.join(root, "dist"));
+      writeFileSync(path.join(root, "dist", "panel.mjs"), panel);
+    }
+    return root;
+  }
+
+  function launch(root: string) {
+    return spawnSync(process.execPath, [path.join(root, "bin", "csm.mjs")], {
+      encoding: "utf8",
+      timeout: 10_000,
+      env: { ...process.env, NODE_OPTIONS: "" },
+    });
+  }
+
+  it("no dist/: exits 1 with one actionable stderr line and no stack trace", () => {
+    const res = launch(install());
+    expect(res.status).toBe(1);
+    const lines = res.stderr.trim().split("\n");
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(/^csm: panel bundle not found at .*dist[\\/]panel\.mjs; reinstall the plugin/);
+    expect(res.stderr).not.toMatch(/^\s+at /m);
+    expect(res.stderr).not.toContain("ERR_MODULE_NOT_FOUND");
+  });
+
+  it("a module missing INSIDE the bundle is re-thrown, not reported as a missing bundle", () => {
+    const res = launch(install('import "csm-no-such-package-zz";\n'));
+    expect(res.status).not.toBe(0);
+    expect(res.stderr).toContain("ERR_MODULE_NOT_FOUND");
+    expect(res.stderr).toContain("csm-no-such-package-zz");
+    expect(res.stderr).not.toContain("panel bundle not found");
+  });
+
+  it("a genuine panel boot error keeps its full stack", () => {
+    const res = launch(install('throw new Error("csm-boot-boom");\n'));
+    expect(res.status).not.toBe(0);
+    expect(res.stderr).toContain("csm-boot-boom");
+    expect(res.stderr).toMatch(/^\s+at /m);
+    expect(res.stderr).not.toContain("panel bundle not found");
   });
 });
