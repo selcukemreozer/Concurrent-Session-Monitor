@@ -70,11 +70,25 @@ describe("README end-user docs (SC-4 doc-lint gate)", () => {
     expect(README).toContain("/csm-status");
   });
 
-  it("documents /csm-goto and its Warp-only, focus-only limits", () => {
-    const line = README.split("\n").find((l) => l.startsWith("- `/csm-goto"));
-    expect(line).toBeDefined();
-    expect(README).toMatch(/\*\*Warp only\*\*/);
-    expect(README).toMatch(/nothing is typed or sent/);
+  it("documents the no-argument /csm-goto that focuses the CSM panel's terminal (260927-59z)", () => {
+    const lines = README.split("\n");
+    const idx = lines.findIndex((l) => l.startsWith("- `/csm-goto`:"));
+    expect(idx).toBeGreaterThanOrEqual(0);
+    const parts = [lines[idx]];
+    for (let i = idx + 1; i < lines.length && lines[i].startsWith("  "); i++) {
+      parts.push(lines[i]);
+    }
+    const block = parts.join(" ").replace(/\s+/g, " ");
+    expect(block).toMatch(/no arguments/);
+    expect(block).toMatch(/CSM panel/);
+    expect(block).toMatch(/\*\*In Warp\*\*/);
+    expect(block).toMatch(/exact pane/);
+    expect(block).toMatch(/only bring that app to the front/);
+    expect(block).toMatch(/most recently started/);
+    expect(block).toMatch(/nothing is typed or sent/);
+    expect(README).not.toContain("`/csm-goto <");
+    expect(README).not.toContain("in-chat version of the panel's go-to-pane link");
+    expect(README).toMatch(/go-to-pane link/);
   });
 
   it("carries a macOS platform note", () => {
