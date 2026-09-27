@@ -196,6 +196,10 @@ export type SessionRow = SessionState & {
    * than `attnWindowMs()`, and the pid verdict is not "dead". Idle-waiting is
    * liveness evidence exactly like the Notification gate (D-05); the next
    * prompt (turn.json "running") clears it.
+   *
+   * While the subagent gate holds (260927-73b D-03, see `subagent`),
+   * idle-waiting and an `idle_prompt` Notification are suppressed; a
+   * permission_prompt (any other Notification type) still sets it.
    */
   attention: boolean;
   /**
@@ -227,13 +231,35 @@ export type SessionRow = SessionState & {
    * PRE-GATED display flag: true only while `turn.json` says "running", its ts
    * parses, the pid verdict is not "dead", and now minus max(turn ts,
    * heartbeat) is under `runWindowMs()`. Forced false when `asking` or
-   * `attention` holds (D-04 precedence asking > waiting > running, one status
-   * line). The raw gate (before precedence) is liveness evidence: it keeps the
+   * `attention` holds (D-04 precedence asking > waiting > running > subagent,
+   * one status line). The raw gate (before precedence) is liveness evidence: it keeps the
    * row fresh (not stale, not readyToPrune) and, when displayed, the dot
    * active. It drives no sort or conflict logic. Additive;
    * SESSION_SCHEMA_VERSION unchanged.
    */
   running: boolean;
+  /**
+   * Whether this session's main turn has ended while background subagents or
+   * workflows it launched are still running (260927-73b D-03). PRE-GATED
+   * display flag: true only while `turn.json` says "idle" with an `agents`
+   * count > 0 (a non-negative safe integer), its ts parses, the pid verdict is
+   * not "dead", and now minus max(turn ts, heartbeat) is under
+   * `runWindowMs()`. While that raw gate holds, idle-waiting and an
+   * `idle_prompt` Notification are suppressed (not "waiting on you"); a
+   * permission_prompt waiting and `asking` still win. Precedence asking >
+   * waiting > running > subagent (running and subagent are mutually exclusive
+   * by turn state). The raw gate is liveness evidence exactly like `running`:
+   * it keeps the row fresh (not stale, not readyToPrune) and, when displayed,
+   * the dot active. It drives no sort or conflict logic. Additive;
+   * SESSION_SCHEMA_VERSION unchanged.
+   */
+  subagent: boolean;
+  /**
+   * The integer count of still-running background subagents/workflows from
+   * `turn.json` `agents`, present only when `subagent` is true (undefined
+   * otherwise). Card-only passthrough.
+   */
+  subagent_count?: number;
 };
 
 /**
@@ -508,14 +534,20 @@ function readAsking(dir: string): { asking_ts?: string } {
  * `{ turn_state, turn_ts }` only when `state` is exactly "running" or "idle"
  * AND `ts` is a non-empty string; nothing else passes through. The window /
  * pid GATE lives in readAll. "running" feeds the running gate; "idle" feeds
- * the idle-waiting gate (260927-4tv).
+ * the idle-waiting gate (260927-4tv). With valid state/ts, `agents` also passes
+ * through as `turn_agents` — only when it is a non-negative safe integer — and
+ * feeds the subagent gate (260927-73b); nothing else from the file passes
+ * through.
  */
-function readTurn(dir: string): { turn_state?: TurnState["state"]; turn_ts?: string } {
+function readTurn(dir: string): { turn_state?: TurnState["state"]; turn_ts?: string; turn_agents?: number } {
   try {
     const parsed = JSON.parse(fs.readFileSync(path.join(dir, "turn.json"), "utf8")) as Partial<TurnState>;
     const state = parsed?.state;
     if ((state === "running" || state === "idle") && typeof parsed.ts === "string" && parsed.ts.length > 0) {
-      return { turn_state: state, turn_ts: parsed.ts };
+      const agents = parsed.agents;
+      return Number.isSafeInteger(agents) && (agents as number) >= 0
+        ? { turn_state: state, turn_ts: parsed.ts, turn_agents: agents }
+        : { turn_state: state, turn_ts: parsed.ts };
     }
     return {};
   } catch {
@@ -628,6 +660,21 @@ export function readAll(
     // (asking > waiting > running, DISC-3); `rawRunning` feeds liveness.
     const turn = readTurn(dir);
     const turnMs = turn.turn_ts !== undefined ? Date.parse(turn.turn_ts) : NaN;
+    const runRefMs = Math.max(turnMs, heartbeatMs ?? -Infinity);
+    // --- Subagent gate (260927-73b D-03). The main-thread Stop recorded
+    // still-running background subagents/workflows (turn.json idle + agents).
+    // Subagent tool activity refreshes the heartbeat (on-activity), so busy
+    // subagents keep the gate open while a silent, dangling snapshot expires
+    // after runWindowMs() from the newer of the turn ts and the heartbeat. The
+    // next main-thread Stop (after the agents report back) rewrites the count.
+    // A dead known pid never shows it.
+    const turnAgents = turn.turn_agents ?? 0;
+    const rawSubagent =
+      turn.turn_state === "idle" &&
+      turnAgents > 0 &&
+      !Number.isNaN(turnMs) &&
+      !procDead &&
+      now - runRefMs < runWindowMs();
     // --- Idle-waiting gate (260927-4tv D-02). A main-thread Stop wrote
     // turn.json "idle": once that has held for at least idleWaitMs() (and still
     // under the attnWindowMs() ceiling, pid not known-dead), the session is
@@ -641,16 +688,24 @@ export function readAll(
       !Number.isNaN(turnMs) &&
       !procDead &&
       now - turnMs >= idleWaitMs() &&
-      now - turnMs < attnWindowMs();
+      now - turnMs < attnWindowMs() &&
+      // 260927-73b D-03: background agents still working → not waiting on you.
+      !rawSubagent;
+    // 260927-73b D-03: an idle_prompt Notification is Claude Code's "idle"
+    // guess and is wrong while background agents run; a permission_prompt (any
+    // other type) still wins.
+    const notifWaiting = rawWaiting && !(rawSubagent && attn.attention_type === "idle_prompt");
     // D-03 / D-04: waiting = (Notification gate OR idle-waiting), asking wins.
-    const attention = (rawWaiting || rawIdleWaiting) && !asking;
-    const runRefMs = Math.max(turnMs, heartbeatMs ?? -Infinity);
+    const attention = (notifWaiting || rawIdleWaiting) && !asking;
     const rawRunning =
       turn.turn_state === "running" &&
       !Number.isNaN(turnMs) &&
       !procDead &&
       now - runRefMs < runWindowMs();
     const running = rawRunning && !asking && !attention;
+    // 260927-73b D-03: precedence asking > waiting > running > subagent
+    // (running and subagent are mutually exclusive by turn state).
+    const subagent = rawSubagent && !asking && !attention;
 
     const heartbeatFresh = now - lastSeenMs < staleMs(); // TTL authoritative (D-07)
     // Needs-you keepalive (260927-1zw WR-01 / D-03): a session blocked on the
@@ -663,8 +718,10 @@ export function readAll(
     // heartbeat, so rawRunning (already excluding a dead pid, bounded by
     // runWindowMs()) keeps it fresh as well. Idle-waiting (260927-4tv D-05) is
     // a needs-you marker like the Notification gate, bounded by attnWindowMs().
+    // The subagent gate (260927-73b D-03) is liveness evidence too: background
+    // agents are working, bounded by runWindowMs() and excluding a dead pid.
     const needsYouKeepalive = (asking || rawWaiting || rawIdleWaiting) && !procDead;
-    const fresh = heartbeatFresh || needsYouKeepalive || rawRunning;
+    const fresh = heartbeatFresh || needsYouKeepalive || rawRunning || rawSubagent;
     const alive = fresh || procAlive; // shown while EITHER says alive (SC-4)
     const readyToPrune = !fresh && !procAlive; // D-06: dead/unknown AND stale (SC-3)
 
@@ -676,8 +733,9 @@ export function readAll(
     let dotState: "active" | "idle" | "stale";
     if (!fresh || procDead) {
       dotState = "stale";
-    } else if (running) {
-      // 260927-46l D-03 / DISC-4: a displayed running turn is the active state.
+    } else if (running || subagent) {
+      // 260927-46l D-03 / DISC-4: a displayed running turn is the active state;
+      // so is a displayed subagent state (260927-73b D-03).
       // Needs-you rows keep their idle/recent-touch dot (no green dot beside ◉).
       dotState = "active";
     } else {
@@ -703,13 +761,17 @@ export function readAll(
       // the Notification's type/ts win; idle-waiting alone synthesizes
       // "idle_prompt" + the turn ts.
       attention,
-      attention_type: attention ? (rawWaiting ? attn.attention_type : "idle_prompt") : undefined,
-      attention_ts: attention ? (rawWaiting ? attn.attention_ts : turn.turn_ts) : undefined,
+      attention_type: attention ? (notifWaiting ? attn.attention_type : "idle_prompt") : undefined,
+      attention_ts: attention ? (notifWaiting ? attn.attention_ts : turn.turn_ts) : undefined,
       // 260926-vfm (AQ-02) additive card-only fields — pre-gated, asking wins.
       asking,
       asking_ts: asking ? ask.asking_ts : undefined,
       // 260927-46l additive card-only flag — pre-gated (asking > waiting > running).
       running,
+      // 260927-73b additive card-only fields — pre-gated (lowest precedence);
+      // the count is present only when subagent is true.
+      subagent,
+      subagent_count: subagent ? turnAgents : undefined,
     });
   }
 

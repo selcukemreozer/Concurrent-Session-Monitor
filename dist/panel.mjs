@@ -38248,7 +38248,8 @@ function readTurn(dir) {
     const parsed = JSON.parse(fs4.readFileSync(path3.join(dir, "turn.json"), "utf8"));
     const state = parsed?.state;
     if ((state === "running" || state === "idle") && typeof parsed.ts === "string" && parsed.ts.length > 0) {
-      return { turn_state: state, turn_ts: parsed.ts };
+      const agents = parsed.agents;
+      return Number.isSafeInteger(agents) && agents >= 0 ? { turn_state: state, turn_ts: parsed.ts, turn_agents: agents } : { turn_state: state, turn_ts: parsed.ts };
     }
     return {};
   } catch {
@@ -38291,20 +38292,25 @@ function readAll(now = Date.now(), probe = defaultProbe, startedProbe = defaultS
     const procDead = verdict === "dead";
     const turn = readTurn(dir);
     const turnMs = turn.turn_ts !== void 0 ? Date.parse(turn.turn_ts) : NaN;
-    const rawIdleWaiting = turn.turn_state === "idle" && !Number.isNaN(turnMs) && !procDead && now - turnMs >= idleWaitMs() && now - turnMs < attnWindowMs();
-    const attention = (rawWaiting || rawIdleWaiting) && !asking;
     const runRefMs = Math.max(turnMs, heartbeatMs ?? -Infinity);
+    const turnAgents = turn.turn_agents ?? 0;
+    const rawSubagent = turn.turn_state === "idle" && turnAgents > 0 && !Number.isNaN(turnMs) && !procDead && now - runRefMs < runWindowMs();
+    const rawIdleWaiting = turn.turn_state === "idle" && !Number.isNaN(turnMs) && !procDead && now - turnMs >= idleWaitMs() && now - turnMs < attnWindowMs() && // 260927-73b D-03: background agents still working → not waiting on you.
+    !rawSubagent;
+    const notifWaiting = rawWaiting && !(rawSubagent && attn.attention_type === "idle_prompt");
+    const attention = (notifWaiting || rawIdleWaiting) && !asking;
     const rawRunning = turn.turn_state === "running" && !Number.isNaN(turnMs) && !procDead && now - runRefMs < runWindowMs();
     const running = rawRunning && !asking && !attention;
+    const subagent = rawSubagent && !asking && !attention;
     const heartbeatFresh = now - lastSeenMs < staleMs();
     const needsYouKeepalive = (asking || rawWaiting || rawIdleWaiting) && !procDead;
-    const fresh = heartbeatFresh || needsYouKeepalive || rawRunning;
+    const fresh = heartbeatFresh || needsYouKeepalive || rawRunning || rawSubagent;
     const alive = fresh || procAlive;
     const readyToPrune = !fresh && !procAlive;
     let dotState;
     if (!fresh || procDead) {
       dotState = "stale";
-    } else if (running) {
+    } else if (running || subagent) {
       dotState = "active";
     } else {
       const touchMs = lastActive ? Date.parse(lastActive) : NaN;
@@ -38331,13 +38337,17 @@ function readAll(now = Date.now(), probe = defaultProbe, startedProbe = defaultS
       // the Notification's type/ts win; idle-waiting alone synthesizes
       // "idle_prompt" + the turn ts.
       attention,
-      attention_type: attention ? rawWaiting ? attn.attention_type : "idle_prompt" : void 0,
-      attention_ts: attention ? rawWaiting ? attn.attention_ts : turn.turn_ts : void 0,
+      attention_type: attention ? notifWaiting ? attn.attention_type : "idle_prompt" : void 0,
+      attention_ts: attention ? notifWaiting ? attn.attention_ts : turn.turn_ts : void 0,
       // 260926-vfm (AQ-02) additive card-only fields — pre-gated, asking wins.
       asking,
       asking_ts: asking ? ask.asking_ts : void 0,
       // 260927-46l additive card-only flag — pre-gated (asking > waiting > running).
-      running
+      running,
+      // 260927-73b additive card-only fields — pre-gated (lowest precedence);
+      // the count is present only when subagent is true.
+      subagent,
+      subagent_count: subagent ? turnAgents : void 0
     });
   }
   const key = (r) => Date.parse(r.last_active ?? r.start_time) || 0;

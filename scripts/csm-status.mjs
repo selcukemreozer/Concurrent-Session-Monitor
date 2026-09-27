@@ -263,18 +263,21 @@ function readAsking(dir) {
 }
 
 /**
- * Read the turn-state snapshot {state, ts} written by on-user-prompt
+ * Read the turn-state snapshot {state, ts, agents?} written by on-user-prompt
  * ("running") and on-activity on a main-thread Stop ("idle") (260927-46l),
- * mirroring aggregate.readTurn: returns { state, ts } only when state is
- * exactly "running" or "idle" and ts is a non-empty string; any throw / torn /
- * absent / unknown file returns undefined. NEVER returns any other key.
+ * mirroring aggregate.readTurn (incl. its turn_agents, 260927-73b): returns
+ * { state, ts, agents } only when state is exactly "running" or "idle" and ts
+ * is a non-empty string; `agents` is the file's count when it is a
+ * non-negative safe integer, else 0. Any throw / torn / absent / unknown file
+ * returns undefined. NEVER returns any other key.
  */
 function readTurn(dir) {
   try {
     const parsed = JSON.parse(fs.readFileSync(path.join(dir, "turn.json"), "utf8"));
     const state = parsed?.state;
     if ((state === "running" || state === "idle") && typeof parsed.ts === "string" && parsed.ts.length > 0) {
-      return { state, ts: parsed.ts };
+      const agents = Number.isSafeInteger(parsed.agents) && parsed.agents >= 0 ? parsed.agents : 0;
+      return { state, ts: parsed.ts, agents };
     }
   } catch {
     // absent/torn turn.json self-heals — the row still renders
@@ -349,6 +352,8 @@ const NEQ_GLYPH = "≠";
 const ATTENTION_GLYPH = "◉";
 /** Detail-free running marker glyph (U+25B6, 260927-46l); >= 0x00A0 so sanitize keeps it. Matches the panel label. */
 const RUN_GLYPH = "▶";
+/** Detail-free subagent marker glyph (U+21BB, 260927-73b); >= 0x00A0 so sanitize keeps it. Matches the panel label. */
+const SUBAGENT_GLYPH = "↻";
 /** User-bucket heading literal (mirror Card.tsx:494 / D-02) — ASCII, constant. */
 const USER_BUCKET = "Sen (kullanici)";
 
@@ -619,6 +624,17 @@ async function main() {
     // `running` is pre-gated: asking > waiting > running (one marker).
     const turn = readTurn(dir);
     const turnMs = turn ? Date.parse(turn.ts) : NaN;
+    const runRefMs = Math.max(turnMs, heartbeatMs ?? -Infinity);
+    // Subagent gate (260927-73b D-03) — mirrors aggregate.readAll exactly: turn
+    // "idle" with a background-agent count > 0, ts parses, pid not dead, and
+    // now minus the newer of the turn ts and the heartbeat under runWindowMs().
+    const turnAgents = turn?.agents ?? 0;
+    const rawSubagent =
+      turn?.state === "idle" &&
+      turnAgents > 0 &&
+      !Number.isNaN(turnMs) &&
+      !procDead &&
+      now - runRefMs < runWindowMs();
     // Idle-waiting gate (260927-4tv D-02) — mirrors aggregate.readAll exactly:
     // turn "idle" (main-thread Stop), ts parses, pid not dead, and idle for at
     // least idleWaitMs() but under attnWindowMs(). The next prompt (turn
@@ -629,15 +645,22 @@ async function main() {
       !Number.isNaN(turnMs) &&
       !procDead &&
       now - turnMs >= idleWaitMs() &&
-      now - turnMs < attnWindowMs();
+      now - turnMs < attnWindowMs() &&
+      // mirrors aggregate.readAll (260927-73b D-03): agents still working.
+      !rawSubagent;
+    // mirrors aggregate.readAll (260927-73b D-03): an idle_prompt Notification
+    // is suppressed while the subagent gate holds; any other type still wins.
+    const notifWaiting = rawWaiting && !(rawSubagent && attn?.type === "idle_prompt");
     // D-03 / D-04: waiting = (Notification gate OR idle-waiting), asking wins.
-    const attention = (rawWaiting || rawIdleWaiting) && !asking;
-    const runRefMs = Math.max(turnMs, heartbeatMs ?? -Infinity);
+    const attention = (notifWaiting || rawIdleWaiting) && !asking;
     const rawRunning =
       turn?.state === "running" && !Number.isNaN(turnMs) && !procDead && now - runRefMs < runWindowMs();
     const running = rawRunning && !asking && !attention;
+    // mirrors aggregate.readAll (260927-73b D-03): asking > waiting > running > subagent.
+    const subagent = rawSubagent && !asking && !attention;
 
-    const keepalive = ((asking || rawWaiting || rawIdleWaiting) && !procDead) || rawRunning;
+    // mirrors aggregate.readAll (260927-73b D-03): the subagent gate is liveness evidence.
+    const keepalive = ((asking || rawWaiting || rawIdleWaiting) && !procDead) || rawRunning || rawSubagent;
     const alive = heartbeatFresh || keepalive || procAlive;
     if (!alive) continue; // live-only roster (D-04)
 
@@ -659,7 +682,9 @@ async function main() {
       target_branch: readTargetBranch(dir), // TB-03 declared target (current branch is state.branch)
       attention, // ATTN-04 pre-gated boolean: waiting on the human (detail-free)
       asking, // AQ-03 pre-gated boolean: an open AskUserQuestion (detail-free, wins over attention)
-      running, // 260927-46l pre-gated boolean: working a turn (detail-free, lowest precedence)
+      running, // 260927-46l pre-gated boolean: working a turn (detail-free)
+      subagent, // 260927-73b pre-gated boolean: background agents still running (lowest precedence)
+      subagentCount: subagent ? turnAgents : 0, // integer only (detail-free)
       files, // [{file_path, tsMs}]
       startMs: Number.isNaN(startMs) ? now : startMs,
       sortMs,
@@ -709,18 +734,22 @@ async function main() {
     const uptime = fmtUptime(r.startMs, now);
     const you = callerId !== undefined && r.session_id === callerId ? " (you)" : "";
 
-    // ATTN-04 / AQ-03 / 260927-46l detail-free status markers: asking, waiting
-    // and running are DISTINCT fixed glyph + literal markers (no type text, no
-    // ts, no question or prompt text — T-06-02/T-06-06/T-vfm-03/T-46l-04),
-    // appended only when the pre-gated flag held. At most one shows, with the
-    // precedence asking > waiting > running (the reader already pre-gates).
+    // ATTN-04 / AQ-03 / 260927-46l / 260927-73b detail-free status markers:
+    // asking, waiting, running and subagent are DISTINCT fixed glyph + literal
+    // markers (no type text, no ts, no question or prompt text, no task detail —
+    // T-06-02/T-06-06/T-vfm-03/T-46l-04/T-73b-06), appended only when the
+    // pre-gated flag held. At most one shows, with the precedence asking >
+    // waiting > running > subagent (the reader already pre-gates). The subagent
+    // count is an integer only, shown as ` ×N` when N > 1.
     const statusMarker = r.asking
       ? ` ${ATTENTION_GLYPH} asking`
       : r.attention
         ? ` ${ATTENTION_GLYPH} waiting`
         : r.running
           ? ` ${RUN_GLYPH} running`
-          : "";
+          : r.subagent
+            ? ` ${SUBAGENT_GLYPH} subagent` + (r.subagentCount > 1 ? ` ×${r.subagentCount}` : "")
+            : "";
 
     out.push(`${folder} · ${branch}${targetToken} · ${shortId} · ${intentCol} · ${filesCol} · ${uptime}${statusMarker}${you}`);
   }
