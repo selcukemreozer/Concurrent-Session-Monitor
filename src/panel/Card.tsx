@@ -4,7 +4,7 @@ import { sanitize } from "../sanitize.js";
 import { fmtUptime } from "../liveness.js";
 import type { SessionRow } from "../aggregate.js";
 import type { Conflict, ConflictSession } from "../conflicts.js";
-import { livePidMap, attribute, type ScannedPort } from "../ports.js";
+import { livePidMap, attribute, type ScannedPort, type KillSignal } from "../ports.js";
 import { FAZLAR_VISIBLE_ROWS, type Progress, type Phase, type FocusEntry } from "../phases.js";
 
 // ESC (0x1B) and ST (ESC "\") as raw bytes, built without embedding control
@@ -495,6 +495,36 @@ const EXPOSED_GLYPH = "⇅";
  */
 export const PORTS_CAP = 12;
 
+/** Heading for unattributed listeners started from a Warp terminal (260927-8ge D-01). */
+export const WARP_HEADING = "Warp'ta başlattın";
+
+/** Heading for every other unattributed listener (260927-8ge D-01). */
+export const OTHER_HEADING = "Diğer";
+
+/**
+ * The PORTLAR row-cursor glyph (260927-8ge D-04): `❯` (U+276F). It replaces the
+ * two leading spaces of the selected port row (so columns stay aligned) and is
+ * rendered bold. It is >= 0x00A0 so `sanitize()` keeps it, single cell wide, and
+ * distinct from `●` `◇` `◆` `»` `⚙` `›` `⎇` `≠` `◉` `▶` `↻` `⚠` `↔` `↪` `⇅` `▸`
+ * `⌨`. It only appears once the user presses j/k on a real TTY.
+ */
+export const PORT_CURSOR_GLYPH = "❯";
+
+/** One PORTLAR group: a heading and its ports in render order. */
+export interface PortGroup {
+  key: string;
+  heading: string;
+  ports: ScannedPort[];
+}
+
+/** The armed kill confirmation (260927-8ge D-05). */
+export interface PortConfirm {
+  port: number;
+  pid: number;
+  command: string;
+  signal: KillSignal;
+}
+
 /**
  * Build a port-group heading reusing the `folder · branch · shortid` identity
  * convention (Card.tsx label()/shortId): each of the three parts is sanitized
@@ -514,6 +544,71 @@ function portHeading(folder: string, branch: string, session_id: string, intent?
 }
 
 /**
+ * The single PORTLAR grouping implementation (260927-8ge D-01), shared by
+ * PortsPane and App's cursor target resolution. Session groups come first
+ * (render-time `livePidMap` + `attribute` join, stable insertion order, keyed by
+ * session_id, intent-enriched heading), then unattributed ports split by origin:
+ * `WARP_HEADING` for `origin === "warp"`, `OTHER_HEADING` for the rest. Empty
+ * groups are omitted.
+ */
+export function groupPorts(ports: ScannedPort[], rows: SessionRow[]): PortGroup[] {
+  const live = livePidMap(rows);
+  const sessionGroups = new Map<string, PortGroup>();
+  const warp: ScannedPort[] = [];
+  const other: ScannedPort[] = [];
+  for (const p of ports) {
+    const row = attribute(p, live);
+    if (row === null) {
+      (p.origin === "warp" ? warp : other).push(p);
+      continue;
+    }
+    let g = sessionGroups.get(row.session_id);
+    if (!g) {
+      g = {
+        key: row.session_id,
+        heading: portHeading(row.folder, row.branch, row.session_id, row.intent),
+        ports: [],
+      };
+      sessionGroups.set(row.session_id, g);
+    }
+    g.ports.push(p);
+  }
+  const groups: PortGroup[] = [...sessionGroups.values()];
+  if (warp.length > 0) groups.push({ key: " warp", heading: WARP_HEADING, ports: warp });
+  if (other.length > 0) groups.push({ key: " other", heading: OTHER_HEADING, ports: other });
+  return groups;
+}
+
+/** Flatten groups in order, stopping at PORTS_CAP — exactly the rows PortsPane shows. */
+export function visiblePorts(groups: PortGroup[]): ScannedPort[] {
+  const out: ScannedPort[] = [];
+  for (const g of groups) {
+    for (const p of g.ports) {
+      if (out.length >= PORTS_CAP) return out;
+      out.push(p);
+    }
+  }
+  return out;
+}
+
+/**
+ * Move the PORTLAR cursor (260927-8ge D-04): an empty list → null; a hidden
+ * cursor (null) is revealed on row 0 by the first j or k; otherwise clamp into
+ * 0..len-1.
+ */
+export function movePortCursor(cur: number | null, delta: 1 | -1, len: number): number | null {
+  if (len <= 0) return null;
+  if (cur === null) return 0;
+  return Math.min(len - 1, Math.max(0, cur + delta));
+}
+
+/** The armed-kill prompt text; port, command and pid each sanitized (T-8ge-01). */
+export function confirmPrompt(c: PortConfirm): string {
+  const head = c.signal === "SIGKILL" ? "kill SIGKILL :" : "kill :";
+  return `${head}${sanitize(String(c.port))} ${sanitize(c.command)} (pid ${sanitize(String(c.pid))})? y/n`;
+}
+
+/**
  * One listening-socket row: `port · command · <badge> · pid <pid>`, column
  * -aligned so the ` · ` middots stack vertically across rows (the direct analogue
  * of the FAZLAR PhaseRow). The port and command cells are padded with `padEnd` to
@@ -530,23 +625,30 @@ function portHeading(folder: string, branch: string, session_id: string, intent?
  * `kill <pid>` target (PORT-05): a numeric pid is inherently injection-safe but
  * still routed through `sanitize()` so every rendered field stays on the
  * established render-boundary path (T-qt0-01).
+ *
+ * 260927-8ge: a `selected` row swaps its two leading spaces for a bold
+ * `PORT_CURSOR_GLYPH` + space (alignment preserved), and a warp-origin row with a
+ * tty appends a dim sanitized `· <tty>` after the pid (D-02).
  */
 function PortRow({
   p,
   portW,
   commandW,
   badgeW,
+  selected,
 }: {
   p: ScannedPort;
   portW: number;
   commandW: number;
   badgeW: number;
+  selected: boolean;
 }) {
   const badgeText = p.exposed ? EXPOSED_GLYPH + " exposed" : "local";
   const badgePad = " ".repeat(Math.max(0, badgeW - badgeText.length));
   return (
     <Text>
-      {"  " + sanitize(String(p.port)).padEnd(portW) + " · " + sanitize(p.command).padEnd(commandW) + " · "}
+      {selected ? <Text bold>{PORT_CURSOR_GLYPH + " "}</Text> : "  "}
+      {sanitize(String(p.port)).padEnd(portW) + " · " + sanitize(p.command).padEnd(commandW) + " · "}
       {p.exposed ? (
         <Text color="magenta" bold>{badgeText}</Text>
       ) : (
@@ -554,26 +656,33 @@ function PortRow({
       )}
       {badgePad}
       <Text dimColor>{" · pid " + sanitize(String(p.pid))}</Text>
+      {p.origin === "warp" && p.tty ? <Text dimColor>{" · " + sanitize(p.tty)}</Text> : null}
     </Text>
   );
 }
 
 /**
  * The LEFT PORTLAR pane (PORT-05): scanned listening ports grouped under the
- * session that owns them. For each port, the Plan-01 render-time join
- * (`livePidMap` + `attribute`) walks its pid ancestry to the first live session
- * (`alive && !readyToPrune`, numeric pid); a match groups the port under that
- * session's `folder · branch · shortid` heading (intent-enriched, D-04), while an
- * unattributed port falls to a final `Sen (kullanici)` user bucket rendered LAST
- * (D-02). The pane flattens to at most `PORTS_CAP` port rows and appends a dim
- * `+N more` past the cap (mirrors ConflictBand); zero ports render a single dim
- * `no listening ports` empty state.
+ * session that owns them. Grouping is `groupPorts` (the single implementation,
+ * shared with App's cursor resolution): session groups first (render-time
+ * `livePidMap` + `attribute` join, `folder · branch · shortid` heading,
+ * intent-enriched, D-04), then unattributed ports split into a
+ * "Warp'ta başlattın" group (listeners whose ancestry reaches the Warp app, each
+ * row showing its tty) and a final "Diğer" group (260927-8ge D-01/D-02). The pane
+ * flattens to at most `PORTS_CAP` port rows and appends a dim `+N more` past the
+ * cap (mirrors ConflictBand); zero ports render a single dim `no listening ports`
+ * empty state.
  *
- * Pure presentation — NO scanning, NO timers, NO keyboard/raw-mode (Phase 04.2).
+ * `cursor` (flat index into the visible rows, null = hidden), `confirm` (armed
+ * kill prompt) and `status` (transient result line) are PROPS only — the
+ * component still does NO scanning, NO timers and NO keyboard/raw-mode input;
+ * App owns that state (260927-8ge D-04/D-05).
+ *
  * It is NOT a card: no `borderStyle`, just a column of `<Text>`. Every rendered
- * field (port, command, heading parts, intent, badge) is routed through
- * `sanitize()` before Ink render, and the badge glyph `⇅` is >= 0x00A0 so it
- * survives — a crafted process name cannot inject control bytes (T-04.1-01).
+ * field (port, command, heading parts, intent, tty, prompt fields, status) is
+ * routed through `sanitize()` before Ink render, and the glyphs `⇅` / `❯` are
+ * >= 0x00A0 so they survive — a crafted process name cannot inject control bytes
+ * (T-04.1-01 / T-8ge-01).
  *
  * Per-column widths (`portW`/`commandW`/`badgeW`) are measured across the FULL
  * ports array (not the shown window) and passed to PortRow so the ` · ` middots
@@ -581,11 +690,28 @@ function PortRow({
  * PORTS_CAP budget. Only the port-info rows are aligned — the group headings are
  * NOT padded.
  */
-export function PortsPane({ ports, rows }: { ports: ScannedPort[]; rows: SessionRow[] }) {
+export function PortsPane({
+  ports,
+  rows,
+  cursor = null,
+  confirm = null,
+  status = null,
+}: {
+  ports: ScannedPort[];
+  rows: SessionRow[];
+  cursor?: number | null;
+  confirm?: PortConfirm | null;
+  status?: string | null;
+}) {
+  const confirmLine = confirm ? <Text bold>{confirmPrompt(confirm)}</Text> : null;
+  const statusLine = status ? <Text dimColor>{sanitize(status)}</Text> : null;
+
   if (ports.length === 0) {
     return (
       <Box flexDirection="column">
         <Text dimColor>{"no listening ports"}</Text>
+        {confirmLine}
+        {statusLine}
       </Box>
     );
   }
@@ -602,46 +728,16 @@ export function PortsPane({ ports, rows }: { ports: ScannedPort[]; rows: Session
     ...ports.map((p) => (p.exposed ? EXPOSED_GLYPH + " exposed" : "local").length),
   );
 
-  const live = livePidMap(rows);
-
-  // Group attributed ports by owning session (stable insertion order); collect
-  // unattributed ports into the user bucket.
-  interface Group {
-    key: string;
-    heading: string;
-    ports: ScannedPort[];
-  }
-  const sessionGroups = new Map<string, Group>();
-  const userPorts: ScannedPort[] = [];
-  for (const p of ports) {
-    const row = attribute(p, live);
-    if (row === null) {
-      userPorts.push(p);
-      continue;
-    }
-    let g = sessionGroups.get(row.session_id);
-    if (!g) {
-      g = {
-        key: row.session_id,
-        heading: portHeading(row.folder, row.branch, row.session_id, row.intent),
-        ports: [],
-      };
-      sessionGroups.set(row.session_id, g);
-    }
-    g.ports.push(p);
-  }
-
-  // Session groups first, the user bucket (D-02) LAST.
-  const groups: Group[] = [...sessionGroups.values()];
-  if (userPorts.length > 0) {
-    groups.push({ key: " user", heading: "Sen (kullanici)", ports: userPorts });
-  }
+  const groups = groupPorts(ports, rows);
 
   // Flatten to at most PORTS_CAP port rows across all groups; a group's heading
-  // is shown only if at least one of its rows fits the remaining budget.
+  // is shown only if at least one of its rows fits the remaining budget. `flat`
+  // is the running row index matching visiblePorts() so `cursor` selects the
+  // same row App resolves as the kill target.
   const total = groups.reduce((n, g) => n + g.ports.length, 0);
   const more = Math.max(0, total - PORTS_CAP);
   let budget = PORTS_CAP;
+  let flat = 0;
 
   return (
     <Box flexDirection="column">
@@ -652,19 +748,25 @@ export function PortsPane({ ports, rows }: { ports: ScannedPort[]; rows: Session
         return (
           <React.Fragment key={g.key}>
             <Text bold>{g.heading}</Text>
-            {shown.map((p) => (
-              <PortRow
-                key={`${g.key}:${p.port}:${p.pid}`}
-                p={p}
-                portW={portW}
-                commandW={commandW}
-                badgeW={badgeW}
-              />
-            ))}
+            {shown.map((p) => {
+              const idx = flat++;
+              return (
+                <PortRow
+                  key={`${g.key}:${p.port}:${p.pid}`}
+                  p={p}
+                  portW={portW}
+                  commandW={commandW}
+                  badgeW={badgeW}
+                  selected={cursor !== null && idx === cursor}
+                />
+              );
+            })}
           </React.Fragment>
         );
       })}
       {more > 0 ? <Text dimColor>{`  +${more} more`}</Text> : null}
+      {confirmLine}
+      {statusLine}
     </Box>
   );
 }

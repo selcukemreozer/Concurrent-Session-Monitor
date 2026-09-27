@@ -38850,6 +38850,9 @@ function ConflictBand({ conflicts }) {
 }
 var EXPOSED_GLYPH = "\u21C5";
 var PORTS_CAP = 12;
+var WARP_HEADING = "Warp'ta ba\u015Flatt\u0131n";
+var OTHER_HEADING = "Di\u011Fer";
+var PORT_CURSOR_GLYPH = "\u276F";
 function portHeading(folder, branch, session_id, intent) {
   const f = sanitize(folder);
   const b = sanitize(branch) || "\u2014";
@@ -38857,38 +38860,15 @@ function portHeading(folder, branch, session_id, intent) {
   const base = `${f} \xB7 ${b} \xB7 ${id}`;
   return typeof intent === "string" && intent.length > 0 ? `${base} ${INTENT_GLYPH} ${sanitize(intent)}` : base;
 }
-function PortRow({
-  p,
-  portW,
-  commandW,
-  badgeW
-}) {
-  const badgeText = p.exposed ? EXPOSED_GLYPH + " exposed" : "local";
-  const badgePad = " ".repeat(Math.max(0, badgeW - badgeText.length));
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Text, { children: [
-    "  " + sanitize(String(p.port)).padEnd(portW) + " \xB7 " + sanitize(p.command).padEnd(commandW) + " \xB7 ",
-    p.exposed ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "magenta", bold: true, children: badgeText }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: badgeText }),
-    badgePad,
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: " \xB7 pid " + sanitize(String(p.pid)) })
-  ] });
-}
-function PortsPane({ ports, rows }) {
-  if (ports.length === 0) {
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Box_default, { flexDirection: "column", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: "no listening ports" }) });
-  }
-  const portW = Math.max(1, ...ports.map((p) => sanitize(String(p.port)).length));
-  const commandW = Math.max(1, ...ports.map((p) => sanitize(p.command).length));
-  const badgeW = Math.max(
-    1,
-    ...ports.map((p) => (p.exposed ? EXPOSED_GLYPH + " exposed" : "local").length)
-  );
+function groupPorts(ports, rows) {
   const live = livePidMap(rows);
   const sessionGroups = /* @__PURE__ */ new Map();
-  const userPorts = [];
+  const warp = [];
+  const other = [];
   for (const p of ports) {
     const row = attribute(p, live);
     if (row === null) {
-      userPorts.push(p);
+      (p.origin === "warp" ? warp : other).push(p);
       continue;
     }
     let g = sessionGroups.get(row.session_id);
@@ -38903,12 +38883,59 @@ function PortsPane({ ports, rows }) {
     g.ports.push(p);
   }
   const groups = [...sessionGroups.values()];
-  if (userPorts.length > 0) {
-    groups.push({ key: "\0user", heading: "Sen (kullanici)", ports: userPorts });
+  if (warp.length > 0) groups.push({ key: " warp", heading: WARP_HEADING, ports: warp });
+  if (other.length > 0) groups.push({ key: " other", heading: OTHER_HEADING, ports: other });
+  return groups;
+}
+function confirmPrompt(c) {
+  const head = c.signal === "SIGKILL" ? "kill SIGKILL :" : "kill :";
+  return `${head}${sanitize(String(c.port))} ${sanitize(c.command)} (pid ${sanitize(String(c.pid))})? y/n`;
+}
+function PortRow({
+  p,
+  portW,
+  commandW,
+  badgeW,
+  selected
+}) {
+  const badgeText = p.exposed ? EXPOSED_GLYPH + " exposed" : "local";
+  const badgePad = " ".repeat(Math.max(0, badgeW - badgeText.length));
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Text, { children: [
+    selected ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { bold: true, children: PORT_CURSOR_GLYPH + " " }) : "  ",
+    sanitize(String(p.port)).padEnd(portW) + " \xB7 " + sanitize(p.command).padEnd(commandW) + " \xB7 ",
+    p.exposed ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "magenta", bold: true, children: badgeText }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: badgeText }),
+    badgePad,
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: " \xB7 pid " + sanitize(String(p.pid)) }),
+    p.origin === "warp" && p.tty ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: " \xB7 " + sanitize(p.tty) }) : null
+  ] });
+}
+function PortsPane({
+  ports,
+  rows,
+  cursor = null,
+  confirm = null,
+  status = null
+}) {
+  const confirmLine = confirm ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { bold: true, children: confirmPrompt(confirm) }) : null;
+  const statusLine = status ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: sanitize(status) }) : null;
+  if (ports.length === 0) {
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Box_default, { flexDirection: "column", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: "no listening ports" }),
+      confirmLine,
+      statusLine
+    ] });
   }
+  const portW = Math.max(1, ...ports.map((p) => sanitize(String(p.port)).length));
+  const commandW = Math.max(1, ...ports.map((p) => sanitize(p.command).length));
+  const badgeW = Math.max(
+    1,
+    ...ports.map((p) => (p.exposed ? EXPOSED_GLYPH + " exposed" : "local").length)
+  );
+  const groups = groupPorts(ports, rows);
   const total = groups.reduce((n, g) => n + g.ports.length, 0);
   const more = Math.max(0, total - PORTS_CAP);
   let budget = PORTS_CAP;
+  let flat = 0;
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Box_default, { flexDirection: "column", children: [
     groups.map((g) => {
       if (budget <= 0) return null;
@@ -38916,19 +38943,25 @@ function PortsPane({ ports, rows }) {
       budget -= shown.length;
       return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_react34.default.Fragment, { children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { bold: true, children: g.heading }),
-        shown.map((p) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-          PortRow,
-          {
-            p,
-            portW,
-            commandW,
-            badgeW
-          },
-          `${g.key}:${p.port}:${p.pid}`
-        ))
+        shown.map((p) => {
+          const idx = flat++;
+          return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            PortRow,
+            {
+              p,
+              portW,
+              commandW,
+              badgeW,
+              selected: cursor !== null && idx === cursor
+            },
+            `${g.key}:${p.port}:${p.pid}`
+          );
+        })
       ] }, g.key);
     }),
-    more > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: `  +${more} more` }) : null
+    more > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: `  +${more} more` }) : null,
+    confirmLine,
+    statusLine
   ] });
 }
 var CURRENT_GLYPH = "\u25B8";

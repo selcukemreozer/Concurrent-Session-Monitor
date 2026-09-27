@@ -27,6 +27,14 @@ import {
   PhasesPane,
   SUBAGENT_GLYPH,
   SUBAGENT_COLOR,
+  PORTS_CAP,
+  PORT_CURSOR_GLYPH,
+  WARP_HEADING,
+  OTHER_HEADING,
+  groupPorts,
+  visiblePorts,
+  movePortCursor,
+  confirmPrompt,
 } from "./Card.js";
 import { renderToString } from "ink";
 import chalk from "chalk";
@@ -907,17 +915,79 @@ describe("PortsPane (PORT-05 port pane render)", () => {
     expect(out).toContain("vite");
   });
 
-  it("renders unattributed ports under a final 'Sen (kullanici)' user group placed last (port user bucket)", () => {
+  it("renders session, then 'Warp'ta başlattın', then 'Diğer' groups in that order (260927-8ge D-01)", () => {
     const row = makeRow({ session_id: "abcdef0123456789", folder: "proj-a", branch: "main", pid: 111 });
     const owned = makePort({ pid: 111, ancestryPids: [111], port: 3000, command: "vite" });
-    const orphan = makePort({ pid: 999, ancestryPids: [999], port: 8080, command: "python" });
-    const out = stripAnsi(renderToString(<PortsPane ports={[owned, orphan]} rows={[row]} />));
-    expect(out).toContain("Sen (kullanici)");
+    const warp = makePort({ pid: 555, ancestryPids: [555, 550], port: 4000, command: "next", origin: "warp", tty: "ttys013" });
+    const other = makePort({ pid: 999, ancestryPids: [999], port: 8080, command: "python" });
+    const out = stripAnsi(renderToString(<PortsPane ports={[other, warp, owned]} rows={[row]} />));
+    expect(out).not.toContain("Sen (kullanici)");
     const lines = out.split("\n");
-    const sessionIdx = lines.findIndex((l) => l.includes("proj-a"));
-    const userIdx = lines.findIndex((l) => l.includes("Sen (kullanici)"));
-    expect(sessionIdx).toBeGreaterThanOrEqual(0);
-    expect(userIdx).toBeGreaterThan(sessionIdx); // user group renders LAST
+    const idx = (needle: string) => lines.findIndex((l) => l.includes(needle));
+    expect(idx("proj-a")).toBeGreaterThanOrEqual(0);
+    expect(idx("3000")).toBeGreaterThan(idx("proj-a"));
+    expect(idx(WARP_HEADING)).toBeGreaterThan(idx("3000"));
+    expect(idx("4000")).toBeGreaterThan(idx(WARP_HEADING));
+    expect(idx(OTHER_HEADING)).toBeGreaterThan(idx("4000"));
+    expect(idx("8080")).toBeGreaterThan(idx(OTHER_HEADING));
+  });
+
+  it("omits empty warp/other groups", () => {
+    const other = makePort({ pid: 999, ancestryPids: [999], port: 8080 });
+    const warp = makePort({ pid: 555, ancestryPids: [555], port: 4000, origin: "warp" });
+    const o1 = stripAnsi(renderToString(<PortsPane ports={[other]} rows={[]} />));
+    expect(o1).toContain(OTHER_HEADING);
+    expect(o1).not.toContain(WARP_HEADING);
+    const o2 = stripAnsi(renderToString(<PortsPane ports={[warp]} rows={[]} />));
+    expect(o2).toContain(WARP_HEADING);
+    expect(o2).not.toContain(OTHER_HEADING);
+  });
+
+  it("shows the sanitized tty after the pid on warp rows only (260927-8ge D-02)", () => {
+    const warp = makePort({ pid: 555, port: 4000, origin: "warp", tty: "ttys013" });
+    const evil = makePort({ pid: 556, port: 4001, origin: "warp", tty: "tty" + ESC + "s9" });
+    const other = makePort({ pid: 999, port: 8080, tty: "ttys099" });
+    const raw = renderToString(<PortsPane ports={[warp, evil, other]} rows={[]} />);
+    const out = stripAnsi(raw);
+    const lines = out.split("\n");
+    expect(lines.find((l) => l.includes("4000"))!.trimEnd().endsWith("pid 555 · ttys013")).toBe(true);
+    const evilLine = raw.split("\n").find((l) => l.includes("4001")) ?? "";
+    expect(evilLine).toContain("ttys9");
+    expect(evilLine).not.toContain(ESC);
+    expect(lines.find((l) => l.includes("8080"))).not.toContain("ttys099");
+  });
+
+  it("confirmPrompt/PortsPane render the SIGTERM and SIGKILL prompts, sanitized (D-05)", () => {
+    const c = { port: 3000, pid: 42, command: "node", signal: "SIGTERM" as const };
+    expect(confirmPrompt(c)).toBe("kill :3000 node (pid 42)? y/n");
+    expect(confirmPrompt({ ...c, signal: "SIGKILL" })).toBe("kill SIGKILL :3000 node (pid 42)? y/n");
+    expect(confirmPrompt({ ...c, command: "ev" + ESC + "il" })).not.toContain(ESC);
+    const out = stripAnsi(
+      renderToString(<PortsPane ports={[makePort({ port: 3000, pid: 42 })]} rows={[]} confirm={c} />),
+    );
+    expect(out).toContain("kill :3000 node (pid 42)? y/n");
+  });
+
+  it("renders the status line, also under the empty state", () => {
+    const st = "SIGTERM → :3000 gönderildi";
+    const out = stripAnsi(renderToString(<PortsPane ports={[makePort()]} rows={[]} status={st} />));
+    expect(out).toContain(st);
+    const empty = stripAnsi(renderToString(<PortsPane ports={[]} rows={[]} status={st} />));
+    expect(empty).toContain("no listening ports");
+    expect(empty).toContain(st);
+  });
+
+  it("marks exactly the cursor row with the ❯ glyph; no cursor → no glyph (D-04)", () => {
+    const row = makeRow({ session_id: "abcdef0123456789", folder: "proj-a", branch: "main", pid: 111 });
+    const owned = makePort({ pid: 111, ancestryPids: [111], port: 3000, command: "vite" });
+    const warp = makePort({ pid: 555, ancestryPids: [555], port: 4000, command: "next", origin: "warp" });
+    const other = makePort({ pid: 999, ancestryPids: [999], port: 8080, command: "python" });
+    const out = stripAnsi(renderToString(<PortsPane ports={[owned, warp, other]} rows={[row]} cursor={1} />));
+    const marked = out.split("\n").filter((l) => l.startsWith(PORT_CURSOR_GLYPH + " "));
+    expect(marked).toHaveLength(1);
+    expect(marked[0]).toContain("4000");
+    const none = stripAnsi(renderToString(<PortsPane ports={[owned, warp, other]} rows={[row]} />));
+    expect(none).not.toContain(PORT_CURSOR_GLYPH);
   });
 
   it("marks an exposed port with the ⇅ glyph and the word exposed (port badge)", () => {
@@ -1024,7 +1094,7 @@ describe("PortsPane (PORT-05 port pane render)", () => {
     };
 
     // Keep only PORT-info lines (each has a "pid " segment) — excludes the
-    // `Sen (kullanici)` heading (no middots) and any `+N more`.
+    // `Diğer` heading (no middots) and any `+N more`.
     const portLines = out.split("\n").filter((l) => l.includes("pid "));
     expect(portLines.length).toBe(3);
     for (const l of portLines) {
@@ -1353,5 +1423,40 @@ describe("PhasesPane (PANEL-07 FAZLAR phase table)", () => {
     );
     expect(outB).toContain("…"); // U+2026
     expect(outB).not.toContain("a".repeat(37)); // never the full 37-char name
+  });
+});
+
+describe("port grouping helpers (260927-8ge)", () => {
+  it("groupPorts orders session -> warp -> other and omits empty groups", () => {
+    const row = makeRow({ session_id: "abcdef0123456789", folder: "proj-a", pid: 111 });
+    const owned = makePort({ pid: 111, ancestryPids: [111], port: 3000 });
+    const warp = makePort({ pid: 555, ancestryPids: [555], port: 4000, origin: "warp" });
+    const other = makePort({ pid: 999, ancestryPids: [999], port: 8080 });
+    const g = groupPorts([other, warp, owned], [row]);
+    expect(g.map((x) => x.heading)).toEqual([expect.stringContaining("proj-a"), WARP_HEADING, OTHER_HEADING]);
+    expect(groupPorts([other], []).map((x) => x.heading)).toEqual([OTHER_HEADING]);
+  });
+
+  it("visiblePorts flattens in group order and caps at PORTS_CAP", () => {
+    const row = makeRow({ session_id: "abcdef0123456789", pid: 111 });
+    const owned = makePort({ pid: 111, ancestryPids: [111], port: 3000 });
+    const warp = makePort({ pid: 555, ancestryPids: [555], port: 4000, origin: "warp" });
+    const other = makePort({ pid: 999, ancestryPids: [999], port: 8080 });
+    expect(visiblePorts(groupPorts([other, warp, owned], [row])).map((p) => p.port)).toEqual([3000, 4000, 8080]);
+    const many = Array.from({ length: 15 }, (_, i) => makePort({ pid: 999, ancestryPids: [999], port: 3000 + i }));
+    expect(visiblePorts(groupPorts(many, []))).toHaveLength(PORTS_CAP);
+  });
+
+  it("movePortCursor reveals at 0, clamps, and nulls on an empty list", () => {
+    expect(movePortCursor(null, 1, 3)).toBe(0);
+    expect(movePortCursor(null, -1, 3)).toBe(0);
+    expect(movePortCursor(0, -1, 3)).toBe(0);
+    expect(movePortCursor(2, 1, 3)).toBe(2);
+    expect(movePortCursor(1, 1, 3)).toBe(2);
+    expect(movePortCursor(5, 1, 0)).toBeNull();
+  });
+
+  it("PORT_CURSOR_GLYPH is the single-cell ❯", () => {
+    expect(PORT_CURSOR_GLYPH).toBe("❯");
   });
 });
