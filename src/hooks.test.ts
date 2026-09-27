@@ -1397,3 +1397,97 @@ describe("turn state end-to-end (260927-46l)", () => {
     expect(r.running).toBe(true);
   });
 });
+
+// --- Quick task 260927-4tv: idle-waiting end-to-end with the REAL hook
+// scripts. Time is derived from the written turn.json ts (readAll(ts + offset)),
+// never from sleeping.
+describe("idle-waiting end-to-end (260927-4tv)", () => {
+  const sessDir = (id: string) => path.join(tmp, "sessions", id);
+  let prior: string | undefined;
+
+  beforeEach(() => {
+    prior = process.env.CSM_STORE_DIR;
+    process.env.CSM_STORE_DIR = tmp;
+  });
+
+  afterEach(() => {
+    if (prior === undefined) delete process.env.CSM_STORE_DIR;
+    else process.env.CSM_STORE_DIR = prior;
+  });
+
+  function seed(id: string): void {
+    fs.mkdirSync(sessDir(id), { recursive: true });
+    fs.writeFileSync(
+      path.join(sessDir(id), "session.json"),
+      JSON.stringify({
+        schema_version: 1,
+        session_id: id,
+        folder: id,
+        branch: "main",
+        model: "unknown",
+        start_time: new Date(Date.now() - 10_000).toISOString(),
+      }),
+      { mode: 0o600 },
+    );
+    run(onUserPrompt, { session_id: id, hook_event_name: "UserPromptSubmit" });
+  }
+
+  function run(script: string, payload: Record<string, unknown>): void {
+    const res = runHook(script, JSON.stringify(payload), tmp);
+    expect(res.status).toBe(0);
+    expect(res.stdout).toBe("");
+  }
+
+  const readTurnFile = (id: string): { state: string; ts: string } =>
+    JSON.parse(fs.readFileSync(path.join(sessDir(id), "turn.json"), "utf8"));
+  const rowAt = (id: string, at: number) => readAll(at).find((r) => r.session_id === id)!;
+
+  it("Z1 prompt → Stop → +9s not waiting → +11s waiting → new prompt clears it", () => {
+    const id = "z1";
+    seed(id);
+    run(onActivity, { session_id: id, hook_event_name: "Stop", stop_hook_active: false });
+    const idle = readTurnFile(id);
+    expect(idle.state).toBe("idle");
+    const T = Date.parse(idle.ts);
+
+    let r = rowAt(id, T + 9_000);
+    expect(r.attention).toBe(false);
+    expect(r.running).toBe(false);
+
+    r = rowAt(id, T + 11_000);
+    expect(r.attention).toBe(true);
+    expect(r.attention_type).toBe("idle_prompt");
+    expect(r.attention_ts).toBe(idle.ts);
+    expect(r.alive).toBe(true);
+
+    run(onUserPrompt, { session_id: id, hook_event_name: "UserPromptSubmit" });
+    const running = readTurnFile(id);
+    expect(running.state).toBe("running");
+    const P = Date.parse(running.ts);
+    r = rowAt(id, P + 11_000);
+    expect(r.attention).toBe(false);
+    expect(r.running).toBe(true);
+  });
+
+  it("Z2 a subagent Stop leaves the turn running → no idle-waiting", () => {
+    const id = "z2";
+    seed(id);
+    run(onActivity, { session_id: id, hook_event_name: "Stop", agent_id: "agent-x" });
+    const t = readTurnFile(id);
+    expect(t.state).toBe("running");
+    const r = rowAt(id, Date.parse(t.ts) + 11_000);
+    expect(r.attention).toBe(false);
+    expect(r.running).toBe(true);
+  });
+
+  it("Z3 OR path: an idle_prompt Notification after the Stop shows waiting before the 10s threshold", () => {
+    const id = "z3";
+    seed(id);
+    run(onActivity, { session_id: id, hook_event_name: "Stop", stop_hook_active: false });
+    run(onNotification, { session_id: id, hook_event_name: "Notification", notification_type: "idle_prompt" });
+    const attnTs = JSON.parse(fs.readFileSync(path.join(sessDir(id), "attention.json"), "utf8")).ts;
+    const r = rowAt(id, Date.now());
+    expect(r.attention).toBe(true);
+    expect(r.attention_ts).toBe(attnTs);
+  });
+});

@@ -25,6 +25,7 @@ afterEach(() => {
   delete process.env.CSM_SKILL_WINDOW_MS;
   delete process.env.CSM_ATTN_WINDOW_MS;
   delete process.env.CSM_RUN_WINDOW_MS;
+  delete process.env.CSM_IDLE_WAIT_MS;
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
@@ -1012,15 +1013,17 @@ describe("running state (260927-46l)", () => {
     expect(!r.alive || r.readyToPrune).toBe(false);
   });
 
-  it("N2 idle baseline: same fixture with state idle → not running, not alive, readyToPrune, stale dot", () => {
+  it("N2 idle turn (260927-4tv): not running; idle-waiting keeps it alive as waiting", () => {
     const now = Date.now();
     const dir = seedSession("n2", ago(now, 600_000), { heartbeat: ago(now, 300_000) });
     writeTurn(dir, { state: "idle", ts: ago(now, 360_000) });
     const r = rowOf("n2", now);
     expect(r.running).toBe(false);
-    expect(r.alive).toBe(false);
-    expect(r.readyToPrune).toBe(true);
-    expect(r.dotState).toBe("stale");
+    expect(r.attention).toBe(true);
+    expect(r.attention_type).toBe("idle_prompt");
+    expect(r.alive).toBe(true);
+    expect(r.readyToPrune).toBe(false);
+    expect(r.dotState).toBe("idle");
   });
 
   it("N3 self-heal: missing, torn, unknown state, bad ts, numeric ts → running false, row present", () => {
@@ -1132,5 +1135,169 @@ describe("running state (260927-46l)", () => {
     const rw = rowOf("n7-wait", now);
     expect(rw.attention).toBe(true);
     expect(rw.running).toBe(false);
+  });
+});
+
+// --- Quick task 260927-4tv (D-02..D-05): idle-waiting. Once a main-thread Stop
+// has left turn.json "idle" for at least CSM_IDLE_WAIT_MS (default 10s), the
+// session shows ◉ waiting without waiting for Claude Code's ~60s idle_prompt
+// Notification. Bounded by CSM_ATTN_WINDOW_MS; a dead known pid never
+// idle-waits; asking still wins; a Notification's own type/ts win when both hold.
+describe("idle-waiting (260927-4tv)", () => {
+  function writeTurn(dir: string, snap: Record<string, unknown>): void {
+    fs.writeFileSync(path.join(dir, "turn.json"), JSON.stringify(snap), { mode: 0o600 });
+  }
+  const ago = (now: number, ms: number) => new Date(now - ms).toISOString();
+  const rowOf = (id: string, now: number, probe = deadProbe) =>
+    readAll(now, probe).find((x) => x.session_id === id)!;
+
+  beforeEach(() => {
+    process.env.CSM_STALE_MS = "120000";
+  });
+
+  it("I1 threshold: idle 9s → not waiting; idle 11s → waiting idle_prompt with the turn ts; future ts → not waiting", () => {
+    const now = Date.now();
+    const a = seedSession("i1-9s", ago(now, 600_000), { heartbeat: ago(now, 9_000) });
+    writeTurn(a, { state: "idle", ts: ago(now, 9_000) });
+    const ra = rowOf("i1-9s", now);
+    expect(ra.attention).toBe(false);
+    expect(ra.running).toBe(false);
+
+    const b = seedSession("i1-11s", ago(now, 600_000), { heartbeat: ago(now, 11_000) });
+    const turnTs = ago(now, 11_000);
+    writeTurn(b, { state: "idle", ts: turnTs });
+    const rb = rowOf("i1-11s", now);
+    expect(rb.attention).toBe(true);
+    expect(rb.attention_type).toBe("idle_prompt");
+    expect(rb.attention_ts).toBe(turnTs);
+    expect(rb.running).toBe(false);
+    expect(rb.asking).toBe(false);
+
+    const c = seedSession("i1-future", ago(now, 600_000), { heartbeat: ago(now, 5_000) });
+    writeTurn(c, { state: "idle", ts: new Date(now + 5_000).toISOString() });
+    expect(rowOf("i1-future", now).attention).toBe(false);
+  });
+
+  it("I2 keepalive with a known-alive pid: heartbeat 300s, idle 300s → waiting, alive, not readyToPrune, idle dot", () => {
+    const now = Date.now();
+    const dir = seedSession("i2", ago(now, 600_000), { pid: 4242, heartbeat: ago(now, 300_000) });
+    writeTurn(dir, { state: "idle", ts: ago(now, 300_000) });
+    const r = rowOf("i2", now, aliveProbe);
+    expect(r.attention).toBe(true);
+    expect(r.alive).toBe(true);
+    expect(r.readyToPrune).toBe(false);
+    expect(r.dotState).toBe("idle");
+  });
+
+  it("I3 ceiling: idle 31 min → no waiting, reaped; CSM_ATTN_WINDOW_MS=60000 caps it (TTL still alive)", () => {
+    const now = Date.now();
+    const a = seedSession("i3-a", ago(now, 7_200_000), { heartbeat: ago(now, 1_860_000) });
+    writeTurn(a, { state: "idle", ts: ago(now, 1_860_000) });
+    const ra = rowOf("i3-a", now);
+    expect(ra.attention).toBe(false);
+    expect(ra.alive).toBe(false);
+    expect(ra.readyToPrune).toBe(true);
+
+    process.env.CSM_ATTN_WINDOW_MS = "60000";
+    const b = seedSession("i3-b", ago(now, 600_000), { heartbeat: ago(now, 90_000) });
+    writeTurn(b, { state: "idle", ts: ago(now, 90_000) });
+    const rb = rowOf("i3-b", now);
+    expect(rb.attention).toBe(false);
+    expect(rb.alive).toBe(true); // still within the 2-min TTL
+  });
+
+  it("I4 CSM_IDLE_WAIT_MS override; NaN/negative degrade to 10s; 0 accepted", () => {
+    const now = Date.now();
+    const mk = (id: string, idleMs: number) => {
+      const dir = seedSession(id, ago(now, 600_000), { heartbeat: ago(now, 5_000) });
+      writeTurn(dir, { state: "idle", ts: ago(now, idleMs) });
+    };
+    process.env.CSM_IDLE_WAIT_MS = "60000";
+    mk("i4-30s", 30_000);
+    mk("i4-90s", 90_000);
+    expect(rowOf("i4-30s", now).attention).toBe(false);
+    expect(rowOf("i4-90s", now).attention).toBe(true);
+
+    mk("i4-11s", 11_000);
+    mk("i4-5s", 5_000);
+    for (const bad of ["abc", "-5"]) {
+      process.env.CSM_IDLE_WAIT_MS = bad;
+      expect(rowOf("i4-11s", now).attention, bad).toBe(true);
+      expect(rowOf("i4-5s", now).attention, bad).toBe(false);
+    }
+
+    process.env.CSM_IDLE_WAIT_MS = "0";
+    mk("i4-1s", 1_000);
+    expect(rowOf("i4-1s", now).attention).toBe(true);
+  });
+
+  it("I5 dead known pid never idle-waits: fresh heartbeat → stale dot but alive; old heartbeat → reaped", () => {
+    const now = Date.now();
+    const a = seedSession("i5-a", ago(now, 600_000), { pid: 4242, heartbeat: ago(now, 5_000) });
+    writeTurn(a, { state: "idle", ts: ago(now, 20_000) });
+    const ra = rowOf("i5-a", now, deadProbe);
+    expect(ra.attention).toBe(false);
+    expect(ra.dotState).toBe("stale");
+    expect(ra.alive).toBe(true); // fresh-heartbeat TTL (SC-4)
+
+    const b = seedSession("i5-b", ago(now, 600_000), { pid: 4242, heartbeat: ago(now, 300_000) });
+    writeTurn(b, { state: "idle", ts: ago(now, 300_000) });
+    const rb = rowOf("i5-b", now, deadProbe);
+    expect(rb.attention).toBe(false);
+    expect(rb.alive).toBe(false);
+    expect(rb.readyToPrune).toBe(true);
+  });
+
+  it("I6 self-heal: missing, torn, unknown state, bad ts, numeric ts, running → no idle-waiting, row present", () => {
+    const now = Date.now();
+    const cases: Array<[string, ((dir: string) => void) | null]> = [
+      ["i6-missing", null],
+      ["i6-torn", (d) => fs.writeFileSync(path.join(d, "turn.json"), '{"state":"idl', { mode: 0o600 })],
+      ["i6-done", (d) => writeTurn(d, { state: "done", ts: ago(now, 20_000) })],
+      ["i6-badts", (d) => writeTurn(d, { state: "idle", ts: "not-a-date" })],
+      ["i6-numts", (d) => writeTurn(d, { state: "idle", ts: now - 20_000 })],
+      ["i6-running", (d) => writeTurn(d, { state: "running", ts: ago(now, 20_000) })],
+    ];
+    for (const [id, write] of cases) {
+      const dir = seedSession(id, ago(now, 600_000), { heartbeat: ago(now, 5_000) });
+      if (write) write(dir);
+    }
+    const rows = readAll(now, deadProbe);
+    for (const [id] of cases) {
+      const r = rows.find((x) => x.session_id === id);
+      expect(r, id).toBeDefined();
+      expect(r!.attention, id).toBe(false);
+    }
+    expect(rows.find((x) => x.session_id === "i6-running")!.running).toBe(true);
+  });
+
+  it("I7 precedence: an open question beats idle-waiting", () => {
+    const now = Date.now();
+    const dir = seedSession("i7", ago(now, 600_000), { heartbeat: ago(now, 30_000) });
+    writeTurn(dir, { state: "idle", ts: ago(now, 20_000) });
+    fs.writeFileSync(path.join(dir, "asking.json"), JSON.stringify({ ts: ago(now, 5_000) }), { mode: 0o600 });
+    const r = rowOf("i7", now);
+    expect(r.asking).toBe(true);
+    expect(r.attention).toBe(false);
+    expect(r.attention_type).toBeUndefined();
+    expect(r.attention_ts).toBeUndefined();
+    expect(r.running).toBe(false);
+  });
+
+  it("I8 Notification wins type/ts when it and idle-waiting both hold", () => {
+    const now = Date.now();
+    const dir = seedSession("i8", ago(now, 600_000), { heartbeat: ago(now, 60_000) });
+    writeTurn(dir, { state: "idle", ts: ago(now, 60_000) });
+    fs.writeFileSync(path.join(dir, "resumed"), ago(now, 60_000), { mode: 0o600 });
+    const notifTs = ago(now, 30_000);
+    fs.writeFileSync(
+      path.join(dir, "attention.json"),
+      JSON.stringify({ type: "permission_prompt", ts: notifTs }),
+      { mode: 0o600 },
+    );
+    const r = rowOf("i8", now);
+    expect(r.attention).toBe(true);
+    expect(r.attention_type).toBe("permission_prompt");
+    expect(r.attention_ts).toBe(notifTs);
   });
 });
