@@ -10436,10 +10436,10 @@ var require_react_reconciler_development = __commonJS({
           fiber = fiber.next, id--;
         return fiber;
       }
-      function copyWithSetImpl(obj, path6, index, value) {
-        if (index >= path6.length) return value;
-        var key = path6[index], updated = isArrayImpl(obj) ? obj.slice() : assign({}, obj);
-        updated[key] = copyWithSetImpl(obj[key], path6, index + 1, value);
+      function copyWithSetImpl(obj, path8, index, value) {
+        if (index >= path8.length) return value;
+        var key = path8[index], updated = isArrayImpl(obj) ? obj.slice() : assign({}, obj);
+        updated[key] = copyWithSetImpl(obj[key], path8, index + 1, value);
         return updated;
       }
       function copyWithRename(obj, oldPath, newPath) {
@@ -10466,11 +10466,11 @@ var require_react_reconciler_development = __commonJS({
         );
         return updated;
       }
-      function copyWithDeleteImpl(obj, path6, index) {
-        var key = path6[index], updated = isArrayImpl(obj) ? obj.slice() : assign({}, obj);
-        if (index + 1 === path6.length)
+      function copyWithDeleteImpl(obj, path8, index) {
+        var key = path8[index], updated = isArrayImpl(obj) ? obj.slice() : assign({}, obj);
+        if (index + 1 === path8.length)
           return isArrayImpl(updated) ? updated.splice(key, 1) : delete updated[key], updated;
-        updated[key] = copyWithDeleteImpl(obj[key], path6, index + 1);
+        updated[key] = copyWithDeleteImpl(obj[key], path8, index + 1);
         return updated;
       }
       function shouldSuspendImpl() {
@@ -23747,29 +23747,29 @@ var require_react_reconciler_development = __commonJS({
       var didWarnAboutNestedUpdates = false;
       var didWarnAboutFindNodeInStrictMode = {};
       var overrideHookState = null, overrideHookStateDeletePath = null, overrideHookStateRenamePath = null, overrideProps = null, overridePropsDeletePath = null, overridePropsRenamePath = null, scheduleUpdate = null, scheduleRetry = null, setErrorHandler = null, setSuspenseHandler = null;
-      overrideHookState = function(fiber, id, path6, value) {
+      overrideHookState = function(fiber, id, path8, value) {
         id = findHook(fiber, id);
-        null !== id && (path6 = copyWithSetImpl(id.memoizedState, path6, 0, value), id.memoizedState = path6, id.baseState = path6, fiber.memoizedProps = assign({}, fiber.memoizedProps), path6 = enqueueConcurrentRenderForLane(fiber, 2), null !== path6 && scheduleUpdateOnFiber(path6, fiber, 2));
+        null !== id && (path8 = copyWithSetImpl(id.memoizedState, path8, 0, value), id.memoizedState = path8, id.baseState = path8, fiber.memoizedProps = assign({}, fiber.memoizedProps), path8 = enqueueConcurrentRenderForLane(fiber, 2), null !== path8 && scheduleUpdateOnFiber(path8, fiber, 2));
       };
-      overrideHookStateDeletePath = function(fiber, id, path6) {
+      overrideHookStateDeletePath = function(fiber, id, path8) {
         id = findHook(fiber, id);
-        null !== id && (path6 = copyWithDeleteImpl(id.memoizedState, path6, 0), id.memoizedState = path6, id.baseState = path6, fiber.memoizedProps = assign({}, fiber.memoizedProps), path6 = enqueueConcurrentRenderForLane(fiber, 2), null !== path6 && scheduleUpdateOnFiber(path6, fiber, 2));
+        null !== id && (path8 = copyWithDeleteImpl(id.memoizedState, path8, 0), id.memoizedState = path8, id.baseState = path8, fiber.memoizedProps = assign({}, fiber.memoizedProps), path8 = enqueueConcurrentRenderForLane(fiber, 2), null !== path8 && scheduleUpdateOnFiber(path8, fiber, 2));
       };
       overrideHookStateRenamePath = function(fiber, id, oldPath, newPath) {
         id = findHook(fiber, id);
         null !== id && (oldPath = copyWithRename(id.memoizedState, oldPath, newPath), id.memoizedState = oldPath, id.baseState = oldPath, fiber.memoizedProps = assign({}, fiber.memoizedProps), oldPath = enqueueConcurrentRenderForLane(fiber, 2), null !== oldPath && scheduleUpdateOnFiber(oldPath, fiber, 2));
       };
-      overrideProps = function(fiber, path6, value) {
-        fiber.pendingProps = copyWithSetImpl(fiber.memoizedProps, path6, 0, value);
+      overrideProps = function(fiber, path8, value) {
+        fiber.pendingProps = copyWithSetImpl(fiber.memoizedProps, path8, 0, value);
         fiber.alternate && (fiber.alternate.pendingProps = fiber.pendingProps);
-        path6 = enqueueConcurrentRenderForLane(fiber, 2);
-        null !== path6 && scheduleUpdateOnFiber(path6, fiber, 2);
+        path8 = enqueueConcurrentRenderForLane(fiber, 2);
+        null !== path8 && scheduleUpdateOnFiber(path8, fiber, 2);
       };
-      overridePropsDeletePath = function(fiber, path6) {
-        fiber.pendingProps = copyWithDeleteImpl(fiber.memoizedProps, path6, 0);
+      overridePropsDeletePath = function(fiber, path8) {
+        fiber.pendingProps = copyWithDeleteImpl(fiber.memoizedProps, path8, 0);
         fiber.alternate && (fiber.alternate.pendingProps = fiber.pendingProps);
-        path6 = enqueueConcurrentRenderForLane(fiber, 2);
-        null !== path6 && scheduleUpdateOnFiber(path6, fiber, 2);
+        path8 = enqueueConcurrentRenderForLane(fiber, 2);
+        null !== path8 && scheduleUpdateOnFiber(path8, fiber, 2);
       };
       overridePropsRenamePath = function(fiber, oldPath, newPath) {
         fiber.pendingProps = copyWithRename(
@@ -33449,8 +33449,8 @@ var cleanupYogaNode = (node) => {
 var currentUpdatePriority = import_constants.NoEventPriority;
 var currentRootNode;
 async function loadPackageJson() {
-  const fs6 = await import("node:fs");
-  const content = fs6.readFileSync(new URL("../package.json", import.meta.url), "utf8");
+  const fs8 = await import("node:fs");
+  const content = fs8.readFileSync(new URL("../package.json", import.meta.url), "utf8");
   const parsedContent = JSON.parse(content);
   return {
     name: parsedContent?.name,
@@ -35846,8 +35846,8 @@ function Text({ color, backgroundColor, dimColor = false, bold = false, italic =
 }
 
 // node_modules/ink/build/components/ErrorOverview.js
-var cleanupPath = (path6) => {
-  return path6?.replace(`file://${cwd()}/`, "");
+var cleanupPath = (path8) => {
+  return path8?.replace(`file://${cwd()}/`, "");
 };
 var stackUtils = new import_stack_utils.default({
   cwd: cwd(),
@@ -39200,9 +39200,9 @@ function App2() {
       resolvePlanningRoots(liveRowsRef.current).then((roots) => {
         if (!mounted.current) return void 0;
         setPlanningRoots(roots);
-        const fs6 = buildFocusSet(liveRowsRef.current, roots);
-        const i = fs6.length ? focusedIndexRef.current % fs6.length : 0;
-        const root = fs6.length ? fs6[i].root : null;
+        const fs8 = buildFocusSet(liveRowsRef.current, roots);
+        const i = fs8.length ? focusedIndexRef.current % fs8.length : 0;
+        const root = fs8.length ? fs8[i].root : null;
         const shim = shimRef.current;
         if (shim && root) {
           return scanProgress(root, shim).then((p) => {
@@ -39340,6 +39340,99 @@ function run() {
   return render_default((0, import_react37.createElement)(Root), { alternateScreen: true });
 }
 
+// src/panel/registration.ts
+import * as fs7 from "node:fs";
+import * as path7 from "node:path";
+import { execFileSync as execFileSync3 } from "node:child_process";
+
+// src/store.ts
+import * as fs6 from "node:fs";
+import * as path6 from "node:path";
+var DIR_MODE = 448;
+var FILE_MODE = 384;
+function writeSnapshot(dir, name, data) {
+  fs6.mkdirSync(dir, { recursive: true, mode: DIR_MODE });
+  const target = path6.join(dir, name);
+  const tmp = path6.join(
+    dir,
+    `.${name}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`
+  );
+  fs6.writeFileSync(tmp, JSON.stringify(data), { mode: FILE_MODE });
+  fs6.renameSync(tmp, target);
+}
+
+// src/panel/registration.ts
+var PANEL_FILE = "panel.json";
+var MAX_URL_LEN = 2048;
+var MAX_TERM_LEN = 64;
+var TTY_PATTERN = /^[A-Za-z0-9._/-]{1,64}$/;
+function validWarpFocusUrl(raw) {
+  if (typeof raw !== "string") return null;
+  if (raw.length === 0 || raw.length > MAX_URL_LEN) return null;
+  if (sanitize(raw) !== raw) return null;
+  if (/\s/.test(raw)) return null;
+  try {
+    return new URL(raw).protocol === "warp:" ? raw : null;
+  } catch {
+    return null;
+  }
+}
+function buildPanelRecord(opts) {
+  const { pid, env: env3, now, tty: tty3 } = opts;
+  const rawTerm = env3.TERM_PROGRAM;
+  const term = typeof rawTerm === "string" ? sanitize(rawTerm).slice(0, MAX_TERM_LEN) : "";
+  return {
+    schema_version: 1,
+    pid,
+    started: now.toISOString(),
+    term_program: term === "" ? null : term,
+    warp_focus_url: env3.TERM_PROGRAM === "WarpTerminal" ? validWarpFocusUrl(env3.WARP_FOCUS_URL) : null,
+    tty: tty3
+  };
+}
+function detectTty(pid = process.pid) {
+  try {
+    if (process.stdout.isTTY !== true) return null;
+    const out = execFileSync3("ps", ["-o", "tty=", "-p", String(pid)], {
+      encoding: "utf8",
+      timeout: 500,
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+    if (out === "??" || out === "-") return null;
+    return TTY_PATTERN.test(out) ? out : null;
+  } catch {
+    return null;
+  }
+}
+function registerPanel(overrides = {}) {
+  try {
+    const pid = overrides.pid ?? process.pid;
+    const record = buildPanelRecord({
+      pid,
+      env: overrides.env ?? process.env,
+      now: overrides.now ?? /* @__PURE__ */ new Date(),
+      tty: overrides.tty !== void 0 ? overrides.tty : detectTty(pid)
+    });
+    writeSnapshot(storeRoot(), PANEL_FILE, record);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function unregisterPanel(pid = process.pid) {
+  try {
+    const file = path7.join(storeRoot(), PANEL_FILE);
+    const parsed = JSON.parse(fs7.readFileSync(file, "utf8"));
+    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) && parsed.pid === pid) {
+      fs7.unlinkSync(file);
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 // src/panel/entry.ts
 var instance;
 var shutdown = () => {
@@ -39351,8 +39444,14 @@ var shutdown = () => {
 };
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
+process.on("SIGHUP", shutdown);
+process.on("exit", () => {
+  unregisterPanel();
+});
 instance = run();
+registerPanel();
 await instance.waitUntilExit();
+unregisterPanel();
 /*! Bundled license information:
 
 react/cjs/react.production.js:
