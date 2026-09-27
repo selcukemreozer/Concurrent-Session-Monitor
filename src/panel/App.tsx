@@ -4,7 +4,7 @@ import { readAll, type SessionRow } from "../aggregate.js";
 import { pruneSession } from "../prune.js";
 import { sanitize } from "../sanitize.js";
 import { numEnv } from "../env.js";
-import { SessionCard, CompactRow, ConflictBand, PortsPane, PhasesPane } from "./Card.js";
+import { SessionCard, CompactRow, ConflictBand, PortsPane, PhasesPane, SUBAGENT_COLOR } from "./Card.js";
 import { detectConflicts, type Conflict } from "../conflicts.js";
 import { scanPorts, portScanMs, type ScannedPort } from "../ports.js";
 import { scanBranches, branchScanMs, liveBranch } from "../branch.js";
@@ -412,6 +412,11 @@ export function App() {
   ).length;
   const waitingLabel = sanitize(`${nWaiting} waiting`);
   const askingLabel = sanitize(`${nAsking} asking`);
+  // "N subagent" counter (260927-73b D-05): same rules — non-ended display rows
+  // only, consuming the pre-gated d.row.subagent (already false whenever asking
+  // or waiting holds). Counts rows, not background agents.
+  const nSubagent = state.display.filter((d) => !d.ended && d.row.subagent).length;
+  const subagentLabel = sanitize(`${nSubagent} subagent`);
   const clock = sanitize(fmtClock(Date.now()));
 
   // Merge the live-derived branch into each roster row (D-LB-03): App overrides
@@ -456,6 +461,10 @@ export function App() {
           {" · "}
           <Text color={nAsking > 0 ? "magenta" : undefined} bold={nAsking > 0}>
             {askingLabel}
+          </Text>
+          {" · "}
+          <Text color={nSubagent > 0 ? SUBAGENT_COLOR : undefined} bold={nSubagent > 0}>
+            {subagentLabel}
           </Text>
         </Text>
       </Box>

@@ -26,8 +26,9 @@ const READ_GLYPH = "◇";
 
 /**
  * Ink color name for read lines (PANEL-06 D-09): `blue` — deliberately NOT red
- * (conflicts), NOT green/yellow/grey (liveness dots), and NOT cyan (osc8 links +
- * header border). This keeps reads non-colliding with every existing colored cue.
+ * (conflicts), NOT green/yellow/grey (liveness dots), NOT cyan (osc8 links +
+ * header border), and NOT turquoise #40E0D0 (subagent state, 260927-73b). This
+ * keeps reads non-colliding with every existing colored cue.
  */
 const READ_COLOR = "blue";
 
@@ -84,8 +85,8 @@ const NEQ_GLYPH = "≠";
  * The needs-you indicator glyph (ATTN-03 D-03; 260926-vfm): the fisheye `◉`
  * (U+25C9). It is >= 0x00A0 so `sanitize()` preserves it, and it collides with NO
  * reserved cue — NOT the liveness `●`, read `◇`, filled `◆`, conflict `⚠`, swap
- * `↔`, link `↪`, intent `»`, exposed `⇅`, skill `⚙`, current-phase `▸`, or branch
- * `⎇`. It leads TWO detail-free states, and asking takes precedence:
+ * `↔`, link `↪`, intent `»`, exposed `⇅`, skill `⚙`, current-phase `▸`, branch
+ * `⎇`, running `▶`, or subagent `↻`. It leads TWO detail-free states, and asking takes precedence:
  *  - `s.asking` (Claude asked a question via AskUserQuestion; 260926-vfm) renders
  *    `magenta` + `bold` with the literal "asking". The magenta shares its hue with
  *    the PORTS-pane exposed badge but is disambiguated by the ◉ glyph + the
@@ -104,12 +105,33 @@ const ATTENTION_GLYPH = "◉";
  * variation selector, so it stays text-presentation and one cell wide). It
  * leads the SessionCard "running" status line and the CompactRow token. It is
  * >= 0x00A0 so `sanitize()` keeps it, and it is distinct from `●` `◇` `◆` `⚠`
- * `↔` `↪` `»` `⇅` `⚙` `▸` `⎇` `≠` `◉`. Rendered green (a deliberate reuse of the
+ * `↔` `↪` `»` `⇅` `⚙` `▸` `⎇` `≠` `◉` `↻`. Rendered green (a deliberate reuse of the
  * liveness green, since running IS the live/active state) and never bold (it is
- * not a needs-you state). Lowest precedence: asking, then waiting, then running.
- * The row consumes the pre-gated `s.running` boolean with no re-check here.
+ * not a needs-you state). Precedence: asking, then waiting, then running, then
+ * subagent. The row consumes the pre-gated `s.running` boolean with no re-check
+ * here.
  */
 const RUN_GLYPH = "▶";
+
+/**
+ * The subagent indicator glyph (260927-73b D-05): `↻` (U+21BB). It leads the
+ * SessionCard "subagent" status line and the CompactRow token, shown while the
+ * main turn has ended but background subagents/workflows it launched are still
+ * running. It is >= 0x00A0 so `sanitize()` keeps it, and it is distinct from
+ * `●` `◇` `◆` `⚠` `↔` `↪` `»` `⇅` `⚙` `▸` `⎇` `≠` `◉` `▶`. Bold, because it
+ * replaces a needs-you marker. Lowest precedence: asking > waiting > running >
+ * subagent. The row consumes the pre-gated `s.subagent` / `s.subagent_count`
+ * with no re-check here.
+ */
+export const SUBAGENT_GLYPH = "↻";
+
+/**
+ * The subagent state colour (260927-73b D-05): turquoise "#40E0D0", a distinct
+ * reserved hue owned by the subagent state — NOT the plain `cyan` used for the
+ * osc8 links and the header border. On 16-colour terminals chalk downsamples it
+ * to cyan, the only overlap.
+ */
+export const SUBAGENT_COLOR = "#40E0D0";
 
 /**
  * Wrap a URL + label in an OSC-8 hyperlink escape so terminals like Warp render
@@ -180,9 +202,11 @@ function splitPath(rp: string): { name: string; dir: string } {
  * Below the write lines, each active READ path (`s.reads`, card-only per D-10)
  * is rendered on its own line with a distinct blue `◇` glyph (PANEL-06 D-08/D-09)
  * — purely additive, guarded by `s.reads ?? []`, each path sanitized.
- * Under the header at most ONE status line shows, asking > waiting > running:
- * a magenta bold `◉ asking`, a yellowBright bold `◉ waiting`, or a green
- * `▶ running` (260927-46l); the round border takes the same color.
+ * Under the header at most ONE status line shows, asking > waiting > running >
+ * subagent: a magenta bold `◉ asking`, a yellowBright bold `◉ waiting`, a green
+ * `▶ running` (260927-46l), or a bold turquoise (#40E0D0) `↻ subagent` with
+ * ` ×N` when N > 1 background agents run (260927-73b); the round border takes
+ * the same color.
  *
  * Every displayed string is passed through `sanitize()` before Ink render,
  * INCLUDING the shortId (T-02-30 / WR-04). `osc8()` is the sole exemption and
@@ -247,9 +271,18 @@ export function SessionCard({ s }: { s: SessionRow }) {
     <Box
       flexDirection="column"
       borderStyle="round"
-      // Frame mirrors the status line below: asking wins, then waiting, then running.
+      // Frame mirrors the status line below: asking wins, then waiting, then
+      // running, then subagent (260927-73b).
       borderColor={
-        s.asking ? "magenta" : s.attention ? "yellowBright" : s.running ? "green" : undefined
+        s.asking
+          ? "magenta"
+          : s.attention
+            ? "yellowBright"
+            : s.running
+              ? "green"
+              : s.subagent
+                ? SUBAGENT_COLOR
+                : undefined
       }
       paddingX={1}
       marginBottom={1}
@@ -278,6 +311,15 @@ export function SessionCard({ s }: { s: SessionRow }) {
         <Text color="yellowBright" bold>{"  " + ATTENTION_GLYPH + " waiting"}</Text>
       ) : s.running ? (
         <Text color="green">{"  " + RUN_GLYPH + " running"}</Text>
+      ) : s.subagent ? (
+        <Text color={SUBAGENT_COLOR} bold>
+          {"  " +
+            SUBAGENT_GLYPH +
+            " subagent" +
+            (Number.isInteger(s.subagent_count) && (s.subagent_count as number) > 1
+              ? " ×" + sanitize(String(s.subagent_count))
+              : "")}
+        </Text>
       ) : null}
       {intentLine}
       {typeof s.skill === "string" && s.skill.length > 0 ? (
@@ -331,8 +373,9 @@ export function SessionCard({ s }: { s: SessionRow }) {
  * -file count. Rendered as one flat `<Text>` (the dot is a nested colored
  * `<Text>`) so it never wraps to a second visual line. Every field passes
  * through `sanitize()` (T-02-30); the dot uses the same steady `dotColor` map.
- * A leading status token shows at most one state, asking > waiting > running:
- * a magenta `◉`, a yellowBright `◉`, or a green `▶` (260927-46l).
+ * A leading status token shows at most one state, asking > waiting > running >
+ * subagent: a magenta `◉`, a yellowBright `◉`, a green `▶` (260927-46l), or a
+ * bold turquoise `↻` (260927-73b).
  */
 export function CompactRow({ s }: { s: SessionRow }) {
   const uptime = sanitize(fmtUptime(Date.parse(s.start_time), Date.now()));
@@ -344,6 +387,8 @@ export function CompactRow({ s }: { s: SessionRow }) {
         <Text color="yellowBright" bold>{ATTENTION_GLYPH + " "}</Text>
       ) : s.running ? (
         <Text color="green">{RUN_GLYPH + " "}</Text>
+      ) : s.subagent ? (
+        <Text color={SUBAGENT_COLOR} bold>{SUBAGENT_GLYPH + " "}</Text>
       ) : null}
       {sanitize(s.folder)}
       {" · "}
