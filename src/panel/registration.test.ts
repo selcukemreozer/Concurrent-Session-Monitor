@@ -181,7 +181,8 @@ describe("panel self-registration (260927-59z)", () => {
     expect(entry).toMatch(/process\.on\(\s*["']exit["']/);
     expect(entry).toContain("SIGHUP");
     const runIdx = entry.indexOf("instance = run()");
-    const regIdx = entry.indexOf("registerPanel()");
+    // Word-boundary search so the unregisterPanel() calls never match.
+    const regIdx = entry.search(/(?<![A-Za-z])registerPanel\(\)/);
     expect(runIdx).toBeGreaterThanOrEqual(0);
     expect(regIdx).toBeGreaterThan(runIdx);
   });
