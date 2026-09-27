@@ -23,7 +23,12 @@
 // 4. `turn.json` (main-thread Stop only, 260927-46l): the turn ended; state
 //    'idle'. on-user-prompt writes state 'running'. The reader shows ▶ running
 //    from these. A Stop-shaped payload with a truthy agent_id and every
-//    PostToolUse leave it untouched.
+//    PostToolUse leave it untouched. Since 260927-73b it also carries `agents`:
+//    the count of running/pending background subagents/workflows taken from
+//    the main-thread Stop payload's `background_tasks` (the reader shows
+//    ↻ subagent instead of ◉ waiting while it is > 0). The key is omitted when
+//    the count is zero, and older Claude Code versions omit the field, so
+//    turn.json then stays exactly {state, ts}.
 //
 // Write discipline: the heartbeat keeps its FROZEN plain writeFileSync (the
 // liveness contract shared with resolveLastSeen). `resumed`, `ask-resolved`
@@ -40,6 +45,9 @@
 // ISO-8601 timestamps and, in turn.json, the constant state literal "idle".
 // PostToolUse("*") and Stop payloads carry Bash commands, file contents and the
 // last assistant message — none of that is read or written.
+// background_tasks[].type and .status are read ONLY as guards (260927-73b) and
+// only the integer count is persisted — never ids, descriptions, agent types,
+// commands or prompts.
 // D-01 one-writer-per-file: it NEVER writes, renames or deletes attention.json
 // or asking.json (on-notification / on-ask own those shards; clearing is
 // purely reader-side).
@@ -59,6 +67,14 @@ const SAFE_ID = /^[A-Za-z0-9._-]{1,128}$/;
 // DISC-3: completions of the subagent-spawning tool are not a user response.
 const AGENT_SPAWN_TOOLS = new Set(["Task", "Agent"]);
 
+// 260927-73b D-01: background task types that count as "agents still working"
+// (Claude Code's display-mapped names in the Stop payload plus the raw internal
+// names). Shells, monitors and every other task type are not counted.
+const COUNTED_TASK_TYPES = new Set(["subagent", "workflow", "local_agent", "local_workflow"]);
+// 260927-73b D-01: task statuses that mean "still running" (finished, failed or
+// killed tasks are not counted).
+const ACTIVE_TASK_STATUSES = new Set(["running", "pending"]);
+
 // D-01b store-location seam — identical precedence to src/paths.ts: 1)
 // CSM_STORE_DIR override, else 2) ~/.claude/csm. CLAUDE_PLUGIN_DATA is
 // deliberately NOT a tier — it is set only for plugin-hook processes, so
@@ -75,6 +91,26 @@ function readStdin() {
   } catch {
     return "";
   }
+}
+
+// 260927-73b D-01: pure count of still-running background subagents/workflows.
+// Returns 0 unless `tasks` is an array; reads ONLY `type` and `status` of each
+// plain-object entry and never throws on odd shapes. Always an integer.
+function countBackgroundAgents(tasks) {
+  if (!Array.isArray(tasks)) return 0;
+  let n = 0;
+  for (const t of tasks) {
+    if (
+      t &&
+      typeof t === "object" &&
+      !Array.isArray(t) &&
+      COUNTED_TASK_TYPES.has(t.type) &&
+      ACTIVE_TASK_STATUSES.has(t.status)
+    ) {
+      n += 1;
+    }
+  }
+  return n;
 }
 
 // WR-05 atomic write: unique temp in the same dir + renameSync over the target
@@ -132,8 +168,12 @@ try {
       }
       // 260927-46l D-01: a main-thread Stop ends the turn. Kept inside the
       // main-thread branch so a subagent (truthy agent_id) never flips it.
+      // 260927-73b D-01: also record how many background subagents/workflows
+      // are still running; the key is omitted when zero (exactly {state, ts}).
       if (payload.hook_event_name === "Stop") {
-        writeAtomic(dir, "turn.json", JSON.stringify({ state: "idle", ts: iso }));
+        const agents = countBackgroundAgents(payload.background_tasks);
+        const turn = agents > 0 ? { state: "idle", ts: iso, agents } : { state: "idle", ts: iso };
+        writeAtomic(dir, "turn.json", JSON.stringify(turn));
       }
     }
   }

@@ -181,10 +181,20 @@ export interface AskingState {
  * "running" with CSM_RUN_WINDOW_MS. Read by readAll / csm-status as the
  * pre-gated SessionRow.running. A separate shard read needs no SessionState
  * change, so SESSION_SCHEMA_VERSION is NOT bumped (exactly like asking.json).
+ * Since 260927-73b an idle snapshot may also carry the optional `agents` count
+ * of still-running background subagents/workflows (additive, no version bump).
  */
 export interface TurnState {
   /** The constant state literal; anything else is ignored by the reader. */
   state: "running" | "idle";
   /** ISO-8601 timestamp of the transition (Date.parse on the read side; NOT epoch ms). */
   ts: string;
+  /**
+   * Non-negative integer count of the main session's still-running background
+   * subagents/workflows at its last main-thread Stop (quick task 260927-73b),
+   * taken from the Stop payload's `background_tasks`. Absent means zero.
+   * Readers ignore anything that is not a non-negative safe integer. Additive,
+   * so SESSION_SCHEMA_VERSION is NOT bumped.
+   */
+  agents?: number;
 }
