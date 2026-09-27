@@ -1491,3 +1491,140 @@ describe("idle-waiting end-to-end (260927-4tv)", () => {
     expect(r.attention_ts).toBe(attnTs);
   });
 });
+
+// --- Quick task 260927-73b D-01: on a main-thread Stop, on-activity records the
+// integer count of still-running background subagents/workflows from the
+// payload's background_tasks as turn.json `agents` (omitted when zero). Only the
+// integer is persisted; a subagent Stop never touches turn.json.
+describe("subagent count writer (260927-73b D-01)", () => {
+  const sessDir = (id: string) => path.join(tmp, "sessions", id);
+  const ls = (id: string) => fs.readdirSync(sessDir(id)).sort();
+  const turnPath = (id: string) => path.join(sessDir(id), "turn.json");
+  const turnRaw = (id: string) => fs.readFileSync(turnPath(id), "utf8");
+  const readTurn = (id: string) => JSON.parse(turnRaw(id)) as Record<string, unknown>;
+  const silentOk = (res: ReturnType<typeof runHook>) => {
+    expect(res.status).toBe(0);
+    expect(res.stdout).toBe("");
+    expect(res.stderr).toBe("");
+  };
+  const prompt = (id: string) =>
+    silentOk(runHook(onUserPrompt, JSON.stringify({ session_id: id, hook_event_name: "UserPromptSubmit" }), tmp));
+  const stop = (id: string, extra: Record<string, unknown> = {}) =>
+    silentOk(
+      runHook(
+        onActivity,
+        JSON.stringify({ session_id: id, hook_event_name: "Stop", stop_hook_active: false, ...extra }),
+        tmp,
+      ),
+    );
+
+  it("V1 counts running/pending subagent, workflow, local_agent and local_workflow tasks", () => {
+    prompt("sa-1");
+    stop("sa-1", {
+      background_tasks: [
+        { id: "a1", type: "subagent", status: "running", description: "d1" },
+        { id: "a2", type: "workflow", status: "pending" },
+        { type: "local_agent", status: "running" },
+        { type: "local_workflow", status: "pending" },
+      ],
+    });
+    const turn = readTurn("sa-1");
+    expect(turn.state).toBe("idle");
+    expect(turn.agents).toBe(4);
+    expect(Object.keys(turn).sort()).toEqual(["agents", "state", "ts"]);
+    expect(Number.isFinite(Date.parse(turn.ts as string))).toBe(true);
+    expect(fs.statSync(turnPath("sa-1")).mode & 0o777).toBe(0o600);
+  });
+
+  it("V2 filter: shells, monitors, other task types, finished tasks and odd shapes are not counted", () => {
+    prompt("sa-2");
+    stop("sa-2", {
+      background_tasks: [
+        { type: "shell", status: "running" },
+        { type: "monitor", status: "running" },
+        { type: "MCP task", status: "running" },
+        { type: "teammate", status: "running" },
+        { type: "cloud session", status: "running" },
+        { type: "dream", status: "running" },
+        { type: "auto_mode_scan", status: "running" },
+        { type: "subagent", status: "completed" },
+        { type: "subagent", status: "failed" },
+        { type: "subagent" },
+        { type: "workflow", status: "killed" },
+        null,
+        "subagent",
+        42,
+        ["subagent", "running"],
+        { type: "subagent", status: "running" },
+      ],
+    });
+    expect(readTurn("sa-2").agents).toBe(1);
+  });
+
+  it("V3 zero → agents omitted: turn.json stays exactly {state, ts}", () => {
+    const variants: [string, Record<string, unknown>][] = [
+      ["sa-3-absent", {}],
+      ["sa-3-null", { background_tasks: null }],
+      ["sa-3-str", { background_tasks: "x" }],
+      ["sa-3-obj", { background_tasks: {} }],
+      ["sa-3-num", { background_tasks: 3 }],
+      ["sa-3-empty", { background_tasks: [] }],
+      ["sa-3-shell", { background_tasks: [{ type: "shell", status: "running" }] }],
+    ];
+    for (const [id, extra] of variants) {
+      prompt(id);
+      stop(id, extra);
+      const turn = readTurn(id);
+      expect(turn.state, id).toBe("idle");
+      expect(Object.keys(turn).sort(), id).toEqual(["state", "ts"]);
+    }
+  });
+
+  it("V4 a subagent Stop (truthy agent_id) leaves turn.json byte-identical", () => {
+    prompt("sa-4");
+    const before = turnRaw("sa-4");
+    stop("sa-4", {
+      agent_id: "agent-x",
+      background_tasks: [
+        { type: "subagent", status: "running" },
+        { type: "subagent", status: "running" },
+      ],
+    });
+    expect(turnRaw("sa-4")).toBe(before);
+    expect(readTurn("sa-4").state).toBe("running");
+  });
+
+  it("V5 detail-free: only the integer count is persisted", () => {
+    prompt("sa-5");
+    const S = "SENTINEL_73b";
+    stop("sa-5", {
+      last_assistant_message: S,
+      background_tasks: [
+        { id: S, description: S, agent_type: S, command: S, prompt: S, type: "subagent", status: "running" },
+        { id: S, description: S, agent_type: S, command: S, prompt: S, type: "shell", status: "running" },
+      ],
+    });
+    expect(turnRaw("sa-5")).not.toContain(S);
+    const turn = readTurn("sa-5");
+    expect(turn.agents).toBe(1);
+    expect(Number.isInteger(turn.agents)).toBe(true);
+    expect(Object.keys(turn).sort()).toEqual(["agents", "state", "ts"]);
+  });
+
+  it("V6 rewrite + atomic: the next Stop rewrites the count; no temp files remain", () => {
+    prompt("sa-6");
+    stop("sa-6", {
+      background_tasks: [
+        { type: "subagent", status: "running" },
+        { type: "subagent", status: "running" },
+      ],
+    });
+    expect(readTurn("sa-6").agents).toBe(2);
+    stop("sa-6", { background_tasks: [] });
+    expect(Object.keys(readTurn("sa-6")).sort()).toEqual(["state", "ts"]);
+    for (const entry of ls("sa-6")) {
+      expect(entry.startsWith(".")).toBe(false);
+      expect(entry.endsWith(".tmp")).toBe(false);
+    }
+  });
+});
