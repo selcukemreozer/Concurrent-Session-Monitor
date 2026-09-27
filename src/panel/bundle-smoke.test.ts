@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { spawn } from "node:child_process";
-import { mkdtempSync, copyFileSync, existsSync } from "node:fs";
+import { mkdtempSync, copyFileSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -68,9 +68,22 @@ describe("bundled panel smoke boot (SC-2, D-01)", () => {
     );
     expect(stderr).not.toMatch(/Dynamic require of .* is not supported/);
 
+    // 260927-59z D-01: the booted panel self-registers at <store>/panel.json
+    // with its own pid (read by the no-arg /csm-goto).
+    const panelFile = join(storeDir, "panel.json");
+    expect(existsSync(panelFile), "panel.json was not written on boot").toBe(
+      true,
+    );
+    expect(JSON.parse(readFileSync(panelFile, "utf8")).pid).toBe(child.pid);
+
     // Clean teardown: SIGTERM triggers the entry.ts shutdown → exit 0.
     child.kill("SIGTERM");
     const code = await exitPromise;
     expect(code === 0 || code === null).toBe(true);
+
+    // 260927-59z D-01: a clean exit removes our own registration.
+    expect(existsSync(panelFile), "panel.json survived a clean exit").toBe(
+      false,
+    );
   }, 20000);
 });
