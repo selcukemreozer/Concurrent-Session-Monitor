@@ -168,3 +168,23 @@ export interface AskingState {
   /** ISO-8601 timestamp the question was opened (Date.parse on the read side; NOT epoch ms). */
   ts: string;
 }
+
+/**
+ * One session's turn-state snapshot written to `turn.json` (quick task
+ * 260927-46l, D-01).
+ *
+ * A SNAPSHOT written via a same-dir temp file + rename (WR-05), not a log.
+ * `scripts/on-user-prompt.mjs` writes "running" (a submitted prompt starts a
+ * turn); `scripts/on-activity.mjs` writes "idle" on a main-thread Stop only (a
+ * payload with a truthy agent_id never flips it). Claude Code fires no Stop
+ * hook when the user interrupts with Esc, so the reader bounds a stale
+ * "running" with CSM_RUN_WINDOW_MS. Read by readAll / csm-status as the
+ * pre-gated SessionRow.running. A separate shard read needs no SessionState
+ * change, so SESSION_SCHEMA_VERSION is NOT bumped (exactly like asking.json).
+ */
+export interface TurnState {
+  /** The constant state literal; anything else is ignored by the reader. */
+  state: "running" | "idle";
+  /** ISO-8601 timestamp of the transition (Date.parse on the read side; NOT epoch ms). */
+  ts: string;
+}

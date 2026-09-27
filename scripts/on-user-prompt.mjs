@@ -13,6 +13,12 @@
 // same-dir temp file + renameSync (WR-05); the heartbeat keeps its frozen
 // plain write. It never touches attention.json or asking.json.
 //
+// Turn state (260927-46l): a submitted prompt starts a turn, so this hook also
+// writes the `turn.json` snapshot with state "running" (same-dir temp +
+// renameSync). Detail-free: only the constant state literal and an ISO-8601
+// ts are persisted; the prompt text is never read. on-activity writes "idle"
+// on a main-thread Stop.
+//
 // Passivity contract (T-1-05 / T-02-11): UserPromptSubmit stdout is
 // model-visible, so this hook writes NOTHING to stdout, wraps its whole body so
 // it ALWAYS exits 0, and is wired "async" so the prompt never waits on it.
@@ -85,6 +91,8 @@ try {
     // CR-01 / WR-02: a prompt resumes the session and resolves any question.
     writeAtomic(dir, "resumed", iso);
     writeAtomic(dir, "ask-resolved", iso);
+    // 260927-46l D-01: a prompt starts a turn (the reader shows ▶ running).
+    writeAtomic(dir, "turn.json", JSON.stringify({ state: "running", ts: iso }));
   }
 } catch {
   // Swallow every error (T-1-05): NEVER exit non-zero, NEVER write stdout.

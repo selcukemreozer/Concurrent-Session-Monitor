@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Activity hook (260926-r7n AP-01, reworked 260927-1zw CR-01/WR-02) — wired to
-// PostToolUse("*") and Stop. It writes up to three separate per-session
+// PostToolUse("*") and Stop. It writes up to four separate per-session
 // sidecars, because liveness and the two needs-you clear signals are different
 // facts and must not be conflated:
 //
@@ -20,10 +20,14 @@
 //    ◉ asking marker when askMs is no longer newer than this. Sibling tool
 //    completions in the same message never write it, so they cannot clear an
 //    open question.
+// 4. `turn.json` (main-thread Stop only, 260927-46l): the turn ended; state
+//    'idle'. on-user-prompt writes state 'running'. The reader shows ▶ running
+//    from these. A Stop-shaped payload with a truthy agent_id and every
+//    PostToolUse leave it untouched.
 //
 // Write discipline: the heartbeat keeps its FROZEN plain writeFileSync (the
-// liveness contract shared with resolveLastSeen). `resumed` and `ask-resolved`
-// are written via a same-dir temp file + renameSync (WR-05), so a reader never
+// liveness contract shared with resolveLastSeen). `resumed`, `ask-resolved`
+// and `turn.json` are written via a same-dir temp file + renameSync (WR-05), so a reader never
 // sees a torn file and no temp file is left behind.
 //
 // Stop-safety contract: this hook MUST always exit 0 with EMPTY stdout (and no
@@ -32,9 +36,10 @@
 // swallowed, and it is wired "async" (timeout 5) so no tool call waits on it.
 //
 // Detail-free: it reads the session id plus agent_id, tool_name and
-// hook_event_name (used ONLY as guards, never persisted) and persists ONLY an
-// ISO-8601 timestamp. PostToolUse("*") payloads carry Bash commands and file
-// contents — none of that is read or written.
+// hook_event_name (used ONLY as guards, never persisted) and persists ONLY
+// ISO-8601 timestamps and, in turn.json, the constant state literal "idle".
+// PostToolUse("*") and Stop payloads carry Bash commands, file contents and the
+// last assistant message — none of that is read or written.
 // D-01 one-writer-per-file: it NEVER writes, renames or deletes attention.json
 // or asking.json (on-notification / on-ask own those shards; clearing is
 // purely reader-side).
@@ -124,6 +129,11 @@ try {
       // WR-02: answer-specific signal (clears asking).
       if (payload.hook_event_name === "Stop" || toolName === "AskUserQuestion") {
         writeAtomic(dir, "ask-resolved", iso);
+      }
+      // 260927-46l D-01: a main-thread Stop ends the turn. Kept inside the
+      // main-thread branch so a subagent (truthy agent_id) never flips it.
+      if (payload.hook_event_name === "Stop") {
+        writeAtomic(dir, "turn.json", JSON.stringify({ state: "idle", ts: iso }));
       }
     }
   }
