@@ -118,6 +118,16 @@ function attnWindowMs() {
 function runWindowMs() {
   return numEnv("CSM_RUN_WINDOW_MS", 1800000);
 }
+/**
+ * Idle-waiting threshold (mirrors aggregate.idleWaitMs, 260927-4tv): once a
+ * main-thread Stop has left turn.json "idle" for at least this long (default
+ * 10000 ms / 10 s), the session is waiting on the human and shows ◉ waiting,
+ * without waiting for Claude Code's ~60 s idle_prompt Notification. Bounded
+ * above by attnWindowMs(). A NaN/negative override degrades to the default.
+ */
+function idleWaitMs() {
+  return numEnv("CSM_IDLE_WAIT_MS", 10000);
+}
 
 /**
  * Render-boundary control-character strip (T-04-06, ASVS V5). Drops C0
@@ -589,12 +599,12 @@ async function main() {
     const askMs = askTs !== undefined ? Date.parse(askTs) : NaN;
     const asking =
       !Number.isNaN(askMs) && now - askMs < attnWindowMs() && askMs > askResolvedMs;
-    const attention = rawWaiting && !asking;
 
     // Cheap liveness (T-04-09b): heartbeat-fresh OR keepalive OR pid alive. No
     // lstart guard. WR-01 / D-03: a session blocked on the human emits no
     // heartbeat, so an active marker keeps it listed; the marker gate bounds
-    // this by attnWindowMs(). 260927-46l D-03: a running turn (a long Bash, a
+    // this by attnWindowMs() (idle-waiting included, 260927-4tv D-05).
+    // 260927-46l D-03: a running turn (a long Bash, a
     // web fetch, thinking) emits no heartbeat either, so the raw running gate
     // keeps it listed too, bounded by runWindowMs(). DISC-4: a known pid that
     // probes dead gets no keepalive, so a crashed session still drops off.
@@ -609,12 +619,25 @@ async function main() {
     // `running` is pre-gated: asking > waiting > running (one marker).
     const turn = readTurn(dir);
     const turnMs = turn ? Date.parse(turn.ts) : NaN;
+    // Idle-waiting gate (260927-4tv D-02) — mirrors aggregate.readAll exactly:
+    // turn "idle" (main-thread Stop), ts parses, pid not dead, and idle for at
+    // least idleWaitMs() but under attnWindowMs(). The next prompt (turn
+    // "running") is the clear; no resumed-sidecar comparison (the same Stop
+    // writes both in the same instant).
+    const rawIdleWaiting =
+      turn?.state === "idle" &&
+      !Number.isNaN(turnMs) &&
+      !procDead &&
+      now - turnMs >= idleWaitMs() &&
+      now - turnMs < attnWindowMs();
+    // D-03 / D-04: waiting = (Notification gate OR idle-waiting), asking wins.
+    const attention = (rawWaiting || rawIdleWaiting) && !asking;
     const runRefMs = Math.max(turnMs, heartbeatMs ?? -Infinity);
     const rawRunning =
       turn?.state === "running" && !Number.isNaN(turnMs) && !procDead && now - runRefMs < runWindowMs();
     const running = rawRunning && !asking && !attention;
 
-    const keepalive = ((asking || rawWaiting) && !procDead) || rawRunning;
+    const keepalive = ((asking || rawWaiting || rawIdleWaiting) && !procDead) || rawRunning;
     const alive = heartbeatFresh || keepalive || procAlive;
     if (!alive) continue; // live-only roster (D-04)
 
