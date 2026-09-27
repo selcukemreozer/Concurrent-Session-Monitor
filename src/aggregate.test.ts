@@ -24,6 +24,7 @@ afterEach(() => {
   delete process.env.CSM_READ_WINDOW_MS;
   delete process.env.CSM_SKILL_WINDOW_MS;
   delete process.env.CSM_ATTN_WINDOW_MS;
+  delete process.env.CSM_RUN_WINDOW_MS;
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
@@ -979,5 +980,157 @@ describe("needs-you keepalive (260927-1zw WR-01)", () => {
     expect(r.alive).toBe(true);
     expect(r.readyToPrune).toBe(false);
     expect(r.dotState).toBe("idle");
+  });
+});
+
+// --- Quick task 260927-46l (D-02..D-04): the running state. A session working a
+// turn (turn.json "running") with no file activity must stay alive with a green
+// dot even past CSM_STALE_MS, bounded by CSM_RUN_WINDOW_MS; a dead known pid
+// still wins; asking and waiting take precedence over running.
+describe("running state (260927-46l)", () => {
+  function writeTurn(dir: string, snap: Record<string, unknown>): void {
+    fs.writeFileSync(path.join(dir, "turn.json"), JSON.stringify(snap), { mode: 0o600 });
+  }
+  const ago = (now: number, ms: number) => new Date(now - ms).toISOString();
+  const rowOf = (id: string, now: number, probe = deadProbe) =>
+    readAll(now, probe).find((x) => x.session_id === id)!;
+
+  beforeEach(() => {
+    process.env.CSM_STALE_MS = "120000";
+  });
+
+  it("N1 keepalive repro: no pid, heartbeat 300s, turn running 360s → running, alive, active dot, not pruned", () => {
+    const now = Date.now();
+    const dir = seedSession("n1", ago(now, 600_000), { heartbeat: ago(now, 300_000) });
+    writeTurn(dir, { state: "running", ts: ago(now, 360_000) });
+    const r = rowOf("n1", now);
+    expect(r.running).toBe(true);
+    expect(r.alive).toBe(true);
+    expect(r.readyToPrune).toBe(false);
+    expect(r.dotState).toBe("active");
+    expect(r.last_active).toBeUndefined();
+    expect(!r.alive || r.readyToPrune).toBe(false);
+  });
+
+  it("N2 idle baseline: same fixture with state idle → not running, not alive, readyToPrune, stale dot", () => {
+    const now = Date.now();
+    const dir = seedSession("n2", ago(now, 600_000), { heartbeat: ago(now, 300_000) });
+    writeTurn(dir, { state: "idle", ts: ago(now, 360_000) });
+    const r = rowOf("n2", now);
+    expect(r.running).toBe(false);
+    expect(r.alive).toBe(false);
+    expect(r.readyToPrune).toBe(true);
+    expect(r.dotState).toBe("stale");
+  });
+
+  it("N3 self-heal: missing, torn, unknown state, bad ts, numeric ts → running false, row present", () => {
+    const now = Date.now();
+    const cases: Array<[string, ((dir: string) => void) | null]> = [
+      ["n3-missing", null],
+      ["n3-torn", (d) => fs.writeFileSync(path.join(d, "turn.json"), '{"state":"runn', { mode: 0o600 })],
+      ["n3-busy", (d) => writeTurn(d, { state: "busy", ts: ago(now, 10_000) })],
+      ["n3-badts", (d) => writeTurn(d, { state: "running", ts: "not-a-date" })],
+      ["n3-numts", (d) => writeTurn(d, { state: "running", ts: now - 10_000 })],
+    ];
+    for (const [id, write] of cases) {
+      const dir = seedSession(id, ago(now, 600_000), { heartbeat: ago(now, 10_000) });
+      if (write) write(dir);
+    }
+    const rows = readAll(now, deadProbe);
+    for (const [id] of cases) {
+      const r = rows.find((x) => x.session_id === id);
+      expect(r, id).toBeDefined();
+      expect(r!.running, id).toBe(false);
+    }
+  });
+
+  it("N4 window: 31 min expires it; max(turn, heartbeat) rule; override; NaN degrades to 30 min", () => {
+    const now = Date.now();
+    // Heartbeat absent, turn 31 min ago.
+    const a = seedSession("n4-a", ago(now, 7_200_000));
+    writeTurn(a, { state: "running", ts: ago(now, 1_860_000) });
+    // Heartbeat and turn both 31 min ago.
+    const b = seedSession("n4-b", ago(now, 7_200_000), { heartbeat: ago(now, 1_860_000) });
+    writeTurn(b, { state: "running", ts: ago(now, 1_860_000) });
+    // Turn 40 min ago, heartbeat 10 min ago → the newer reference wins (DISC-5).
+    const c = seedSession("n4-c", ago(now, 7_200_000), { heartbeat: ago(now, 600_000) });
+    writeTurn(c, { state: "running", ts: ago(now, 2_400_000) });
+
+    let ra = rowOf("n4-a", now);
+    expect(ra.running).toBe(false);
+    expect(ra.alive).toBe(false);
+    const rb = rowOf("n4-b", now);
+    expect(rb.running).toBe(false);
+    expect(rb.alive).toBe(false);
+    expect(rowOf("n4-c", now).running).toBe(true);
+
+    // Override: 60s window.
+    process.env.CSM_RUN_WINDOW_MS = "60000";
+    const d = seedSession("n4-d", ago(now, 600_000), { heartbeat: ago(now, 90_000) });
+    writeTurn(d, { state: "running", ts: ago(now, 90_000) });
+    const e = seedSession("n4-e", ago(now, 600_000), { heartbeat: ago(now, 90_000) });
+    writeTurn(e, { state: "running", ts: ago(now, 30_000) });
+    const rd = rowOf("n4-d", now);
+    expect(rd.running).toBe(false);
+    expect(rd.alive).toBe(true); // still within the 2-min TTL
+    expect(rowOf("n4-e", now).running).toBe(true);
+
+    // NaN override degrades to the 30-min default.
+    process.env.CSM_RUN_WINDOW_MS = "abc";
+    const f = seedSession("n4-f", ago(now, 7_200_000), { heartbeat: ago(now, 600_000) });
+    writeTurn(f, { state: "running", ts: ago(now, 600_000) });
+    expect(rowOf("n4-f", now).running).toBe(true);
+    ra = rowOf("n4-a", now);
+    expect(ra.running).toBe(false);
+  });
+
+  it("N5 dead known pid wins: no running, stale dot; old heartbeat → reaped", () => {
+    const now = Date.now();
+    const a = seedSession("n5-a", ago(now, 600_000), { pid: 4242, heartbeat: ago(now, 10_000) });
+    writeTurn(a, { state: "running", ts: ago(now, 10_000) });
+    const ra = rowOf("n5-a", now, deadProbe);
+    expect(ra.running).toBe(false);
+    expect(ra.dotState).toBe("stale");
+    expect(ra.alive).toBe(true); // fresh-heartbeat TTL (SC-4)
+
+    const b = seedSession("n5-b", ago(now, 600_000), { pid: 4242, heartbeat: ago(now, 300_000) });
+    writeTurn(b, { state: "running", ts: ago(now, 300_000) });
+    const rb = rowOf("n5-b", now, deadProbe);
+    expect(rb.running).toBe(false);
+    expect(rb.alive).toBe(false);
+    expect(rb.readyToPrune).toBe(true);
+  });
+
+  it("N6 known-alive pid: heartbeat 300s, turn running 300s → running, active dot", () => {
+    const now = Date.now();
+    const dir = seedSession("n6", ago(now, 600_000), { pid: 4242, heartbeat: ago(now, 300_000) });
+    writeTurn(dir, { state: "running", ts: ago(now, 300_000) });
+    const r = rowOf("n6", now, aliveProbe);
+    expect(r.running).toBe(true);
+    expect(r.dotState).toBe("active");
+  });
+
+  it("N7 precedence: asking and waiting both force running false (DISC-3/DISC-4)", () => {
+    const now = Date.now();
+    const a = seedSession("n7-ask", ago(now, 600_000), { heartbeat: ago(now, 30_000) });
+    writeTurn(a, { state: "running", ts: ago(now, 60_000) });
+    fs.writeFileSync(path.join(a, "asking.json"), JSON.stringify({ ts: ago(now, 5_000) }), { mode: 0o600 });
+    const ra = rowOf("n7-ask", now);
+    expect(ra.asking).toBe(true);
+    expect(ra.running).toBe(false);
+    expect(ra.attention).toBe(false);
+    expect(ra.alive).toBe(true);
+    expect(ra.dotState).toBe("idle");
+
+    const w = seedSession("n7-wait", ago(now, 600_000), { heartbeat: ago(now, 30_000) });
+    writeTurn(w, { state: "running", ts: ago(now, 60_000) });
+    fs.writeFileSync(
+      path.join(w, "attention.json"),
+      JSON.stringify({ type: "permission_prompt", ts: ago(now, 5_000) }),
+      { mode: 0o600 },
+    );
+    const rw = rowOf("n7-wait", now);
+    expect(rw.attention).toBe(true);
+    expect(rw.running).toBe(false);
   });
 });

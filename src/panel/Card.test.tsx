@@ -628,6 +628,87 @@ describe("SessionCard + CompactRow asking indicator (AQ-04)", () => {
   });
 });
 
+// --- Quick task 260927-46l (D-05): "running" (a session working a turn) renders
+// a GREEN border and a green, non-bold "▶ running" line on SessionCard, and a
+// leading green ▶ token on CompactRow. Precedence asking > waiting > running.
+describe("SessionCard + CompactRow running indicator (260927-46l)", () => {
+  const GREEN = ESC + "[32m";
+  const MAGENTA = ESC + "[35m";
+  const YELLOW_BRIGHT = ESC + "[93m";
+  const RUN = "▶";
+
+  function rawAt1(node: React.ReactElement): string {
+    const prev = chalk.level;
+    chalk.level = 1;
+    try {
+      return renderToString(node);
+    } finally {
+      chalk.level = prev;
+    }
+  }
+  const lineWith = (raw: string, needle: string): string =>
+    raw.split("\n").find((l) => stripAnsi(l).includes(needle)) ?? "";
+  const count = (s: string, needle: string): number => s.split(needle).length - 1;
+  const top = (raw: string): string => lineWith(raw, "╭");
+
+  it("Q1: SessionCard shows '▶ running' and no ◉ when running is true", () => {
+    const out = stripAnsi(renderToString(<SessionCard s={makeRow({ running: true } as Partial<SessionRow>)} />));
+    expect(out).toContain(RUN + " running");
+    expect(out).not.toContain("◉");
+  });
+
+  it("Q2: the running line opens green", () => {
+    const raw = rawAt1(<SessionCard s={makeRow({ running: true } as Partial<SessionRow>)} />);
+    const line = lineWith(raw, "running");
+    expect(line).not.toBe("");
+    expect(line).toMatch(new RegExp(ESC + "\\[32m\\s*" + RUN + " running"));
+  });
+
+  it("Q3: the top border is green when running only; uncolored when running is unset", () => {
+    const runTop = top(rawAt1(<SessionCard s={makeRow({ running: true } as Partial<SessionRow>)} />));
+    expect(runTop).toContain(GREEN);
+    expect(runTop).not.toContain(MAGENTA);
+    expect(runTop).not.toContain(YELLOW_BRIGHT);
+
+    const idleTop = top(rawAt1(<SessionCard s={makeRow()} />));
+    expect(idleTop).not.toBe("");
+    expect(idleTop).not.toContain(GREEN);
+    expect(idleTop).not.toContain(MAGENTA);
+    expect(idleTop).not.toContain(YELLOW_BRIGHT);
+  });
+
+  it("Q4: precedence — asking and waiting both beat running (one ◉, no ▶)", () => {
+    const askRaw = rawAt1(<SessionCard s={makeRow({ asking: true, running: true } as Partial<SessionRow>)} />);
+    expect(top(askRaw)).toContain(MAGENTA);
+    const askOut = stripAnsi(askRaw);
+    expect(askOut).toContain("asking");
+    expect(askOut).not.toContain("running");
+    expect(askOut).not.toContain(RUN);
+    expect(count(askOut, "◉")).toBe(1);
+
+    const waitRaw = rawAt1(<SessionCard s={makeRow({ attention: true, running: true } as Partial<SessionRow>)} />);
+    expect(top(waitRaw)).toContain(YELLOW_BRIGHT);
+    const waitOut = stripAnsi(waitRaw);
+    expect(waitOut).toContain("waiting");
+    expect(waitOut).not.toContain(RUN);
+    expect(count(waitOut, "◉")).toBe(1);
+  });
+
+  it("Q5: CompactRow leads with a green ▶ when running; none otherwise; asking wins", () => {
+    const runRaw = rawAt1(<CompactRow s={makeRow({ running: true, dotState: "idle" } as Partial<SessionRow>)} />);
+    expect(stripAnsi(runRaw)).toContain(RUN);
+    expect(runRaw).toMatch(new RegExp(ESC + "\\[32m" + RUN));
+
+    const offRaw = rawAt1(<CompactRow s={makeRow({ running: false } as Partial<SessionRow>)} />);
+    expect(stripAnsi(offRaw)).not.toContain(RUN);
+
+    const bothRaw = rawAt1(<CompactRow s={makeRow({ asking: true, running: true } as Partial<SessionRow>)} />);
+    expect(count(stripAnsi(bothRaw), "◉")).toBe(1);
+    expect(stripAnsi(bothRaw)).not.toContain(RUN);
+    expect(bothRaw).toContain(MAGENTA);
+  });
+});
+
 /** Minimal Conflict fixture builder for band render assertions. */
 function makeConflict(over: Partial<Conflict> = {}): Conflict {
   return {

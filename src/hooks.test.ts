@@ -1315,3 +1315,85 @@ describe("resume signals end-to-end (260927-1zw)", () => {
     expect(rowOf(id).asking).toBe(false);
   });
 });
+
+// --- Quick task 260927-46l: turn state end to end. Real hook processes write
+// turn.json and the real readAll derives the pre-gated `running` flag.
+describe("turn state end-to-end (260927-46l)", () => {
+  const sessDir = (id: string) => path.join(tmp, "sessions", id);
+  let prior: string | undefined;
+
+  beforeEach(() => {
+    prior = process.env.CSM_STORE_DIR;
+    process.env.CSM_STORE_DIR = tmp;
+  });
+
+  afterEach(() => {
+    if (prior === undefined) delete process.env.CSM_STORE_DIR;
+    else process.env.CSM_STORE_DIR = prior;
+  });
+
+  function seed(id: string): void {
+    fs.mkdirSync(sessDir(id), { recursive: true });
+    fs.writeFileSync(
+      path.join(sessDir(id), "session.json"),
+      JSON.stringify({
+        schema_version: 1,
+        session_id: id,
+        folder: id,
+        branch: "main",
+        model: "unknown",
+        start_time: new Date(Date.now() - 10_000).toISOString(),
+      }),
+      { mode: 0o600 },
+    );
+    const res = runHook(onUserPrompt, JSON.stringify({ session_id: id, hook_event_name: "UserPromptSubmit" }), tmp);
+    expect(res.status).toBe(0);
+  }
+
+  function run(script: string, payload: Record<string, unknown>): void {
+    const res = runHook(script, JSON.stringify(payload), tmp);
+    expect(res.status).toBe(0);
+    expect(res.stdout).toBe("");
+  }
+
+  const rowOf = (id: string) => readAll(Date.now()).find((r) => r.session_id === id)!;
+
+  it("Y1 a prompt starts running (active dot); a main-thread Stop ends it", () => {
+    const id = "y1";
+    seed(id);
+    const r = rowOf(id);
+    expect(r.running).toBe(true);
+    expect(r.dotState).toBe("active");
+    run(onActivity, { session_id: id, hook_event_name: "Stop", stop_hook_active: false });
+    expect(rowOf(id).running).toBe(false);
+  });
+
+  it("Y2 subagent Stop, subagent PostToolUse and main-thread PostToolUse keep running", () => {
+    const id = "y2";
+    seed(id);
+    run(onActivity, { session_id: id, hook_event_name: "Stop", agent_id: "agent-x" });
+    expect(rowOf(id).running).toBe(true);
+    run(onActivity, { session_id: id, hook_event_name: "PostToolUse", tool_name: "Bash", agent_id: "agent-x" });
+    expect(rowOf(id).running).toBe(true);
+    run(onActivity, { session_id: id, hook_event_name: "PostToolUse", tool_name: "Bash" });
+    expect(rowOf(id).running).toBe(true);
+  });
+
+  it("Y3 an open question beats running; answering it resumes running (the turn continues)", () => {
+    const id = "y3";
+    seed(id);
+    run(onAsk, {
+      session_id: id,
+      hook_event_name: "PreToolUse",
+      tool_name: "AskUserQuestion",
+      tool_input: { questions: [] },
+    });
+    let r = rowOf(id);
+    expect(r.asking).toBe(true);
+    expect(r.running).toBe(false);
+    run(onActivity, { session_id: id, hook_event_name: "PostToolUse", tool_name: "AskUserQuestion" });
+    r = rowOf(id);
+    expect(r.asking).toBe(false);
+    expect(r.running).toBe(true);
+  });
+});
