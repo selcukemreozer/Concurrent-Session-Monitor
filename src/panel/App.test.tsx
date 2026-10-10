@@ -319,6 +319,34 @@ describe("App grace-then-prune lifecycle (D-05/D-06/D-08, SC-3/SC-4)", () => {
     expect(frame()).toContain("ended");
     inst.unmount();
   });
+
+  it("A1: the ended ghost row leads with the native name (Ghost name), no (unnamed)", () => {
+    (readAll as unknown as { mockReturnValue: (v: unknown) => unknown }).mockReturnValue([
+      makeRow({
+        session_id: "dead-1",
+        folder: "dyingproj",
+        title: "Ghost name",
+        alive: false,
+        readyToPrune: true,
+        dotState: "stale",
+      } as Partial<SessionRow>),
+    ]);
+
+    const { inst, frame } = renderCapture();
+    expect(frame()).toContain("● Ghost name · dead-1 · ended");
+    expect(frame()).not.toContain("(unnamed)");
+    inst.unmount();
+  });
+
+  it("A2: an unnamed ended ghost row keeps the folder lead", () => {
+    (readAll as unknown as { mockReturnValue: (v: unknown) => unknown }).mockReturnValue([
+      makeRow({ session_id: "dead-1", folder: "dyingproj", alive: false, readyToPrune: true, dotState: "stale" }),
+    ]);
+
+    const { inst, frame } = renderCapture();
+    expect(frame()).toContain("● dyingproj · dead-1 · ended");
+    inst.unmount();
+  });
 });
 
 describe("App summary header (D-15)", () => {

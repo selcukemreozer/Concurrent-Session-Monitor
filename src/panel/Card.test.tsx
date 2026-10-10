@@ -1551,3 +1551,70 @@ describe("session label — SessionCard + CompactRow (NAME-02, D-06/D-07/D-09)",
     expect(out).toContain("my-project (unnamed) · main · abcdef01 · ");
   });
 });
+
+describe("session label — ConflictBand + PortsPane (NAME-02, D-07/D-08)", () => {
+  const E = String.fromCodePoint(0x2026);
+
+  it("B1: a named conflict session leads with its name; an unnamed one keeps the folder", () => {
+    const out = renderToString(
+      <ConflictBand
+        conflicts={[
+          makeConflict({
+            sessions: [
+              { session_id: "aaaaaaaa", folder: "folderA", branch: "main", lastTouch: 2, title: "Alpha name" },
+              { session_id: "bbbbbbbb", folder: "folderB", branch: "dev", lastTouch: 1 },
+            ],
+          }),
+        ]}
+      />,
+      { columns: 200 },
+    );
+    expect(out).toContain("Alpha name · main · aaaaaaaa");
+    expect(out).toContain("folderB · dev · bbbbbbbb");
+    expect(out).not.toContain("folderA");
+    expect(out).not.toContain("(unnamed)");
+  });
+
+  it("B2: a long conflict name is capped at 24 graphemes plus an ellipsis", () => {
+    const out = renderToString(
+      <ConflictBand
+        conflicts={[
+          makeConflict({
+            sessions: [
+              {
+                session_id: "aaaaaaaa",
+                folder: "folderA",
+                branch: "main",
+                lastTouch: 2,
+                title: "Logitech MK295 Mac tutukluluk sorunu",
+              },
+              { session_id: "bbbbbbbb", folder: "folderB", branch: "dev", lastTouch: 1 },
+            ],
+          }),
+        ]}
+      />,
+      { columns: 200 },
+    );
+    expect(out).toContain("Logitech MK295 Mac tutuk" + E + " · ");
+  });
+
+  it("G1: a named session's port heading leads with the name (intent suffix unchanged)", () => {
+    const row = makeRow({
+      session_id: "abcdef0123456789",
+      folder: "proj-a",
+      pid: 111,
+      title: "Named",
+      intent: "serve",
+    } as Partial<SessionRow>);
+    const owned = makePort({ pid: 111, ancestryPids: [111], port: 3000 });
+    const g = groupPorts([owned], [row]);
+    expect(g[0].heading).toBe("Named · main · abcdef01 » serve");
+  });
+
+  it("G2: an unnamed session's port heading is unchanged (no (unnamed))", () => {
+    const row = makeRow({ session_id: "abcdef0123456789", folder: "proj-a", pid: 111, intent: "serve" });
+    const owned = makePort({ pid: 111, ancestryPids: [111], port: 3000 });
+    const g = groupPorts([owned], [row]);
+    expect(g[0].heading).toBe("proj-a · main · abcdef01 » serve");
+  });
+});
