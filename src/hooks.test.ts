@@ -1718,3 +1718,186 @@ describe("subagent end-to-end (260927-73b)", () => {
     expect(r.subagent).toBe(false);
   });
 });
+
+// --- Phase 7 NAME-01 (D-02): the title.json snapshot shard.
+// Both on-session-start and on-user-prompt read the documented `session_title`
+// payload field (Claude Code's native /rename name) plus `transcript_path`,
+// normalize/validate them and write sessions/<id>/title.json atomically. Both
+// hooks stay silent on stdout so CSM can never rename the session (D-05).
+describe("session title writers (Phase 7 NAME-01, D-02)", () => {
+  const sessDir = (id: string) => path.join(tmp, "sessions", id);
+  const ls = (id: string) => fs.readdirSync(sessDir(id)).sort();
+  const titlePath = (id: string) => path.join(sessDir(id), "title.json");
+  const readTitle = (id: string) => JSON.parse(fs.readFileSync(titlePath(id), "utf8")) as Record<string, unknown>;
+  const tp = (id: string) => path.join(tmp, "projects", "p", id + ".jsonl");
+  const prompt = (id: unknown, extra: Record<string, unknown> = {}) =>
+    runHook(onUserPrompt, JSON.stringify({ session_id: id, hook_event_name: "UserPromptSubmit", ...extra }), tmp);
+  const start = (id: unknown, extra: Record<string, unknown> = {}) =>
+    runHook(
+      onSessionStart,
+      JSON.stringify({ session_id: id, hook_event_name: "SessionStart", source: "startup", cwd: tmp, ...extra }),
+      tmp,
+    );
+
+  it("W1 on-user-prompt writes title.json {title, transcript_path, ts} (0o600), silent exit 0", () => {
+    const id = "ti-1";
+    const title = "Logitech MK295 Mac tutukluluk sorunu";
+    const res = prompt(id, { session_title: title, transcript_path: tp(id) });
+    expect(res.status).toBe(0);
+    expect(res.stdout).toBe("");
+    expect(res.stderr).toBe("");
+    const rec = readTitle(id);
+    expect(Object.keys(rec).sort()).toEqual(["title", "transcript_path", "ts"]);
+    expect(rec.title).toBe(title);
+    expect(rec.transcript_path).toBe(tp(id));
+    expect(Number.isFinite(Date.parse(rec.ts as string))).toBe(true);
+    expect(fs.statSync(titlePath(id)).mode & 0o777).toBe(0o600);
+  });
+
+  it("W2 on-session-start writes title.json with the same keys AND still writes session.json", () => {
+    const id = "ti-2";
+    const title = "Logitech MK295 Mac tutukluluk sorunu";
+    const res = start(id, { session_title: title, transcript_path: tp(id) });
+    expect(res.status).toBe(0);
+    expect(res.stdout).toBe("");
+    expect(res.stderr).toBe("");
+    const rec = readTitle(id);
+    expect(Object.keys(rec).sort()).toEqual(["title", "transcript_path", "ts"]);
+    expect(rec.title).toBe(title);
+    expect(rec.transcript_path).toBe(tp(id));
+    expect(Number.isFinite(Date.parse(rec.ts as string))).toBe(true);
+    expect(fs.statSync(titlePath(id)).mode & 0o777).toBe(0o600);
+    const session = JSON.parse(fs.readFileSync(path.join(sessDir(id), "session.json"), "utf8"));
+    expect(session.folder).toBe(path.basename(tmp));
+    expect(session).not.toHaveProperty("title");
+  });
+
+  it("W3 normalization: controls -> space, bidi override removed, whitespace collapsed, trimmed", () => {
+    const ESC = String.fromCharCode(0x1b);
+    const TAB = String.fromCharCode(0x09);
+    const RLO = String.fromCharCode(0x202e);
+    const raw = "a" + ESC + "[2Jb" + TAB + "c" + RLO + "d  e";
+    for (const [run, id] of [
+      [prompt, "ti-3p"],
+      [start, "ti-3s"],
+    ] as const) {
+      expect(run(id, { session_title: raw, transcript_path: tp(id) }).status).toBe(0);
+      expect(readTitle(id).title).toBe("a [2Jb cd e");
+    }
+    // C1 controls and the other format chars are handled too.
+    const C1 = String.fromCharCode(0x9b);
+    const LRM = String.fromCharCode(0x200e);
+    const PDI = String.fromCharCode(0x2069);
+    const id = "ti-3c";
+    expect(prompt(id, { session_title: "  x" + C1 + "y" + LRM + "z" + PDI + "  ", transcript_path: tp(id) }).status).toBe(0);
+    expect(readTitle(id).title).toBe("x yz");
+  });
+
+  it("W4 a 300-code-point title is capped at 256 code points", () => {
+    const id = "ti-4";
+    expect(prompt(id, { session_title: "a".repeat(300), transcript_path: tp(id) }).status).toBe(0);
+    expect(Array.from(readTitle(id).title as string).length).toBe(256);
+    // Cap counts code points, not UTF-16 units (astral chars stay whole).
+    const id2 = "ti-4b";
+    const astral = String.fromCodePoint(0x1f600);
+    expect(start(id2, { session_title: astral.repeat(300), transcript_path: tp(id2) }).status).toBe(0);
+    const stored = readTitle(id2).title as string;
+    expect(Array.from(stored).length).toBe(256);
+    expect(stored).toBe(astral.repeat(256));
+  });
+
+  it("W5 absent session_title with a valid transcript_path stores only transcript_path + ts", () => {
+    for (const [run, id] of [
+      [prompt, "ti-5p"],
+      [start, "ti-5s"],
+    ] as const) {
+      expect(run(id, { transcript_path: tp(id) }).status).toBe(0);
+      expect(Object.keys(readTitle(id)).sort()).toEqual(["transcript_path", "ts"]);
+    }
+  });
+
+  it("W6 empty, whitespace-only and non-string titles yield no title key", () => {
+    const cases: unknown[] = ["", "   ", 42];
+    cases.forEach((t, i) => {
+      const id = `ti-6-${i}`;
+      expect(prompt(id, { session_title: t, transcript_path: tp(id) }).status).toBe(0);
+      const rec = readTitle(id);
+      expect(rec).not.toHaveProperty("title");
+      expect(Object.keys(rec).sort()).toEqual(["transcript_path", "ts"]);
+    });
+  });
+
+  it("W7 invalid transcript_path values are dropped; with no title, no title.json is written", () => {
+    const bad = (id: string): unknown[] => [
+      "p/" + id + ".jsonl",
+      path.join(tmp, "projects", "p", "other.jsonl"),
+      7,
+      path.join(tmp, "x".repeat(4100), id + ".jsonl"),
+    ];
+    bad("ti-7a").forEach((v, i) => {
+      const id = "ti-7a";
+      const res = prompt(id, { session_title: `t${i}`, transcript_path: v });
+      expect(res.status).toBe(0);
+      const rec = readTitle(id);
+      expect(rec).not.toHaveProperty("transcript_path");
+      expect(rec.title).toBe(`t${i}`);
+    });
+    bad("ti-7b").forEach((v) => {
+      expect(prompt("ti-7b", { transcript_path: v }).status).toBe(0);
+      expect(fs.existsSync(titlePath("ti-7b"))).toBe(false);
+    });
+    bad("ti-7c").forEach((v) => {
+      expect(start("ti-7c", { transcript_path: v }).status).toBe(0);
+      expect(fs.existsSync(titlePath("ti-7c"))).toBe(false);
+    });
+  });
+
+  it("W8 a bare UserPromptSubmit payload writes no title.json (sidecar listing unchanged)", () => {
+    expect(prompt("ti-8").status).toBe(0);
+    expect(ls("ti-8")).toEqual(["ask-resolved", "heartbeat", "resumed", "turn.json"]);
+  });
+
+  it("W9 on-user-prompt never rewrites session.json (no clobber of SessionStart fields)", () => {
+    const id = "ti-9";
+    expect(start(id).status).toBe(0);
+    const before = fs.readFileSync(path.join(sessDir(id), "session.json"));
+    const res = prompt(id, { session_title: "renamed", transcript_path: tp(id) });
+    expect(res.status).toBe(0);
+    expect(res.stdout).toBe("");
+    expect(res.stderr).toBe("");
+    const after = fs.readFileSync(path.join(sessDir(id), "session.json"));
+    expect(after.equals(before)).toBe(true);
+    expect(readTitle(id).title).toBe("renamed");
+  });
+
+  it("W10 a second prompt replaces the stored title atomically (no leftover temp files)", () => {
+    const id = "ti-10";
+    expect(prompt(id, { session_title: "first", transcript_path: tp(id) }).status).toBe(0);
+    expect(readTitle(id).title).toBe("first");
+    expect(prompt(id, { session_title: "second", transcript_path: tp(id) }).status).toBe(0);
+    expect(readTitle(id).title).toBe("second");
+    expect(ls(id).filter((e) => e.startsWith(".title.json."))).toEqual([]);
+  });
+
+  it("W11 unsafe session ids never produce a title.json anywhere", () => {
+    for (const bad of ["../evil", "a/b", ".", ".."]) {
+      for (const run of [prompt, start]) {
+        const res = run(bad, { session_title: "evil", transcript_path: path.join(tmp, "x.jsonl") });
+        expect(res.status).toBe(0);
+        expect(res.stdout).toBe("");
+      }
+    }
+    // "../evil" would resolve to <tmp>/evil, so walking tmp covers every escape.
+    const found: string[] = [];
+    const walk = (d: string) => {
+      if (!fs.existsSync(d)) return;
+      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        const p = path.join(d, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (e.name === "title.json") found.push(p);
+      }
+    };
+    walk(tmp);
+    expect(found).toEqual([]);
+  });
+});
