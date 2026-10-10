@@ -66,6 +66,81 @@ function stripControls(s) {
   return out;
 }
 
+// ---- Session name (NAME-02, D-08/D-09) -------------------------------------
+// mirrors src/label.ts and scripts/csm-status.mjs; keep in lockstep
+// (Pitfall 8). Identical to the csm-status block except cleanTitle calls
+// stripControls (this script's sanitize). Kept ASCII-only: the ellipsis is an
+// escape and bidi code points are compared numerically.
+
+/** D-09: display cap in grapheme clusters (the ellipsis is extra). */
+const NAME_CAP = 24;
+
+/** U+2026 horizontal ellipsis (>= 0xA0, so stripControls() keeps it). */
+const ELLIPSIS = "\u2026";
+
+/** T-07-02: bidi/format code points that can visually reorder or hide text. */
+function isBidiFormat(cp) {
+  return (
+    cp === 0x200e ||
+    cp === 0x200f ||
+    (cp >= 0x202a && cp <= 0x202e) ||
+    (cp >= 0x2066 && cp <= 0x2069)
+  );
+}
+
+let segmenter; // lazy: undefined = not probed, null = unavailable
+
+/** Split into grapheme clusters; code-point fallback when Intl.Segmenter is absent. */
+function graphemes(s) {
+  if (segmenter === undefined) {
+    segmenter =
+      typeof Intl !== "undefined" && typeof Intl.Segmenter === "function"
+        ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
+        : null;
+  }
+  if (segmenter === null) return Array.from(s);
+  return Array.from(segmenter.segment(s), (x) => x.segment);
+}
+
+/** stripControls() first (D-09 order), drop bidi/format, collapse whitespace, trim. Non-string -> "". */
+function cleanTitle(raw) {
+  if (typeof raw !== "string") return "";
+  let out = "";
+  for (const ch of stripControls(raw)) {
+    const cp = ch.codePointAt(0) ?? 0;
+    if (isBidiFormat(cp)) continue;
+    out += ch;
+  }
+  return out.replace(/\s+/g, " ").trim();
+}
+
+/** Cap an ALREADY-cleaned string to `max` grapheme clusters plus ELLIPSIS. */
+function truncateLabel(s, max = NAME_CAP) {
+  const g = graphemes(s);
+  return g.length > max ? g.slice(0, max).join("") + ELLIPSIS : s;
+}
+
+/** Display name, or undefined when the cleaned title is empty (unnamed; never "(unnamed)", D-07). */
+function displayName(raw) {
+  const clean = cleanTitle(raw);
+  return clean.length > 0 ? truncateLabel(clean, NAME_CAP) : undefined;
+}
+
+/**
+ * Read a peer's hook-cached native name (title.json): a non-empty string
+ * title, else undefined; absent/torn => undefined (folder fallback). Never
+ * opens the transcript (D-04 scope). Read-only: this hook writes no file (D-08).
+ */
+function readTitle(dir) {
+  try {
+    const parsed = JSON.parse(readFileSync(path.join(dir, "title.json"), "utf8"));
+    if (typeof parsed?.title === "string" && parsed.title.length > 0) return parsed.title;
+  } catch {
+    // absent/torn title.json -> folder fallback
+  }
+  return undefined;
+}
+
 // Resolve a possibly-relative, possibly-deleted file_path to a canonical
 // realpath WITHOUT ever throwing (mirrors src/conflicts.ts resolveRealpath):
 // lexical absolute anchor, then fold symlinks; ENOENT degrades to the lexical
@@ -233,10 +308,16 @@ try {
         if (!hit) continue;
 
         // First live peer holding the same realpath -> emit ONE advisory line.
-        const folder = stripControls(peer.state.folder ?? "");
+        // NAME-02 / D-08: lead with the peer's native name when set, else the
+        // folder (D-07: never "(unnamed)"). The title is read only here, for the
+        // one matched peer, so the no-conflict path pays nothing (D-09 latency).
+        // It is the hook-cached title only, never the transcript tail (D-04
+        // scope). The 24-grapheme cap plus the control/bidi strip bound the
+        // peer-chosen text injected into the acting agent's context (T-07-06).
+        const lead = displayName(readTitle(peer.dir)) ?? stripControls(peer.state.folder ?? "");
         const branch = stripControls(peer.state.branch ?? "") || "—";
         const shortId = stripControls(String(peer.session_id).slice(0, 8));
-        const label = `${folder} · ${branch} · ${shortId}`;
+        const label = `${lead} · ${branch} · ${shortId}`;
         const base = stripControls(path.basename(editRealpath));
         const advisory = {
           hookSpecificOutput: {
