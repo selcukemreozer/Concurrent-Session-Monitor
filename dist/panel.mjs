@@ -3094,10 +3094,10 @@ var require_react_reconciler_production = __commonJS({
           refCount: 0
         };
       }
-      function releaseCache(cache3) {
-        cache3.refCount--;
-        0 === cache3.refCount && scheduleCallback$2(NormalPriority, function() {
-          cache3.controller.abort();
+      function releaseCache(cache4) {
+        cache4.refCount--;
+        0 === cache4.refCount && scheduleCallback$2(NormalPriority, function() {
+          cache4.controller.abort();
         });
       }
       function noop$1() {
@@ -8373,21 +8373,21 @@ var require_react_reconciler_production = __commonJS({
             case 23:
             case 22:
               if (null !== fiber.memoizedState && null !== fiber.memoizedState.cachePool) {
-                var cache3 = fiber.memoizedState.cachePool.pool;
-                null != cache3 && cache3.refCount++;
+                var cache4 = fiber.memoizedState.cachePool.pool;
+                null != cache4 && cache4.refCount++;
               }
               break;
             case 24:
               releaseCache(fiber.memoizedState.cache);
           }
-          cache3 = fiber.child;
-          if (null !== cache3) cache3.return = fiber, nextEffect = cache3;
+          cache4 = fiber.child;
+          if (null !== cache4) cache4.return = fiber, nextEffect = cache4;
           else
             a: for (fiber = deletedSubtreeRoot; null !== nextEffect; ) {
-              cache3 = nextEffect;
-              var sibling = cache3.sibling, returnFiber = cache3.return;
-              detachFiberAfterEffects(cache3);
-              if (cache3 === fiber) {
+              cache4 = nextEffect;
+              var sibling = cache4.sibling, returnFiber = cache4.return;
+              detachFiberAfterEffects(cache4);
+              if (cache4 === fiber) {
                 nextEffect = null;
                 break a;
               }
@@ -10078,8 +10078,8 @@ var require_react_reconciler_production = __commonJS({
         hydrationErrors: null
       }, offscreenSubtreeIsHidden = false, offscreenSubtreeWasHidden = false, needsFormReset = false, PossiblyWeakSet = "function" === typeof WeakSet ? WeakSet : Set, nextEffect = null, hostParent = null, hostParentIsContainer = false, currentHoistableRoot = null, suspenseyCommitFlag = 8192, DefaultAsyncDispatcher = {
         getCacheForType: function(resourceType) {
-          var cache3 = readContext(CacheContext), cacheForType = cache3.data.get(resourceType);
-          void 0 === cacheForType && (cacheForType = resourceType(), cache3.data.set(resourceType, cacheForType));
+          var cache4 = readContext(CacheContext), cacheForType = cache4.data.get(resourceType);
+          void 0 === cacheForType && (cacheForType = resourceType(), cache4.data.set(resourceType, cacheForType));
           return cacheForType;
         },
         cacheSignal: function() {
@@ -10436,10 +10436,10 @@ var require_react_reconciler_development = __commonJS({
           fiber = fiber.next, id--;
         return fiber;
       }
-      function copyWithSetImpl(obj, path8, index, value) {
-        if (index >= path8.length) return value;
-        var key = path8[index], updated = isArrayImpl(obj) ? obj.slice() : assign({}, obj);
-        updated[key] = copyWithSetImpl(obj[key], path8, index + 1, value);
+      function copyWithSetImpl(obj, path9, index, value) {
+        if (index >= path9.length) return value;
+        var key = path9[index], updated = isArrayImpl(obj) ? obj.slice() : assign({}, obj);
+        updated[key] = copyWithSetImpl(obj[key], path9, index + 1, value);
         return updated;
       }
       function copyWithRename(obj, oldPath, newPath) {
@@ -10466,11 +10466,11 @@ var require_react_reconciler_development = __commonJS({
         );
         return updated;
       }
-      function copyWithDeleteImpl(obj, path8, index) {
-        var key = path8[index], updated = isArrayImpl(obj) ? obj.slice() : assign({}, obj);
-        if (index + 1 === path8.length)
+      function copyWithDeleteImpl(obj, path9, index) {
+        var key = path9[index], updated = isArrayImpl(obj) ? obj.slice() : assign({}, obj);
+        if (index + 1 === path9.length)
           return isArrayImpl(updated) ? updated.splice(key, 1) : delete updated[key], updated;
-        updated[key] = copyWithDeleteImpl(obj[key], path8, index + 1);
+        updated[key] = copyWithDeleteImpl(obj[key], path9, index + 1);
         return updated;
       }
       function shouldSuspendImpl() {
@@ -12574,19 +12574,19 @@ var require_react_reconciler_development = __commonJS({
           refCount: 0
         };
       }
-      function retainCache(cache3) {
-        cache3.controller.signal.aborted && console.warn(
+      function retainCache(cache4) {
+        cache4.controller.signal.aborted && console.warn(
           "A cache instance was retained after it was already freed. This likely indicates a bug in React."
         );
-        cache3.refCount++;
+        cache4.refCount++;
       }
-      function releaseCache(cache3) {
-        cache3.refCount--;
-        0 > cache3.refCount && console.warn(
+      function releaseCache(cache4) {
+        cache4.refCount--;
+        0 > cache4.refCount && console.warn(
           "A cache instance was released after it was already freed. This likely indicates a bug in React."
         );
-        0 === cache3.refCount && scheduleCallback$2(NormalPriority, function() {
-          cache3.controller.abort();
+        0 === cache4.refCount && scheduleCallback$2(NormalPriority, function() {
+          cache4.controller.abort();
         });
       }
       function startUpdateTimerByLane(lane, method, fiber) {
@@ -23714,8 +23714,8 @@ var require_react_reconciler_development = __commonJS({
       didWarnAboutUndefinedSnapshotBeforeUpdate = /* @__PURE__ */ new Set();
       var offscreenSubtreeIsHidden = false, offscreenSubtreeWasHidden = false, needsFormReset = false, PossiblyWeakSet = "function" === typeof WeakSet ? WeakSet : Set, nextEffect = null, inProgressLanes = null, inProgressRoot = null, hostParent = null, hostParentIsContainer = false, currentHoistableRoot = null, inHydratedSubtree = false, suspenseyCommitFlag = 8192, DefaultAsyncDispatcher = {
         getCacheForType: function(resourceType) {
-          var cache3 = readContext(CacheContext), cacheForType = cache3.data.get(resourceType);
-          void 0 === cacheForType && (cacheForType = resourceType(), cache3.data.set(resourceType, cacheForType));
+          var cache4 = readContext(CacheContext), cacheForType = cache4.data.get(resourceType);
+          void 0 === cacheForType && (cacheForType = resourceType(), cache4.data.set(resourceType, cacheForType));
           return cacheForType;
         },
         cacheSignal: function() {
@@ -23747,29 +23747,29 @@ var require_react_reconciler_development = __commonJS({
       var didWarnAboutNestedUpdates = false;
       var didWarnAboutFindNodeInStrictMode = {};
       var overrideHookState = null, overrideHookStateDeletePath = null, overrideHookStateRenamePath = null, overrideProps = null, overridePropsDeletePath = null, overridePropsRenamePath = null, scheduleUpdate = null, scheduleRetry = null, setErrorHandler = null, setSuspenseHandler = null;
-      overrideHookState = function(fiber, id, path8, value) {
+      overrideHookState = function(fiber, id, path9, value) {
         id = findHook(fiber, id);
-        null !== id && (path8 = copyWithSetImpl(id.memoizedState, path8, 0, value), id.memoizedState = path8, id.baseState = path8, fiber.memoizedProps = assign({}, fiber.memoizedProps), path8 = enqueueConcurrentRenderForLane(fiber, 2), null !== path8 && scheduleUpdateOnFiber(path8, fiber, 2));
+        null !== id && (path9 = copyWithSetImpl(id.memoizedState, path9, 0, value), id.memoizedState = path9, id.baseState = path9, fiber.memoizedProps = assign({}, fiber.memoizedProps), path9 = enqueueConcurrentRenderForLane(fiber, 2), null !== path9 && scheduleUpdateOnFiber(path9, fiber, 2));
       };
-      overrideHookStateDeletePath = function(fiber, id, path8) {
+      overrideHookStateDeletePath = function(fiber, id, path9) {
         id = findHook(fiber, id);
-        null !== id && (path8 = copyWithDeleteImpl(id.memoizedState, path8, 0), id.memoizedState = path8, id.baseState = path8, fiber.memoizedProps = assign({}, fiber.memoizedProps), path8 = enqueueConcurrentRenderForLane(fiber, 2), null !== path8 && scheduleUpdateOnFiber(path8, fiber, 2));
+        null !== id && (path9 = copyWithDeleteImpl(id.memoizedState, path9, 0), id.memoizedState = path9, id.baseState = path9, fiber.memoizedProps = assign({}, fiber.memoizedProps), path9 = enqueueConcurrentRenderForLane(fiber, 2), null !== path9 && scheduleUpdateOnFiber(path9, fiber, 2));
       };
       overrideHookStateRenamePath = function(fiber, id, oldPath, newPath) {
         id = findHook(fiber, id);
         null !== id && (oldPath = copyWithRename(id.memoizedState, oldPath, newPath), id.memoizedState = oldPath, id.baseState = oldPath, fiber.memoizedProps = assign({}, fiber.memoizedProps), oldPath = enqueueConcurrentRenderForLane(fiber, 2), null !== oldPath && scheduleUpdateOnFiber(oldPath, fiber, 2));
       };
-      overrideProps = function(fiber, path8, value) {
-        fiber.pendingProps = copyWithSetImpl(fiber.memoizedProps, path8, 0, value);
+      overrideProps = function(fiber, path9, value) {
+        fiber.pendingProps = copyWithSetImpl(fiber.memoizedProps, path9, 0, value);
         fiber.alternate && (fiber.alternate.pendingProps = fiber.pendingProps);
-        path8 = enqueueConcurrentRenderForLane(fiber, 2);
-        null !== path8 && scheduleUpdateOnFiber(path8, fiber, 2);
+        path9 = enqueueConcurrentRenderForLane(fiber, 2);
+        null !== path9 && scheduleUpdateOnFiber(path9, fiber, 2);
       };
-      overridePropsDeletePath = function(fiber, path8) {
-        fiber.pendingProps = copyWithDeleteImpl(fiber.memoizedProps, path8, 0);
+      overridePropsDeletePath = function(fiber, path9) {
+        fiber.pendingProps = copyWithDeleteImpl(fiber.memoizedProps, path9, 0);
         fiber.alternate && (fiber.alternate.pendingProps = fiber.pendingProps);
-        path8 = enqueueConcurrentRenderForLane(fiber, 2);
-        null !== path8 && scheduleUpdateOnFiber(path8, fiber, 2);
+        path9 = enqueueConcurrentRenderForLane(fiber, 2);
+        null !== path9 && scheduleUpdateOnFiber(path9, fiber, 2);
       };
       overridePropsRenamePath = function(fiber, oldPath, newPath) {
         fiber.pendingProps = copyWithRename(
@@ -33449,8 +33449,8 @@ var cleanupYogaNode = (node) => {
 var currentUpdatePriority = import_constants.NoEventPriority;
 var currentRootNode;
 async function loadPackageJson() {
-  const fs8 = await import("node:fs");
-  const content = fs8.readFileSync(new URL("../package.json", import.meta.url), "utf8");
+  const fs9 = await import("node:fs");
+  const content = fs9.readFileSync(new URL("../package.json", import.meta.url), "utf8");
   const parsedContent = JSON.parse(content);
   return {
     name: parsedContent?.name,
@@ -35846,8 +35846,8 @@ function Text({ color, backgroundColor, dimColor = false, bold = false, italic =
 }
 
 // node_modules/ink/build/components/ErrorOverview.js
-var cleanupPath = (path8) => {
-  return path8?.replace(`file://${cwd()}/`, "");
+var cleanupPath = (path9) => {
+  return path9?.replace(`file://${cwd()}/`, "");
 };
 var stackUtils = new import_stack_utils.default({
   cwd: cwd(),
@@ -37956,8 +37956,8 @@ var import_react36 = __toESM(require_react(), 1);
 var import_react35 = __toESM(require_react(), 1);
 
 // src/aggregate.ts
-import * as fs4 from "node:fs";
-import * as path3 from "node:path";
+import * as fs5 from "node:fs";
+import * as path4 from "node:path";
 
 // src/paths.ts
 import * as os3 from "node:os";
@@ -37996,9 +37996,168 @@ function numEnv(name, def) {
   return Number.isFinite(n) && n >= 0 ? n : def;
 }
 
-// src/liveness.ts
+// src/transcript.ts
 import * as fs3 from "node:fs";
+import * as os4 from "node:os";
 import * as path2 from "node:path";
+var TAIL_BYTES = 256 * 1024;
+var MAX_TITLE_LINE = 4096;
+var SAFE_ID_PATTERN2 = /^[A-Za-z0-9._-]{1,128}$/;
+var MAX_PATH = 4096;
+var MARKER = '"type":"custom-title"';
+var NEWLINE = 10;
+function scanCustomTitle(buf, atBoundary, sessionId) {
+  let first = 0;
+  if (!atBoundary) {
+    const nl = buf.indexOf(NEWLINE);
+    if (nl < 0) return void 0;
+    first = nl + 1;
+  }
+  const last = buf.lastIndexOf(NEWLINE);
+  if (last < first) return void 0;
+  const text = buf.subarray(first, last + 1).toString("utf8");
+  let found;
+  for (const line of text.split("\n")) {
+    if (line.length === 0 || line.length > MAX_TITLE_LINE) continue;
+    if (!line.includes(MARKER)) continue;
+    let parsed;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (parsed === null || typeof parsed !== "object") continue;
+    const o = parsed;
+    if (o.type !== "custom-title") continue;
+    if (typeof o.customTitle !== "string") continue;
+    if (o.sessionId !== void 0 && o.sessionId !== sessionId) continue;
+    found = o.customTitle;
+  }
+  return found;
+}
+function safeSessionId(sessionId) {
+  return typeof sessionId === "string" && SAFE_ID_PATTERN2.test(sessionId) && sessionId !== "." && sessionId !== "..";
+}
+function allowedRoots() {
+  const candidates = [path2.join(os4.homedir(), ".claude", "projects")];
+  const cfg = process.env.CLAUDE_CONFIG_DIR;
+  if (typeof cfg === "string" && cfg.length > 0) candidates.push(path2.join(cfg, "projects"));
+  const roots = [];
+  for (const c of candidates) {
+    try {
+      roots.push(fs3.realpathSync(c));
+    } catch {
+    }
+  }
+  return roots;
+}
+function isInside(root, real) {
+  const rel = path2.relative(root, real);
+  if (rel.length === 0 || path2.isAbsolute(rel)) return false;
+  return rel.split(path2.sep)[0] !== "..";
+}
+function isAllowedTranscriptPath(sessionId, p) {
+  try {
+    if (!safeSessionId(sessionId)) return void 0;
+    if (typeof p !== "string" || p.length === 0 || p.length > MAX_PATH) return void 0;
+    if (!path2.isAbsolute(p)) return void 0;
+    if (path2.normalize(p) !== p) return void 0;
+    const expected = `${sessionId}.jsonl`;
+    if (path2.basename(p) !== expected) return void 0;
+    const real = fs3.realpathSync(p);
+    if (path2.basename(real) !== expected) return void 0;
+    for (const root of allowedRoots()) {
+      if (isInside(root, real)) return real;
+    }
+    return void 0;
+  } catch {
+    return void 0;
+  }
+}
+function readTailCustomTitle(realPath, sessionId, budget = TAIL_BYTES) {
+  try {
+    const flags = fs3.constants.O_RDONLY | fs3.constants.O_NONBLOCK | (fs3.constants.O_NOFOLLOW ?? 0);
+    const fd = fs3.openSync(realPath, flags);
+    try {
+      const st = fs3.fstatSync(fd);
+      if (!st.isFile()) return void 0;
+      const start = Math.max(0, st.size - Math.max(0, budget));
+      const want = st.size - start;
+      const out = Buffer.alloc(want);
+      let filled = 0;
+      while (filled < want) {
+        const n = fs3.readSync(fd, out, filled, want - filled, start + filled);
+        if (n <= 0) break;
+        filled += n;
+      }
+      const title = scanCustomTitle(out.subarray(0, filled), start === 0, sessionId);
+      return { title, size: st.size, mtimeMs: st.mtimeMs };
+    } finally {
+      fs3.closeSync(fd);
+    }
+  } catch {
+    return void 0;
+  }
+}
+var cache3 = /* @__PURE__ */ new Map();
+function valueOf(e) {
+  if (e === void 0 || e.title === void 0 || e.changedAtMs === void 0) return void 0;
+  return { title: e.title, changedAtMs: e.changedAtMs };
+}
+function readTranscriptTitle(sessionId, transcriptPath, budget = TAIL_BYTES) {
+  try {
+    if (typeof transcriptPath !== "string") {
+      cache3.delete(sessionId);
+      return void 0;
+    }
+    let entry = cache3.get(sessionId);
+    if (entry === void 0 || entry.rawPath !== transcriptPath) {
+      const real = isAllowedTranscriptPath(sessionId, transcriptPath);
+      if (real === void 0) {
+        cache3.delete(sessionId);
+        return void 0;
+      }
+      entry = { rawPath: transcriptPath, realPath: real, size: -1, mtimeMs: -1 };
+      cache3.set(sessionId, entry);
+    }
+    let st;
+    try {
+      st = fs3.statSync(entry.realPath);
+    } catch {
+      cache3.delete(sessionId);
+      return void 0;
+    }
+    if (!st.isFile()) {
+      cache3.delete(sessionId);
+      return void 0;
+    }
+    if (st.size === entry.size && st.mtimeMs === entry.mtimeMs) return valueOf(entry);
+    if (st.size < entry.size) {
+      entry.title = void 0;
+      entry.changedAtMs = void 0;
+    }
+    const r = readTailCustomTitle(entry.realPath, sessionId, budget);
+    if (r === void 0) return valueOf(entry);
+    if (r.title !== void 0 && r.title !== entry.title) {
+      entry.title = r.title;
+      entry.changedAtMs = r.mtimeMs;
+    }
+    entry.size = r.size;
+    entry.mtimeMs = r.mtimeMs;
+    return valueOf(entry);
+  } catch {
+    return valueOf(cache3.get(sessionId));
+  }
+}
+function pruneTranscriptTitleCache(keep) {
+  for (const id of [...cache3.keys()]) {
+    if (!keep.has(id)) cache3.delete(id);
+  }
+}
+
+// src/liveness.ts
+import * as fs4 from "node:fs";
+import * as path3 from "node:path";
 import { execFileSync as execFileSync2 } from "node:child_process";
 function defaultStartedProbe(pid) {
   try {
@@ -38029,17 +38188,17 @@ function isProcessAlive(pid, probe = defaultProbe, expectedStarted, startedProbe
   return "alive";
 }
 function resolveSidecarMs(dir, name) {
-  const file = path2.join(dir, name);
+  const file = path3.join(dir, name);
   let content;
   try {
-    content = fs3.readFileSync(file, "utf8");
+    content = fs4.readFileSync(file, "utf8");
   } catch {
     return void 0;
   }
   const parsed = Date.parse(content.trim());
   if (!Number.isNaN(parsed)) return parsed;
   try {
-    return fs3.statSync(file).mtimeMs;
+    return fs4.statSync(file).mtimeMs;
   } catch {
     return void 0;
   }
@@ -38084,7 +38243,7 @@ function idleWaitMs() {
 function activeFiles(dir, now) {
   let raw;
   try {
-    raw = fs4.readFileSync(path3.join(dir, "files.jsonl"), "utf8");
+    raw = fs5.readFileSync(path4.join(dir, "files.jsonl"), "utf8");
   } catch {
     return { files: [] };
   }
@@ -38124,7 +38283,7 @@ function activeFiles(dir, now) {
 function activeReads(dir, now) {
   let raw;
   try {
-    raw = fs4.readFileSync(path3.join(dir, "reads.jsonl"), "utf8");
+    raw = fs5.readFileSync(path4.join(dir, "reads.jsonl"), "utf8");
   } catch {
     return [];
   }
@@ -38158,7 +38317,7 @@ function activeReads(dir, now) {
 }
 function readIntent(dir) {
   try {
-    const parsed = JSON.parse(fs4.readFileSync(path3.join(dir, "intent.txt"), "utf8"));
+    const parsed = JSON.parse(fs5.readFileSync(path4.join(dir, "intent.txt"), "utf8"));
     if (typeof parsed?.intent === "string" && parsed.intent.length > 0) {
       return {
         intent: parsed.intent,
@@ -38172,7 +38331,7 @@ function readIntent(dir) {
 }
 function readTargetBranch(dir) {
   try {
-    const parsed = JSON.parse(fs4.readFileSync(path3.join(dir, "target-branch.txt"), "utf8"));
+    const parsed = JSON.parse(fs5.readFileSync(path4.join(dir, "target-branch.txt"), "utf8"));
     if (typeof parsed?.target_branch === "string" && parsed.target_branch.length > 0) {
       return {
         target_branch: parsed.target_branch,
@@ -38187,7 +38346,7 @@ function readTargetBranch(dir) {
 function readSkill(dir, now) {
   let raw;
   try {
-    raw = fs4.readFileSync(path3.join(dir, "skill.jsonl"), "utf8");
+    raw = fs5.readFileSync(path4.join(dir, "skill.jsonl"), "utf8");
   } catch {
     return {};
   }
@@ -38220,7 +38379,7 @@ function readSkill(dir, now) {
 function readAttention(dir) {
   try {
     const parsed = JSON.parse(
-      fs4.readFileSync(path3.join(dir, "attention.json"), "utf8")
+      fs5.readFileSync(path4.join(dir, "attention.json"), "utf8")
     );
     if (typeof parsed?.type === "string" && parsed.type.length > 0 && typeof parsed.ts === "string") {
       return { attention_type: parsed.type, attention_ts: parsed.ts };
@@ -38233,7 +38392,7 @@ function readAttention(dir) {
 function readAsking(dir) {
   try {
     const parsed = JSON.parse(
-      fs4.readFileSync(path3.join(dir, "asking.json"), "utf8")
+      fs5.readFileSync(path4.join(dir, "asking.json"), "utf8")
     );
     if (typeof parsed?.ts === "string" && parsed.ts.length > 0) {
       return { asking_ts: parsed.ts };
@@ -38245,7 +38404,7 @@ function readAsking(dir) {
 }
 function readTurn(dir) {
   try {
-    const parsed = JSON.parse(fs4.readFileSync(path3.join(dir, "turn.json"), "utf8"));
+    const parsed = JSON.parse(fs5.readFileSync(path4.join(dir, "turn.json"), "utf8"));
     const state = parsed?.state;
     if ((state === "running" || state === "idle") && typeof parsed.ts === "string" && parsed.ts.length > 0) {
       const agents = parsed.agents;
@@ -38256,24 +38415,48 @@ function readTurn(dir) {
     return {};
   }
 }
+function readTitleShard(dir) {
+  try {
+    const parsed = JSON.parse(
+      fs5.readFileSync(path4.join(dir, "title.json"), "utf8")
+    );
+    if (parsed === null || typeof parsed !== "object") return {};
+    const out = {};
+    if (typeof parsed.title === "string" && parsed.title.length > 0) out.title = parsed.title;
+    if (typeof parsed.ts === "string") {
+      const ms = Date.parse(parsed.ts);
+      if (Number.isFinite(ms)) out.tsMs = ms;
+    }
+    if (typeof parsed.transcript_path === "string") out.transcript_path = parsed.transcript_path;
+    return out;
+  } catch {
+    return {};
+  }
+}
+function resolveTitle(h, t) {
+  if (t !== void 0 && (h.tsMs === void 0 || t.changedAtMs > h.tsMs)) return t.title;
+  return h.title;
+}
 function readAll(now = Date.now(), probe = defaultProbe, startedProbe = defaultStartedProbe) {
   const root = sessionsDir();
   let ids;
   try {
-    ids = fs4.readdirSync(root);
+    ids = fs5.readdirSync(root);
   } catch {
     return [];
   }
   const rows = [];
   for (const id of ids) {
-    const dir = path3.join(root, id);
+    const dir = path4.join(root, id);
     let state;
     try {
-      state = JSON.parse(fs4.readFileSync(path3.join(dir, "session.json"), "utf8"));
+      state = JSON.parse(fs5.readFileSync(path4.join(dir, "session.json"), "utf8"));
     } catch {
       continue;
     }
     const { files, lastActive } = activeFiles(dir, now);
+    const titleShard = readTitleShard(dir);
+    const title = resolveTitle(titleShard, readTranscriptTitle(id, titleShard.transcript_path));
     const rawReads = activeReads(dir, now);
     const writeSet = new Set(files.map((f) => f.file_path));
     const reads = rawReads.filter((r) => !writeSet.has(r.file_path));
@@ -38327,6 +38510,8 @@ function readAll(now = Date.now(), probe = defaultProbe, startedProbe = defaultS
       // TB-02 additive card-only field (D-01/D-BR-01 separate shard)
       ...readSkill(dir, now),
       // SKILL-03 additive card-only field (D-01 separate shard)
+      title,
+      // NAME-01 additive card-only field (D-02 shard + D-04 tail)
       last_active: lastActive,
       last_seen: heartbeatMs !== void 0 ? new Date(heartbeatMs).toISOString() : state.last_seen,
       alive,
@@ -38350,6 +38535,7 @@ function readAll(now = Date.now(), probe = defaultProbe, startedProbe = defaultS
       subagent_count: subagent ? turnAgents : void 0
     });
   }
+  pruneTranscriptTitleCache(new Set(ids));
   const key = (r) => Date.parse(r.last_active ?? r.start_time) || 0;
   rows.sort((a, b) => key(b) - key(a));
   return rows;
@@ -38558,8 +38744,8 @@ import { execFile as execFile2 } from "node:child_process";
 import { promisify as promisify2 } from "node:util";
 import { existsSync as existsSync2 } from "node:fs";
 import { access } from "node:fs/promises";
-import * as os4 from "node:os";
-import * as path4 from "node:path";
+import * as os5 from "node:os";
+import * as path5 from "node:path";
 var pexec2 = promisify2(execFile2);
 var FAZLAR_VISIBLE_ROWS = 15;
 function phaseScanMs() {
@@ -38620,11 +38806,11 @@ function mergeRoadmapPhases(progress, roadmapStdout) {
 function resolveGsdTools(cwd2 = process.cwd()) {
   const override = process.env.CSM_GSD_TOOLS;
   if (override && existsSync2(override)) return override;
-  const rel = path4.join("gsd-core", "bin", "gsd-tools.cjs");
+  const rel = path5.join("gsd-core", "bin", "gsd-tools.cjs");
   const candidates = [];
-  if (process.env.RUNTIME_DIR) candidates.push(path4.join(process.env.RUNTIME_DIR, rel));
-  candidates.push(path4.join(cwd2, ".claude", rel));
-  candidates.push(path4.join(os4.homedir(), ".claude", rel));
+  if (process.env.RUNTIME_DIR) candidates.push(path5.join(process.env.RUNTIME_DIR, rel));
+  candidates.push(path5.join(cwd2, ".claude", rel));
+  candidates.push(path5.join(os5.homedir(), ".claude", rel));
   for (const c of candidates) {
     if (existsSync2(c)) return c;
   }
@@ -38679,7 +38865,7 @@ async function resolvePlanningRoots(rows) {
   await Promise.all(
     roots.map(async (root) => {
       try {
-        await access(path4.join(root, ".planning"));
+        await access(path5.join(root, ".planning"));
         out.add(root);
       } catch {
       }
@@ -38829,7 +39015,7 @@ function CompactRow({ s }) {
 var WARN = "\u26A0";
 var JOIN = " \u2194 ";
 var CONFLICT_CAP = 5;
-function basename(rp) {
+function basename2(rp) {
   const parts = String(rp).split("/");
   return parts[parts.length - 1] || String(rp);
 }
@@ -38844,7 +39030,7 @@ function ConflictBand({ conflicts }) {
   const shown = conflicts.slice(0, CONFLICT_CAP);
   const more = conflicts.length - shown.length;
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Box_default, { flexDirection: "column", marginBottom: 1, children: [
-    shown.map((c) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "red", children: `${WARN} ${sanitize(basename(c.realpath))}  ${c.sessions.map(label).join(JOIN)}` }, c.realpath)),
+    shown.map((c) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "red", children: `${WARN} ${sanitize(basename2(c.realpath))}  ${c.sessions.map(label).join(JOIN)}` }, c.realpath)),
     more > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "red", dimColor: true, children: `  +${more} more` }) : null
   ] });
 }
@@ -39043,30 +39229,30 @@ function PhasesPane({
 }
 
 // src/conflicts.ts
-import * as fs5 from "node:fs";
-import * as path5 from "node:path";
-function resolveRealpath(file_path, cwd2, cache3) {
+import * as fs6 from "node:fs";
+import * as path6 from "node:path";
+function resolveRealpath(file_path, cwd2, cache4) {
   const key = `${cwd2 ?? ""} ${file_path}`;
-  const memo = cache3?.get(key);
+  const memo = cache4?.get(key);
   if (memo !== void 0) return memo;
-  const lexical = path5.isAbsolute(file_path) ? file_path : path5.resolve(cwd2 ?? process.cwd(), file_path);
+  const lexical = path6.isAbsolute(file_path) ? file_path : path6.resolve(cwd2 ?? process.cwd(), file_path);
   let resolved;
   try {
-    resolved = fs5.realpathSync(lexical);
+    resolved = fs6.realpathSync(lexical);
   } catch {
     resolved = lexical;
   }
-  cache3?.set(key, resolved);
+  cache4?.set(key, resolved);
   return resolved;
 }
 function detectConflicts(rows, now = Date.now()) {
   void now;
-  const cache3 = /* @__PURE__ */ new Map();
+  const cache4 = /* @__PURE__ */ new Map();
   const groups = /* @__PURE__ */ new Map();
   for (const r of rows) {
     if (!r.alive || r.readyToPrune) continue;
     for (const f of r.files) {
-      const rp = resolveRealpath(f.file_path, r.cwd, cache3);
+      const rp = resolveRealpath(f.file_path, r.cwd, cache4);
       const touch = Date.parse(f.ts) || 0;
       let g = groups.get(rp);
       if (!g) {
@@ -39081,7 +39267,8 @@ function detectConflicts(rows, now = Date.now()) {
           session_id: r.session_id,
           folder: r.folder,
           branch: r.branch,
-          lastTouch: touch
+          lastTouch: touch,
+          title: r.title
         });
       }
       g.lastActive = Math.max(g.lastActive, touch);
@@ -39285,9 +39472,9 @@ function App2() {
       resolvePlanningRoots(liveRowsRef.current).then((roots) => {
         if (!mounted.current) return void 0;
         setPlanningRoots(roots);
-        const fs8 = buildFocusSet(liveRowsRef.current, roots);
-        const i = fs8.length ? focusedIndexRef.current % fs8.length : 0;
-        const root = fs8.length ? fs8[i].root : null;
+        const fs9 = buildFocusSet(liveRowsRef.current, roots);
+        const i = fs9.length ? focusedIndexRef.current % fs9.length : 0;
+        const root = fs9.length ? fs9[i].root : null;
         const shim = shimRef.current;
         if (shim && root) {
           return scanProgress(root, shim).then((p) => {
@@ -39430,24 +39617,24 @@ function run() {
 }
 
 // src/panel/registration.ts
-import * as fs7 from "node:fs";
-import * as path7 from "node:path";
+import * as fs8 from "node:fs";
+import * as path8 from "node:path";
 import { execFileSync as execFileSync3 } from "node:child_process";
 
 // src/store.ts
-import * as fs6 from "node:fs";
-import * as path6 from "node:path";
+import * as fs7 from "node:fs";
+import * as path7 from "node:path";
 var DIR_MODE = 448;
 var FILE_MODE = 384;
 function writeSnapshot(dir, name, data) {
-  fs6.mkdirSync(dir, { recursive: true, mode: DIR_MODE });
-  const target = path6.join(dir, name);
-  const tmp = path6.join(
+  fs7.mkdirSync(dir, { recursive: true, mode: DIR_MODE });
+  const target = path7.join(dir, name);
+  const tmp = path7.join(
     dir,
     `.${name}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`
   );
-  fs6.writeFileSync(tmp, JSON.stringify(data), { mode: FILE_MODE });
-  fs6.renameSync(tmp, target);
+  fs7.writeFileSync(tmp, JSON.stringify(data), { mode: FILE_MODE });
+  fs7.renameSync(tmp, target);
 }
 
 // src/panel/registration.ts
@@ -39510,10 +39697,10 @@ function registerPanel(overrides = {}) {
 }
 function unregisterPanel(pid = process.pid) {
   try {
-    const file = path7.join(storeRoot(), PANEL_FILE);
-    const parsed = JSON.parse(fs7.readFileSync(file, "utf8"));
+    const file = path8.join(storeRoot(), PANEL_FILE);
+    const parsed = JSON.parse(fs8.readFileSync(file, "utf8"));
     if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) && parsed.pid === pid) {
-      fs7.unlinkSync(file);
+      fs8.unlinkSync(file);
       return true;
     }
     return false;

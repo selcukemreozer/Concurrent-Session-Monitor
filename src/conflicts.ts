@@ -31,6 +31,12 @@ export interface ConflictSession {
   branch: string;
   /** ms of this session's newest touch on the file (D-09 ordering / display). */
   lastTouch: number;
+  /**
+   * The session's raw native custom title (SessionRow.title); render-time
+   * sanitized and capped by labelLead (D-08/D-09). Display-only: never part of
+   * grouping or ordering.
+   */
+  title?: string;
 }
 
 /** A group-by-file conflict: one realpath claimed by >=2 distinct live sessions. */
@@ -135,6 +141,7 @@ export function detectConflicts(rows: SessionRow[], now: number = Date.now()): C
           folder: r.folder,
           branch: r.branch,
           lastTouch: touch,
+          title: r.title,
         });
       }
       g.lastActive = Math.max(g.lastActive, touch);
