@@ -172,3 +172,46 @@ describe("reads never conflict (D-03 regression)", () => {
     expect(detectConflicts(rows, now)).toEqual([]);
   });
 });
+
+describe("conflict sessions carry the native title (NAME-02, D-08)", () => {
+  const fixture = (titleA?: string) => {
+    fs.writeFileSync(path.join(root, "real.ts"), "");
+    const now = Date.now();
+    const rows = [
+      makeRow({
+        session_id: "a",
+        folder: "projA",
+        cwd: root,
+        files: [{ file_path: path.join(root, "real.ts"), ts: new Date(now).toISOString() }],
+        ...(titleA !== undefined ? { title: titleA } : {}),
+      }),
+      makeRow({
+        session_id: "b",
+        folder: "projB",
+        cwd: root,
+        files: [{ file_path: path.join(root, "real.ts"), ts: new Date(now - 1000).toISOString() }],
+      }),
+    ];
+    return detectConflicts(rows, now);
+  };
+
+  it("C1: the titled session's conflict entry carries its title; the other stays undefined", () => {
+    const c = fixture("Named");
+    expect(c).toHaveLength(1);
+    const a = c[0].sessions.find((s) => s.session_id === "a");
+    const b = c[0].sessions.find((s) => s.session_id === "b");
+    expect(a?.title).toBe("Named");
+    expect(b?.title).toBeUndefined();
+  });
+
+  it("C2: title never changes detection (same realpath, ids and order without titles)", () => {
+    const withTitle = fixture("Named");
+    fs.rmSync(path.join(root, "real.ts"));
+    const without = fixture();
+    expect(without).toHaveLength(1);
+    expect(without[0].realpath).toBe(withTitle[0].realpath);
+    expect(without[0].sessions.map((s) => s.session_id)).toEqual(
+      withTitle[0].sessions.map((s) => s.session_id),
+    );
+  });
+});
