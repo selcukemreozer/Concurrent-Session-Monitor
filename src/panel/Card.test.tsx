@@ -1460,3 +1460,94 @@ describe("port grouping helpers (260927-8ge)", () => {
     expect(PORT_CURSOR_GLYPH).toBe("❯");
   });
 });
+
+describe("session label — SessionCard + CompactRow (NAME-02, D-06/D-07/D-09)", () => {
+  const E = String.fromCodePoint(0x2026);
+  const NAME = "gm calc system migration";
+  const RESERVED = ["[35m", "[93m", "[32m", "[34m", "[36m", "[31m"].map((c) => ESC + c);
+
+  const render = (node: React.ReactElement): string => renderToString(node, { columns: 200 });
+  function rawAt1(node: React.ReactElement): string {
+    const prev = chalk.level;
+    chalk.level = 1;
+    try {
+      return render(node);
+    } finally {
+      chalk.level = prev;
+    }
+  }
+  const lineWith = (raw: string, needle: string): string =>
+    raw.split("\n").find((l) => stripAnsi(l).includes(needle)) ?? "";
+  const header = (raw: string): string => lineWith(raw, "●");
+
+  it("H1: a named card header leads with the name and demotes the folder", () => {
+    const out = stripAnsi(
+      render(<SessionCard s={makeRow({ title: NAME, folder: "mvp-dashboard-beta" } as Partial<SessionRow>)} />),
+    );
+    expect(out).toContain("● " + NAME + " · mvp-dashboard-beta · main · abcdef01 · ");
+    expect(out).not.toContain("(unnamed)");
+  });
+
+  it("H2: an unnamed card header shows the folder plus (unnamed)", () => {
+    const out = stripAnsi(render(<SessionCard s={makeRow({ folder: "mvp-dashboard-beta" })} />));
+    expect(out).toContain("● mvp-dashboard-beta (unnamed) · main · abcdef01 · ");
+  });
+
+  it("H3: bold name / dim folder, bold folder / dim (unnamed), no reserved palette color", () => {
+    const named = header(
+      rawAt1(
+        <SessionCard
+          s={makeRow({ title: NAME, folder: "mvp-dashboard-beta", dotState: "stale" } as Partial<SessionRow>)}
+        />,
+      ),
+    );
+    expect(named).toContain(ESC + "[1m" + NAME);
+    expect(named).toContain(ESC + "[2m" + " · mvp-dashboard-beta");
+    const unnamed = header(
+      rawAt1(<SessionCard s={makeRow({ folder: "mvp-dashboard-beta", dotState: "stale" })} />),
+    );
+    expect(unnamed).toContain(ESC + "[1m" + "mvp-dashboard-beta");
+    expect(unnamed).toContain(ESC + "[2m" + " (unnamed) · main");
+    for (const code of RESERVED) {
+      expect(named).not.toContain(code);
+      expect(unnamed).not.toContain(code);
+    }
+  });
+
+  it("H4: a long name is capped at 24 graphemes plus an ellipsis", () => {
+    const out = stripAnsi(
+      render(<SessionCard s={makeRow({ title: "Logitech MK295 Mac tutukluluk sorunu" } as Partial<SessionRow>)} />),
+    );
+    expect(out).toContain("Logitech MK295 Mac tutuk" + E + " · my-project · main");
+    expect(out).not.toContain("tutukluluk");
+  });
+
+  it("H5: control bytes in the name are stripped before render", () => {
+    const raw = render(<SessionCard s={makeRow({ title: "ev" + ESC + "[2Jil" } as Partial<SessionRow>)} />);
+    expect(raw).not.toContain(ESC + "[2J");
+    expect(header(stripAnsi(raw))).toContain("ev[2Jil");
+  });
+
+  it("H6: a whitespace-only title renders the unnamed layout", () => {
+    const out = stripAnsi(render(<SessionCard s={makeRow({ title: "   " } as Partial<SessionRow>)} />));
+    expect(out).toContain("my-project (unnamed) · main");
+  });
+
+  it("R1: a named CompactRow leads with the name", () => {
+    const out = stripAnsi(render(<CompactRow s={makeRow({ title: NAME } as Partial<SessionRow>)} />));
+    expect(out).toContain(NAME + " · main · abcdef01 · ");
+    expect(out).not.toContain("(unnamed)");
+  });
+
+  it("R2: an unnamed CompactRow shows the folder plus a dim (unnamed)", () => {
+    const out = stripAnsi(render(<CompactRow s={makeRow()} />));
+    expect(out).toContain("my-project (unnamed) · main · abcdef01 · ");
+    const raw = rawAt1(<CompactRow s={makeRow()} />);
+    expect(raw).toContain(ESC + "[2m" + " (unnamed)");
+  });
+
+  it("R3: an empty-string title on CompactRow renders the unnamed layout", () => {
+    const out = stripAnsi(render(<CompactRow s={makeRow({ title: "" } as Partial<SessionRow>)} />));
+    expect(out).toContain("my-project (unnamed) · main · abcdef01 · ");
+  });
+});
