@@ -72,6 +72,12 @@ interface SeedOpts {
   turn?: Record<string, unknown>;
   /** Raw (possibly torn) turn.json content (260927-46l); wins over `turn`. */
   turnRaw?: string;
+  /** Native session name written as title.json { title, ts } (NAME-02); omitted => absent. */
+  title?: string;
+  /** Raw (possibly torn) title.json content (NAME-02); wins over `titleJson` and `title`. */
+  titleRaw?: string;
+  /** title.json object written VERBATIM as JSON (NAME-02); wins over `title`. */
+  titleJson?: Record<string, unknown>;
 }
 
 /** Seed one session shard directly on disk (no src/ import — self-contained). */
@@ -129,6 +135,15 @@ function seed(storeDir: string, id: string, opts: SeedOpts = {}): void {
     fs.writeFileSync(path.join(dir, "turn.json"), opts.turnRaw, { mode: 0o600 });
   } else if (opts.turn !== undefined) {
     fs.writeFileSync(path.join(dir, "turn.json"), JSON.stringify(opts.turn), { mode: 0o600 });
+  }
+  if (opts.titleRaw !== undefined) {
+    fs.writeFileSync(path.join(dir, "title.json"), opts.titleRaw, { mode: 0o600 });
+  } else if (opts.titleJson !== undefined) {
+    fs.writeFileSync(path.join(dir, "title.json"), JSON.stringify(opts.titleJson), { mode: 0o600 });
+  } else if (opts.title !== undefined) {
+    fs.writeFileSync(path.join(dir, "title.json"), JSON.stringify({ title: opts.title, ts: nowIso }), {
+      mode: 0o600,
+    });
   }
 }
 
@@ -1150,5 +1165,98 @@ describe("csm-status reader — subagent (260927-73b)", () => {
     const lineB = lineFor(res.stdout, b);
     expect(lineB).not.toContain("↻");
     expect(lineB).toContain(" ◉ waiting");
+  });
+});
+
+describe("csm-status reader \u2014 session name (NAME-02, D-07/D-08/D-09)", () => {
+  const ELL = String.fromCodePoint(0x2026);
+  const ESC = String.fromCharCode(0x1b);
+  const RLO = String.fromCodePoint(0x202e);
+
+  it("N1: a titled session's roster line leads with the capped name, then branch and shortid", () => {
+    const id = "name1111-aaaa";
+    seed(tmp, id, { folder: "proj", title: "Logitech MK295 Mac tutukluluk sorunu" });
+    const res = runStatus(id, tmp);
+    expect(res.status).toBe(0);
+    const line = lineFor(res.stdout, id);
+    expect(line?.startsWith("Logitech MK295 Mac tutuk" + ELL + " \u00b7 main \u00b7 " + id.slice(0, 8))).toBe(true);
+  });
+
+  it("N2: an unnamed session keeps the folder lead and never prints (unnamed)", () => {
+    const id = "name2222-aaaa";
+    seed(tmp, id, { folder: "proj" });
+    const res = runStatus(id, tmp);
+    expect(res.status).toBe(0);
+    expect(lineFor(res.stdout, id)?.startsWith("proj \u00b7 main \u00b7 ")).toBe(true);
+    expect(res.stdout).not.toContain("(unnamed)");
+  });
+
+  it("N3: a torn title.json falls back to the folder lead", () => {
+    const id = "name3333-aaaa";
+    seed(tmp, id, { folder: "proj", titleRaw: "{bad" });
+    const res = runStatus(id, tmp);
+    expect(res.status).toBe(0);
+    expect(lineFor(res.stdout, id)?.startsWith("proj \u00b7 main \u00b7 ")).toBe(true);
+  });
+
+  it("N4: control and bidi code points are stripped from the name", () => {
+    const id = "name4444-aaaa";
+    seed(tmp, id, { folder: "proj", title: "ev" + ESC + "[2Jil" + RLO + "x" });
+    const res = runStatus(id, tmp);
+    expect(res.status).toBe(0);
+    expect(lineFor(res.stdout, id)).toContain("ev[2Jilx");
+    expect(res.stdout).not.toContain(ESC);
+    expect(res.stdout).not.toContain(RLO);
+  });
+
+  it("N5: the conflicts block names the peer by its native name", () => {
+    const shared = path.join(tmp, "shared-name.ts");
+    fs.writeFileSync(shared, "");
+    const me = "name5555-aaaa";
+    const peer = "peer5555-bbbb";
+    seed(tmp, me, { folder: "projMe", cwd: tmp, writes: [shared] });
+    seed(tmp, peer, { folder: "projPeer", cwd: tmp, writes: [shared], title: "Peer name" });
+    const res = runStatus(me, tmp);
+    expect(res.status).toBe(0);
+    const idx = res.stdout.indexOf("Conflicts relevant to you");
+    expect(idx).toBeGreaterThanOrEqual(0);
+    expect(res.stdout.slice(idx)).toContain("Peer name \u00b7 main \u00b7 " + peer.slice(0, 8));
+  });
+
+  it("N6: a Ports: group heading leads with the owning session's native name", () => {
+    seed(tmp, "alpha111-aaaa", {
+      folder: "projAlpha",
+      branch: "feature-x",
+      pid: 4242,
+      writes: ["/repo/a.ts"],
+      title: "Port owner",
+    });
+    const lsof = cannedOut(tmp, "lsof.sh", ["p4242", "cnode", "Luser", "f5", "n*:3000"].join("\n"));
+    const ps = cannedOut(tmp, "ps.sh", ["  PID  PPID USER     COMMAND", " 4242     1 user     node server.js"].join("\n"));
+    const res = runStatus("alpha111-aaaa", tmp, { CSM_LSOF_CMD: lsof, CSM_PS_CMD: ps });
+    expect(res.status).toBe(0);
+    expect(res.stdout).toContain("Port owner \u00b7 feature-x \u00b7 alpha111");
+    expect(res.stdout).not.toContain("projAlpha \u00b7 feature-x");
+  });
+
+  it("N7: only the hook-cached title.json name prints, never the transcript tail", () => {
+    const id = "name7777-aaaa";
+    const cfg = path.join(tmp, "claude-config");
+    const projDir = path.join(cfg, "projects", "-proj");
+    fs.mkdirSync(projDir, { recursive: true });
+    const transcript = path.join(projDir, id + ".jsonl");
+    fs.writeFileSync(
+      transcript,
+      JSON.stringify({ type: "custom-title", customTitle: "Tail name", sessionId: id }) + "\n",
+      { mode: 0o600 },
+    );
+    seed(tmp, id, {
+      folder: "proj",
+      titleJson: { title: "Hook name", ts: new Date(Date.now() - 60_000).toISOString(), transcript_path: transcript },
+    });
+    const res = runStatus(id, tmp, { CLAUDE_CONFIG_DIR: cfg });
+    expect(res.status).toBe(0);
+    expect(res.stdout).toContain("Hook name");
+    expect(res.stdout).not.toContain("Tail name");
   });
 });
