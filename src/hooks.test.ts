@@ -5,6 +5,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readAll } from "./aggregate.js";
+import { cleanTitle, displayName } from "./label.js";
 
 // RED: the hook scripts do not exist yet. They land in wave 01-03:
 //   scripts/on-tool.mjs         (PostToolUse file-touch capture, CAP-01)
@@ -1804,6 +1805,35 @@ describe("session title writers (Phase 7 NAME-01, D-02)", () => {
       expect(run(id, { session_title: raw, transcript_path: tp(id) }).status).toBe(0);
       expect(readTitle(id).title).toBe("fix ab cd e");
     }
+  });
+
+  it("W3c writer normalizeTitle and reader displayName agree on the same raw title (WR-02)", () => {
+    const cp = (...c: number[]) => String.fromCodePoint(...c);
+    const TAGS = cp(...Array.from({ length: 51 }, (_, i) => 0xe0020 + i));
+    const FAMILY = cp(0x1f468, 0x200d, 0x1f469, 0x200d, 0x1f467);
+    const corpus = [
+      "Fix" + cp(0x09) + "bug",
+      "Fix" + cp(0x0a) + "bug",
+      "Fix" + cp(0x7f) + "bug",
+      "Fix" + cp(0x9b) + "bug",
+      "ev" + cp(0x1b) + "[2Jil" + cp(0x202e) + "x",
+      "fix" + TAGS + " a" + cp(0x061c) + "b c" + cp(0x200b) + "d",
+      "x" + cp(0x0301).repeat(250) + " name",
+      "ship " + FAMILY.repeat(3),
+      "a" + cp(0x2028) + "b" + cp(0x00a0) + "c",
+      "Logitech MK295 Mac tutukluluk sorunu",
+      "e" + cp(0x0301) + "x".repeat(300),
+      cp(0x200d, 0xfe0f) + cp(0x09),
+    ];
+    corpus.forEach((raw, i) => {
+      const id = `ti-3c-${i}`;
+      expect(prompt(id, { session_title: raw, transcript_path: tp(id) }).status).toBe(0);
+      const stored = readTitle(id).title as string | undefined;
+      // The stored value is already clean (writer and reader agree on cleaning)...
+      if (stored !== undefined) expect(cleanTitle(stored)).toBe(stored);
+      // ...so title.json and the raw transcript-tail value render identically.
+      expect(displayName(stored)).toBe(displayName(raw));
+    });
   });
 
   it("W4 a 300-code-point title is capped at 256 code points", () => {

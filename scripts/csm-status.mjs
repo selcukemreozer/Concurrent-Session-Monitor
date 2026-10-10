@@ -186,7 +186,8 @@ function graphemes(s) {
 }
 
 /**
- * sanitize() first (D-09 order), drop hidden code points, collapse whitespace, turn
+ * Controls (C0, DEL, C1) -> space first (D-09 order, as normalizeTitle), drop
+ * hidden code points, collapse whitespace, turn
  * any cluster over MAX_CLUSTER_CP code points into a space, trim, keep whole
  * clusters up to MAX_TITLE_CP code points; joiner/selector-only -> "".
  * Non-string -> "".
@@ -194,8 +195,14 @@ function graphemes(s) {
 function cleanTitle(raw) {
   if (typeof raw !== "string") return "";
   let out = "";
-  for (const ch of sanitize(raw)) {
+  for (const ch of raw) {
     const cp = ch.codePointAt(0) ?? 0;
+    // WR-02: C0, DEL and C1 controls become a space (never deleted), exactly
+    // like the hook writers' normalizeTitle.
+    if (cp <= 0x1f || cp === 0x7f || (cp >= 0x80 && cp <= 0x9f)) {
+      out += " ";
+      continue;
+    }
     if (isHidden(ch, cp)) continue;
     out += ch;
   }

@@ -1199,12 +1199,12 @@ describe("csm-status reader \u2014 session name (NAME-02, D-07/D-08/D-09)", () =
     expect(lineFor(res.stdout, id)?.startsWith("proj \u00b7 main \u00b7 ")).toBe(true);
   });
 
-  it("N4: control and bidi code points are stripped from the name", () => {
+  it("N4: control code points become a space and bidi code points are stripped from the name", () => {
     const id = "name4444-aaaa";
     seed(tmp, id, { folder: "proj", title: "ev" + ESC + "[2Jil" + RLO + "x" });
     const res = runStatus(id, tmp);
     expect(res.status).toBe(0);
-    expect(lineFor(res.stdout, id)).toContain("ev[2Jilx");
+    expect(lineFor(res.stdout, id)).toContain("ev [2Jilx");
     expect(res.stdout).not.toContain(ESC);
     expect(res.stdout).not.toContain(RLO);
   });

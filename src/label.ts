@@ -8,7 +8,8 @@ import { sanitize } from "./sanitize.js";
  * untrusted. Every label surface renders it through this one module so all
  * surfaces show an identical name:
  *
- *   - D-09 order: clean FIRST (sanitize() drops C0/C1 controls - T-07-01;
+ *   - D-09 order: clean FIRST (C0, DEL and C1 controls become a space, the
+ *     same mapping the hook writers' normalizeTitle applies - T-07-01;
  *     every format / default-ignorable code point (\p{Cf} and
  *     \p{Default_Ignorable_Code_Point}: bidi controls incl. U+061C, zero-width
  *     spaces, U+FEFF, U+00AD, tag characters U+E0000-U+E007F, variation
@@ -85,7 +86,8 @@ function graphemes(s: string): string[] {
 }
 
 /**
- * Clean an untrusted title: sanitize() first (D-09 order), drop hidden
+ * Clean an untrusted title: controls (C0, DEL, C1) become a space first (D-09
+ * order; same mapping as the hook writers' normalizeTitle), drop hidden
  * (format / default-ignorable) code points, collapse whitespace, turn any
  * cluster over MAX_CLUSTER_CP code points into a space, trim, keep whole
  * clusters up to MAX_TITLE_CP code points. A result holding nothing but
@@ -94,8 +96,15 @@ function graphemes(s: string): string[] {
 export function cleanTitle(raw: unknown): string {
   if (typeof raw !== "string") return "";
   let out = "";
-  for (const ch of sanitize(raw)) {
+  for (const ch of raw) {
     const cp = ch.codePointAt(0) ?? 0;
+    // WR-02: C0, DEL and C1 controls become a space (never deleted), exactly
+    // like the hook writers' normalizeTitle, so title.json and the transcript
+    // tail render the same raw title identically.
+    if (cp <= 0x1f || cp === 0x7f || (cp >= 0x80 && cp <= 0x9f)) {
+      out += " ";
+      continue;
+    }
     if (isHidden(ch, cp)) continue;
     out += ch;
   }

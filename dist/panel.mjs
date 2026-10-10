@@ -38582,8 +38582,12 @@ function graphemes(s) {
 function cleanTitle(raw) {
   if (typeof raw !== "string") return "";
   let out = "";
-  for (const ch of sanitize(raw)) {
+  for (const ch of raw) {
     const cp = ch.codePointAt(0) ?? 0;
+    if (cp <= 31 || cp === 127 || cp >= 128 && cp <= 159) {
+      out += " ";
+      continue;
+    }
     if (isHidden2(ch, cp)) continue;
     out += ch;
   }

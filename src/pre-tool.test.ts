@@ -317,7 +317,7 @@ describe("on-pre-tool advisory \u2014 peer session name (NAME-02, D-08/D-09)", (
     expect(res.stdout).not.toContain(RLO);
     const ctx = ctxOf(res.stdout);
     expect(ctx).not.toContain(ESC);
-    expect(ctx).toContain("ev[2Jil");
+    expect(ctx).toContain("ev [2Jil");
   });
 
   it("P3b: tag characters, U+061C, U+200B and piled combining marks never reach the agent (CR-01)", () => {

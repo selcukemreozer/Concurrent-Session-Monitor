@@ -88,11 +88,21 @@ describe("truncateLabel (D-09 24-grapheme cap)", () => {
   });
 });
 
-describe("cleanTitle (sanitize first, then bidi strip, collapse, trim)", () => {
+describe("cleanTitle (controls to space first, then hidden strip, collapse, trim)", () => {
   it("drops ESC so an ANSI clear-screen cannot reach the terminal (T-07-01)", () => {
     const out = cleanTitle(ESC + "[2J" + "abc");
     expect(out).toBe("[2Jabc");
     expect(out).not.toContain(ESC);
+  });
+
+  it("maps C0, DEL and C1 controls to a space, like the hook writers (WR-02)", () => {
+    const DEL = String.fromCharCode(0x7f);
+    const LF = String.fromCharCode(0x0a);
+    expect(cleanTitle("Fix" + TAB + "bug")).toBe("Fix bug");
+    expect(cleanTitle("Fix" + LF + "bug")).toBe("Fix bug");
+    expect(cleanTitle("Fix" + DEL + "bug")).toBe("Fix bug");
+    expect(cleanTitle("Fix" + CSI + "bug")).toBe("Fix bug");
+    expect(cleanTitle("a" + DEL)).toBe("a");
   });
 
   it("drops the U+202E right-to-left override (T-07-02)", () => {
@@ -110,7 +120,7 @@ describe("cleanTitle (sanitize first, then bidi strip, collapse, trim)", () => {
     expect(cleanTitle("  foo " + NBSP + "  bar  ")).toBe("foo bar");
   });
 
-  it("drops a TAB via sanitize, then collapses the surrounding whitespace", () => {
+  it("maps a TAB to a space, then collapses the surrounding whitespace", () => {
     expect(cleanTitle("foo " + TAB + " bar")).toBe("foo bar");
   });
 
@@ -214,11 +224,11 @@ describe("displayName (NAME-02 unnamed detection, D-09 order)", () => {
     expect(displayName(ESC + BEL + CSI + TAB)).toBeUndefined();
   });
 
-  it("does not count stripped control characters toward the cap (T-07-06)", () => {
+  it("collapses a control run to one space, not ten counted graphemes (T-07-06, WR-02)", () => {
     const controls = (ESC + BEL + CSI).repeat(3) + ESC; // ten control characters
     expect(controls.length).toBe(10);
     const out = displayName("a".repeat(20) + controls + "b");
-    expect(out).toBe("a".repeat(20) + "b");
+    expect(out).toBe("a".repeat(20) + " b");
     expect(out).not.toContain(E);
   });
 

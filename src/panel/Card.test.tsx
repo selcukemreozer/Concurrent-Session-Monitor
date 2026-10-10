@@ -1522,10 +1522,10 @@ describe("session label — SessionCard + CompactRow (NAME-02, D-06/D-07/D-09)",
     expect(out).not.toContain("tutukluluk");
   });
 
-  it("H5: control bytes in the name are stripped before render", () => {
+  it("H5: control bytes in the name become a space before render (WR-02)", () => {
     const raw = render(<SessionCard s={makeRow({ title: "ev" + ESC + "[2Jil" } as Partial<SessionRow>)} />);
     expect(raw).not.toContain(ESC + "[2J");
-    expect(header(stripAnsi(raw))).toContain("ev[2Jil");
+    expect(header(stripAnsi(raw))).toContain("ev [2Jil");
   });
 
   it("H6: a whitespace-only title renders the unnamed layout", () => {
