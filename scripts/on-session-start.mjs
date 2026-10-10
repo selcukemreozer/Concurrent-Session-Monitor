@@ -278,19 +278,19 @@ try {
     renameSync(tmp, path.join(dir, "session.json"));
 
     // Phase 7 NAME-01 (D-02): native session title + transcript path shard.
+    // WR-03 / D-10: ALWAYS written, even as a bare { ts } ("currently
+    // unnamed"), so a stale title.json never outlives the payload.
     const title = normalizeTitle(payload.session_title);
     const tpOk = validTranscriptPath(payload.transcript_path, id);
-    if (title || tpOk) {
-      writeAtomic(
-        dir,
-        "title.json",
-        JSON.stringify({
-          ts: new Date().toISOString(),
-          ...(title ? { title } : {}),
-          ...(tpOk ? { transcript_path: payload.transcript_path } : {}),
-        }),
-      );
-    }
+    writeAtomic(
+      dir,
+      "title.json",
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        ...(title ? { title } : {}),
+        ...(tpOk ? { transcript_path: payload.transcript_path } : {}),
+      }),
+    );
   }
 } catch {
   // Swallow everything (T-1-05): monitoring is passive, never blocks the agent.

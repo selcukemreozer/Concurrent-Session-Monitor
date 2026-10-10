@@ -783,10 +783,11 @@ describe("resume signals: hook writers (260927-1zw CR-01/WR-02/WR-05)", () => {
     expect(res.status).toBe(0);
     expect(res.stdout).toBe("");
     // 260927-46l D-01: a prompt also starts a turn (turn.json running).
-    expect(ls("rs-sess")).toEqual(["ask-resolved", "heartbeat", "resumed", "turn.json"]);
-    for (const f of ["ask-resolved", "heartbeat", "resumed", "turn.json"]) {
-      // turn.json is JSON, not ISO text; its content is pinned by U1.
-      if (f !== "turn.json") expect(parses("rs-sess", f)).toBe(true);
+    // Phase 7 WR-03: title.json is always written (bare { ts } here).
+    expect(ls("rs-sess")).toEqual(["ask-resolved", "heartbeat", "resumed", "title.json", "turn.json"]);
+    for (const f of ["ask-resolved", "heartbeat", "resumed", "title.json", "turn.json"]) {
+      // turn.json / title.json are JSON, not ISO text; pinned by U1 / W8.
+      if (f !== "turn.json" && f !== "title.json") expect(parses("rs-sess", f)).toBe(true);
       expect(modeOf("rs-sess", f)).toBe(0o600);
     }
   });
@@ -1870,7 +1871,7 @@ describe("session title writers (Phase 7 NAME-01, D-02)", () => {
     });
   });
 
-  it("W7 invalid transcript_path values are dropped; with no title, no title.json is written", () => {
+  it("W7 invalid transcript_path values are dropped; with no title, title.json is a bare { ts } (WR-03)", () => {
     const bad = (id: string): unknown[] => [
       "p/" + id + ".jsonl",
       path.join(tmp, "projects", "p", "other.jsonl"),
@@ -1887,17 +1888,35 @@ describe("session title writers (Phase 7 NAME-01, D-02)", () => {
     });
     bad("ti-7b").forEach((v) => {
       expect(prompt("ti-7b", { transcript_path: v }).status).toBe(0);
-      expect(fs.existsSync(titlePath("ti-7b"))).toBe(false);
+      expect(Object.keys(readTitle("ti-7b"))).toEqual(["ts"]);
     });
     bad("ti-7c").forEach((v) => {
       expect(start("ti-7c", { transcript_path: v }).status).toBe(0);
-      expect(fs.existsSync(titlePath("ti-7c"))).toBe(false);
+      expect(Object.keys(readTitle("ti-7c"))).toEqual(["ts"]);
     });
   });
 
-  it("W8 a bare UserPromptSubmit payload writes no title.json (sidecar listing unchanged)", () => {
+  it("W8 a bare UserPromptSubmit payload writes a bare { ts } title.json (WR-03, D-10)", () => {
     expect(prompt("ti-8").status).toBe(0);
-    expect(ls("ti-8")).toEqual(["ask-resolved", "heartbeat", "resumed", "turn.json"]);
+    expect(ls("ti-8")).toEqual(["ask-resolved", "heartbeat", "resumed", "title.json", "turn.json"]);
+    const rec = readTitle("ti-8");
+    expect(Object.keys(rec)).toEqual(["ts"]);
+    expect(Number.isFinite(Date.parse(rec.ts as string))).toBe(true);
+    expect(fs.statSync(titlePath("ti-8")).mode & 0o777).toBe(0o600);
+  });
+
+  it("W8b a payload with no title and no valid transcript_path replaces a stale named title.json (WR-03, D-10)", () => {
+    for (const [run, id] of [
+      [prompt, "ti-8bp"],
+      [start, "ti-8bs"],
+    ] as const) {
+      expect(run(id, { session_title: "Old name", transcript_path: tp(id) }).status).toBe(0);
+      expect(readTitle(id).title).toBe("Old name");
+      expect(run(id, { transcript_path: "relative/" + id + ".jsonl" }).status).toBe(0);
+      const rec = readTitle(id);
+      expect(rec).not.toHaveProperty("title");
+      expect(Object.keys(rec)).toEqual(["ts"]);
+    }
   });
 
   it("W9 on-user-prompt never rewrites session.json (no clobber of SessionStart fields)", () => {

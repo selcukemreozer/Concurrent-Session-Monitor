@@ -184,20 +184,20 @@ try {
     // 260927-46l D-01: a prompt starts a turn (the reader shows ▶ running).
     writeAtomic(dir, "turn.json", JSON.stringify({ state: "running", ts: iso }));
     // Phase 7 NAME-01 (D-02): record the native session title + transcript
-    // path. Nothing usable -> no write (keeps the bare sidecar listing stable).
+    // path. WR-03 / D-10: ALWAYS write the snapshot, even as a bare { ts }:
+    // that is the only way to say "currently unnamed", so a stale title.json
+    // never outlives the payload that dropped the name.
     const title = normalizeTitle(payload.session_title);
     const tpOk = validTranscriptPath(payload.transcript_path, id);
-    if (title || tpOk) {
-      writeAtomic(
-        dir,
-        "title.json",
-        JSON.stringify({
-          ts: iso,
-          ...(title ? { title } : {}),
-          ...(tpOk ? { transcript_path: payload.transcript_path } : {}),
-        }),
-      );
-    }
+    writeAtomic(
+      dir,
+      "title.json",
+      JSON.stringify({
+        ts: iso,
+        ...(title ? { title } : {}),
+        ...(tpOk ? { transcript_path: payload.transcript_path } : {}),
+      }),
+    );
   }
 } catch {
   // Swallow every error (T-1-05): NEVER exit non-zero, NEVER write stdout.
