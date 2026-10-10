@@ -616,6 +616,9 @@ function readTitleShard(dir: string): { title?: string; tsMs?: number; transcrip
  * never outlives a newer record). D-04: the tail wins only when STRICTLY
  * fresher, so a mid-session `/rename` shows on the next panel tick before the
  * next prompt rewrites title.json. Equal times favour the documented record.
+ * WR-01: a tail value from the reader's baseline scan carries
+ * changedAtMs = -Infinity (unknown age), so any title.json with a ts wins it;
+ * with no tsMs the tail still wins (row 2).
  *
  * Fallback rule (RESEARCH assumption A2): if live UAT shows Claude Code does
  * not deliver `session_title` on UserPromptSubmit, change ONLY this function

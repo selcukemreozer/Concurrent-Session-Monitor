@@ -140,9 +140,24 @@ describe("scanCustomTitle", () => {
 });
 
 describe("readTranscriptTitle (cache)", () => {
-  it("R1: returns the title and the file mtime as changedAtMs", () => {
+  it("R1 (WR-01): a value found by the baseline scan has unknown age (changedAtMs -Infinity)", () => {
     const p = writeTranscript(ID, [ct("Alpha", ID)]);
-    expect(readTranscriptTitle(ID, p)).toEqual({ title: "Alpha", changedAtMs: fs.statSync(p).mtimeMs });
+    expect(readTranscriptTitle(ID, p)).toEqual({ title: "Alpha", changedAtMs: Number.NEGATIVE_INFINITY });
+  });
+
+  it("R1b (WR-01): a value first seen after the baseline scan carries the file mtime", () => {
+    const p = writeTranscript(ID, [userLine("hi")], "p", 1700000000);
+    expect(readTranscriptTitle(ID, p)).toBeUndefined();
+    appendLines(p, [ct("Alpha", ID)], 1700000100);
+    expect(readTranscriptTitle(ID, p)).toEqual({ title: "Alpha", changedAtMs: 1700000100000 });
+  });
+
+  it("R1c (WR-01): the first scan after a shrink is a baseline scan again", () => {
+    const p = writeTranscript(ID, [userLine("a".repeat(200)), ct("Gone", ID)], "p", 1700000000);
+    appendLines(p, [ct("Live", ID)], 1700000050);
+    expect(readTranscriptTitle(ID, p)?.changedAtMs).toBe(Number.NEGATIVE_INFINITY);
+    writeTranscript(ID, [ct("Rewritten", ID)], "p", 1700000100);
+    expect(readTranscriptTitle(ID, p)).toEqual({ title: "Rewritten", changedAtMs: Number.NEGATIVE_INFINITY });
   });
 
   it("R2: change gate: unchanged (size, mtime) never re-reads the file", () => {
@@ -155,12 +170,12 @@ describe("readTranscriptTitle (cache)", () => {
   it("R3: sticky: a changed tail with no custom-title keeps the previous value", () => {
     const p = writeTranscript(ID, [ct("Keep", ID)], "p", 1700000000);
     const first = readTranscriptTitle(ID, p);
-    expect(first).toEqual({ title: "Keep", changedAtMs: 1700000000000 });
+    expect(first).toEqual({ title: "Keep", changedAtMs: Number.NEGATIVE_INFINITY });
     const filler: string[] = [];
     for (let i = 0; i < 100; i++) filler.push(userLine("u".repeat(3500)));
     appendLines(p, filler, 1700000050);
     expect(fs.statSync(p).size).toBeGreaterThan(300 * 1024);
-    expect(readTranscriptTitle(ID, p)).toEqual({ title: "Keep", changedAtMs: 1700000000000 });
+    expect(readTranscriptTitle(ID, p)).toEqual({ title: "Keep", changedAtMs: Number.NEGATIVE_INFINITY });
   });
 
   it("R4: a changed value bumps changedAtMs, a re-append of the same value does not", () => {

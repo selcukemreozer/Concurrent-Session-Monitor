@@ -1559,14 +1559,40 @@ describe("session title (NAME-01, D-02/D-03/D-04/D-10)", () => {
     expect(rowById("beta").title).toBeUndefined();
   });
 
-  it("A5 (D-04): a fresher transcript /rename wins over an older title.json title", () => {
-    const p = writeTranscript("alpha", ["New"], 1700000060);
+  it("A5 (D-04): a live transcript /rename seen after the baseline scan wins over an older title.json title", () => {
+    const p = writeTranscript("alpha", ["Old"], 1700000030);
     seedSession("alpha", new Date().toISOString(), {
       title: "Old",
       titleTs: new Date(1700000000000).toISOString(),
       transcriptPath: p,
     });
+    expect(rowById("alpha").title).toBe("Old"); // baseline scan
+    writeTranscript("alpha", ["Old", "New"], 1700000060); // live /rename appends
     expect(rowById("alpha").title).toBe("New");
+  });
+
+  it("A5b (WR-01): on a cold cache a transcript mtime LATER than title.json.ts does not beat h.title", () => {
+    // The transcript is appended after every assistant message, so its mtime is
+    // almost always newer than the last prompt's title.json ts; that mtime says
+    // nothing about when the custom-title line was written.
+    const p = writeTranscript("alpha", ["A"], 1700000300);
+    seedSession("alpha", new Date().toISOString(), {
+      title: "C",
+      titleTs: new Date(1700000000000).toISOString(),
+      transcriptPath: p,
+    });
+    expect(rowById("alpha").title).toBe("C");
+    // A panel restart (cache reset) keeps showing the documented record.
+    resetTranscriptTitleCache();
+    expect(rowById("alpha").title).toBe("C");
+  });
+
+  it("A5c (WR-01): a baseline tail value still wins when title.json has no parseable ts", () => {
+    const p = writeTranscript("alpha", ["Tail"], 1700000300);
+    seedSession("alpha", new Date().toISOString(), {
+      titleRaw: JSON.stringify({ title: "Hook", transcript_path: p }),
+    });
+    expect(rowById("alpha").title).toBe("Tail");
   });
 
   it("A6 (D-02/D-03): a newer title.json without a title overrides an older tail value", () => {
@@ -1589,11 +1615,13 @@ describe("session title (NAME-01, D-02/D-03/D-04/D-10)", () => {
   });
 
   it("A8 (D-10): a /clear session in the same project dir never inherits the old name", () => {
-    const oldP = writeTranscript("old-s", ["Kept"], 1700000060, "proj");
+    const oldP = writeTranscript("old-s", [], 1700000030, "proj");
     const newP = writeTranscript("new-s", [], 1700000090, "proj");
     const ts = new Date(1700000000000).toISOString();
     seedSession("old-s", new Date().toISOString(), { titleTs: ts, transcriptPath: oldP });
     seedSession("new-s", new Date().toISOString(), { titleTs: ts, transcriptPath: newP });
+    readAll(); // baseline scan of both transcripts
+    writeTranscript("old-s", ["Kept"], 1700000060, "proj"); // live /rename in the old session
     const rows = readAll();
     expect(rows.find((r) => r.session_id === "new-s")?.title).toBeUndefined();
     expect(rows.find((r) => r.session_id === "old-s")?.title).toBe("Kept");

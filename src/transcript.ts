@@ -26,8 +26,14 @@ import * as path from "node:path";
  * scan whose window holds no custom-title line keeps the previous title; the
  * cache resets when the file shrinks, when the transcript path changes, or
  * when stat fails. `changedAtMs` is the transcript mtime of the scan where the
- * value first appeared or CHANGED (a re-append of the same value does not bump
- * it), the freshness input for the "fresher wins" merge in aggregate.
+ * value CHANGED after the entry's baseline scan (a re-append of the same value
+ * does not bump it), the freshness input for the "fresher wins" merge in
+ * aggregate. WR-01: a value found by the BASELINE scan (the first successful
+ * scan of a fresh entry - cold panel start, a changed path, a stat failure -
+ * or the first scan after a shrink) has unknown age: the file's current mtime
+ * says nothing about when that line was written, so it gets
+ * Number.NEGATIVE_INFINITY and a documented title.json record with a ts wins.
+ * Only a change seen after the baseline counts as strictly fresher.
  *
  * Path guard (T-07-03): the path string comes from a store file, so it must be
  * absolute, normalized, named `<id>.jsonl`, and its realpath must lie inside
@@ -244,16 +250,22 @@ export function readTranscriptTitle(
     if (st.size === entry.size && st.mtimeMs === entry.mtimeMs) return valueOf(entry);
 
     if (st.size < entry.size) {
+      // Shrink (rewrite): forget the value AND the baseline, so the next
+      // successful scan is a baseline scan again (WR-01).
       entry.title = undefined;
       entry.changedAtMs = undefined;
+      entry.size = -1;
+      entry.mtimeMs = -1;
     }
 
     const r = readTailCustomTitle(entry.realPath, sessionId, budget);
     if (r === undefined) return valueOf(entry);
 
+    // WR-01: size < 0 marks an entry that has never completed a scan.
+    const baseline = entry.size < 0;
     if (r.title !== undefined && r.title !== entry.title) {
       entry.title = r.title;
-      entry.changedAtMs = r.mtimeMs;
+      entry.changedAtMs = baseline ? Number.NEGATIVE_INFINITY : r.mtimeMs;
     }
     entry.size = r.size;
     entry.mtimeMs = r.mtimeMs;

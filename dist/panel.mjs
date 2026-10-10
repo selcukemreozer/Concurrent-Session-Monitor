@@ -38135,12 +38135,15 @@ function readTranscriptTitle(sessionId, transcriptPath, budget = TAIL_BYTES) {
     if (st.size < entry.size) {
       entry.title = void 0;
       entry.changedAtMs = void 0;
+      entry.size = -1;
+      entry.mtimeMs = -1;
     }
     const r = readTailCustomTitle(entry.realPath, sessionId, budget);
     if (r === void 0) return valueOf(entry);
+    const baseline = entry.size < 0;
     if (r.title !== void 0 && r.title !== entry.title) {
       entry.title = r.title;
-      entry.changedAtMs = r.mtimeMs;
+      entry.changedAtMs = baseline ? Number.NEGATIVE_INFINITY : r.mtimeMs;
     }
     entry.size = r.size;
     entry.mtimeMs = r.mtimeMs;
