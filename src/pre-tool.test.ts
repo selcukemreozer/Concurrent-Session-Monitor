@@ -320,6 +320,27 @@ describe("on-pre-tool advisory \u2014 peer session name (NAME-02, D-08/D-09)", (
     expect(ctx).toContain("ev[2Jil");
   });
 
+  it("P3b: tag characters, U+061C, U+200B and piled combining marks never reach the agent (CR-01)", () => {
+    const TAGS = String.fromCodePoint(...Array.from({ length: 51 }, (_, i) => 0xe0020 + i));
+    const ZALGO = "x" + String.fromCodePoint(0x0301).repeat(250);
+    const F = makeFile("shared.ts");
+    seedSession("actor", { heartbeatMs: fresh() });
+    seedSession("peer", {
+      files: [F],
+      heartbeatMs: fresh(),
+      title: "fix" + TAGS + " a" + String.fromCodePoint(0x061c) + "b c" + String.fromCodePoint(0x200b) + "d " + ZALGO,
+    });
+    const res = runPreTool(payload("actor", F));
+    expect(res.status).toBe(0);
+    const ctx = ctxOf(res.stdout);
+    expect(ctx.endsWith("is also held by fix ab cd \u00b7 main \u00b7 peer")).toBe(true);
+    for (const ch of ctx) {
+      const cp = ch.codePointAt(0) ?? 0;
+      expect(cp >= 0xe0000 && cp <= 0xe007f).toBe(false);
+      expect([0x061c, 0x200b, 0x0301]).not.toContain(cp);
+    }
+  });
+
   it("P4: a torn title.json falls back to the folder lead", () => {
     const F = makeFile("shared.ts");
     seedSession("actor", { heartbeatMs: fresh() });

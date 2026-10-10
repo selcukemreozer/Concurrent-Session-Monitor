@@ -70,7 +70,8 @@ function stripControls(s) {
 // mirrors src/label.ts and scripts/csm-status.mjs; keep in lockstep
 // (Pitfall 8). Identical to the csm-status block except cleanTitle calls
 // stripControls (this script's sanitize). Kept ASCII-only: the ellipsis is an
-// escape and bidi code points are compared numerically.
+// escape and invisible code points are matched by \p{...} / \u escapes or
+// compared numerically, never as literals.
 
 /** D-09: display cap in grapheme clusters (the ellipsis is extra). */
 const NAME_CAP = 24;
@@ -78,14 +79,18 @@ const NAME_CAP = 24;
 /** U+2026 horizontal ellipsis (>= 0xA0, so stripControls() keeps it). */
 const ELLIPSIS = "\u2026";
 
-/** T-07-02: bidi/format code points that can visually reorder or hide text. */
-function isBidiFormat(cp) {
-  return (
-    cp === 0x200e ||
-    cp === 0x200f ||
-    (cp >= 0x202a && cp <= 0x202e) ||
-    (cp >= 0x2066 && cp <= 0x2069)
-  );
+/** T-07-06: longest grapheme cluster kept, in code points (RGI skin-toned kiss = 10). */
+const MAX_CLUSTER_CP = 10;
+
+/** T-07-06: total code points kept (whole clusters only); equals the hook writers' MAX_TITLE. */
+const MAX_TITLE_CP = 256;
+
+/** T-07-02 / T-07-06: format and default-ignorable (invisible) code points. */
+const HIDDEN = /[\p{Cf}\p{Default_Ignorable_Code_Point}]/u;
+
+/** Dropped: every hidden code point except ZWJ U+200D and the emoji selectors U+FE0E/U+FE0F. */
+function isHidden(ch, cp) {
+  return cp !== 0x200d && cp !== 0xfe0e && cp !== 0xfe0f && HIDDEN.test(ch);
 }
 
 let segmenter; // lazy: undefined = not probed, null = unavailable
@@ -102,16 +107,35 @@ function graphemes(s) {
   return Array.from(segmenter.segment(s), (x) => x.segment);
 }
 
-/** stripControls() first (D-09 order), drop bidi/format, collapse whitespace, trim. Non-string -> "". */
+/**
+ * stripControls() first (D-09 order), drop hidden code points, collapse whitespace, turn
+ * any cluster over MAX_CLUSTER_CP code points into a space, trim, keep whole
+ * clusters up to MAX_TITLE_CP code points; joiner/selector-only -> "".
+ * Non-string -> "".
+ */
 function cleanTitle(raw) {
   if (typeof raw !== "string") return "";
   let out = "";
   for (const ch of stripControls(raw)) {
     const cp = ch.codePointAt(0) ?? 0;
-    if (isBidiFormat(cp)) continue;
+    if (isHidden(ch, cp)) continue;
     out += ch;
   }
-  return out.replace(/\s+/g, " ").trim();
+  let kept = "";
+  for (const g of graphemes(out.replace(/\s+/g, " "))) {
+    kept += Array.from(g).length > MAX_CLUSTER_CP ? " " : g;
+  }
+  kept = kept.replace(/\s+/g, " ").trim();
+  let res = "";
+  let n = 0;
+  for (const g of graphemes(kept)) {
+    const len = Array.from(g).length;
+    if (n + len > MAX_TITLE_CP) break;
+    res += g;
+    n += len;
+  }
+  res = res.trim();
+  return /[^\s\u200d\ufe0e\ufe0f]/u.test(res) ? res : "";
 }
 
 /** Cap an ALREADY-cleaned string to `max` grapheme clusters plus ELLIPSIS. */
@@ -312,8 +336,10 @@ try {
         // folder (D-07: never "(unnamed)"). The title is read only here, for the
         // one matched peer, so the no-conflict path pays nothing (D-09 latency).
         // It is the hook-cached title only, never the transcript tail (D-04
-        // scope). The 24-grapheme cap plus the control/bidi strip bound the
-        // peer-chosen text injected into the acting agent's context (T-07-06).
+        // scope). cleanTitle drops every invisible (format/default-ignorable)
+        // code point and any cluster over MAX_CLUSTER_CP code points, so the
+        // 24-grapheme cap bounds the peer-chosen text injected into the acting
+        // agent's context in code points too (T-07-06).
         const lead = displayName(readTitle(peer.dir)) ?? stripControls(peer.state.folder ?? "");
         const branch = stripControls(peer.state.branch ?? "") || "—";
         const shortId = stripControls(String(peer.session_id).slice(0, 8));

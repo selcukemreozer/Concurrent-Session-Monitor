@@ -38,25 +38,56 @@ const SAFE_ID = /^[A-Za-z0-9._-]{1,128}$/;
 const MAX_TITLE = 256;
 const MAX_TRANSCRIPT_PATH = 4096;
 
+// T-07-06: longest grapheme cluster kept, in code points (RGI skin-toned kiss
+// = 10); a longer cluster (piled combining marks) becomes a space.
+const MAX_CLUSTER_CP = 10;
+
+// T-07-02 / T-07-06: format and default-ignorable (invisible) code points.
+const HIDDEN = /[\p{Cf}\p{Default_Ignorable_Code_Point}]/u;
+
+let segmenter; // lazy: undefined = not probed, null = unavailable
+
+// Split into grapheme clusters; code-point fallback when Intl.Segmenter is absent.
+function graphemes(s) {
+  if (segmenter === undefined) {
+    segmenter =
+      typeof Intl !== "undefined" && typeof Intl.Segmenter === "function"
+        ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
+        : null;
+  }
+  if (segmenter === null) return Array.from(s);
+  return Array.from(segmenter.segment(s), (x) => x.segment);
+}
+
 function normalizeTitle(raw) {
   if (typeof raw !== "string") return "";
   let out = "";
   for (const ch of raw) {
-    const cp = ch.codePointAt(0);
+    const cp = ch.codePointAt(0) ?? 0;
     if (cp <= 0x1f || cp === 0x7f || (cp >= 0x80 && cp <= 0x9f)) {
       out += " ";
-    } else if (
-      cp === 0x200e ||
-      cp === 0x200f ||
-      (cp >= 0x202a && cp <= 0x202e) ||
-      (cp >= 0x2066 && cp <= 0x2069)
-    ) {
-      // Dropped: bidi/format override (T-07-02).
+    } else if (cp !== 0x200d && cp !== 0xfe0e && cp !== 0xfe0f && HIDDEN.test(ch)) {
+      // Dropped: invisible format/default-ignorable code point (T-07-02/T-07-06).
     } else {
       out += ch;
     }
   }
-  return Array.from(out.replace(/\s+/g, " ").trim()).slice(0, MAX_TITLE).join("");
+  let kept = "";
+  for (const g of graphemes(out.replace(/\s+/g, " "))) {
+    kept += Array.from(g).length > MAX_CLUSTER_CP ? " " : g;
+  }
+  kept = kept.replace(/\s+/g, " ").trim();
+  // Whole clusters only, up to MAX_TITLE code points (never splits a cluster).
+  let res = "";
+  let n = 0;
+  for (const g of graphemes(kept)) {
+    const len = Array.from(g).length;
+    if (n + len > MAX_TITLE) break;
+    res += g;
+    n += len;
+  }
+  res = res.trim();
+  return /[^\s\u200d\ufe0e\ufe0f]/u.test(res) ? res : "";
 }
 
 function validTranscriptPath(tp, id) {

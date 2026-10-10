@@ -1793,6 +1793,19 @@ describe("session title writers (Phase 7 NAME-01, D-02)", () => {
     expect(readTitle(id).title).toBe("x yz");
   });
 
+  it("W3b hidden code points dropped and a piled-mark cluster becomes a space (CR-01, T-07-06)", () => {
+    const TAGS = String.fromCodePoint(...Array.from({ length: 51 }, (_, i) => 0xe0020 + i));
+    const ZALGO = "x" + String.fromCodePoint(0x0301).repeat(250);
+    const raw = "fix" + TAGS + " a" + String.fromCodePoint(0x061c) + "b c" + String.fromCodePoint(0x200b) + "d " + ZALGO + " e";
+    for (const [run, id] of [
+      [prompt, "ti-3bp"],
+      [start, "ti-3bs"],
+    ] as const) {
+      expect(run(id, { session_title: raw, transcript_path: tp(id) }).status).toBe(0);
+      expect(readTitle(id).title).toBe("fix ab cd e");
+    }
+  });
+
   it("W4 a 300-code-point title is capped at 256 code points", () => {
     const id = "ti-4";
     expect(prompt(id, { session_title: "a".repeat(300), transcript_path: tp(id) }).status).toBe(0);

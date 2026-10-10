@@ -1209,6 +1209,24 @@ describe("csm-status reader \u2014 session name (NAME-02, D-07/D-08/D-09)", () =
     expect(res.stdout).not.toContain(RLO);
   });
 
+  it("N4b: tag characters, U+061C, U+200B and piled combining marks are dropped (CR-01)", () => {
+    const id = "name4b44-aaaa";
+    const TAGS = String.fromCodePoint(...Array.from({ length: 51 }, (_, i) => 0xe0020 + i));
+    const ZALGO = "x" + String.fromCodePoint(0x0301).repeat(250);
+    seed(tmp, id, {
+      folder: "proj",
+      title: "fix" + TAGS + " a" + String.fromCodePoint(0x061c) + "b c" + String.fromCodePoint(0x200b) + "d " + ZALGO,
+    });
+    const res = runStatus(id, tmp);
+    expect(res.status).toBe(0);
+    expect(lineFor(res.stdout, id)?.startsWith("fix ab cd \u00b7 main \u00b7 " + id.slice(0, 8))).toBe(true);
+    for (const ch of res.stdout) {
+      const cp = ch.codePointAt(0) ?? 0;
+      expect(cp >= 0xe0000 && cp <= 0xe007f).toBe(false);
+      expect([0x061c, 0x200b, 0x0301]).not.toContain(cp);
+    }
+  });
+
   it("N5: the conflicts block names the peer by its native name", () => {
     const shared = path.join(tmp, "shared-name.ts");
     fs.writeFileSync(shared, "");

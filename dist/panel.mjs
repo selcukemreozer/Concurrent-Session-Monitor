@@ -3899,9 +3899,9 @@ var require_react_reconciler_production = __commonJS({
         sourceFiber.lanes |= lane;
         var alternate = sourceFiber.alternate;
         null !== alternate && (alternate.lanes |= lane);
-        for (var isHidden2 = false, parent = sourceFiber.return; null !== parent; )
-          parent.childLanes |= lane, alternate = parent.alternate, null !== alternate && (alternate.childLanes |= lane), 22 === parent.tag && (sourceFiber = parent.stateNode, null === sourceFiber || sourceFiber._visibility & 1 || (isHidden2 = true)), sourceFiber = parent, parent = parent.return;
-        return 3 === sourceFiber.tag ? (parent = sourceFiber.stateNode, isHidden2 && null !== update && (isHidden2 = 31 - clz32(lane), sourceFiber = parent.hiddenUpdates, alternate = sourceFiber[isHidden2], null === alternate ? sourceFiber[isHidden2] = [update] : alternate.push(update), update.lane = lane | 536870912), parent) : null;
+        for (var isHidden3 = false, parent = sourceFiber.return; null !== parent; )
+          parent.childLanes |= lane, alternate = parent.alternate, null !== alternate && (alternate.childLanes |= lane), 22 === parent.tag && (sourceFiber = parent.stateNode, null === sourceFiber || sourceFiber._visibility & 1 || (isHidden3 = true)), sourceFiber = parent, parent = parent.return;
+        return 3 === sourceFiber.tag ? (parent = sourceFiber.stateNode, isHidden3 && null !== update && (isHidden3 = 31 - clz32(lane), sourceFiber = parent.hiddenUpdates, alternate = sourceFiber[isHidden3], null === alternate ? sourceFiber[isHidden3] = [update] : alternate.push(update), update.lane = lane | 536870912), parent) : null;
       }
       function getRootForUpdatedFiber(sourceFiber) {
         if (50 < nestedUpdateCount)
@@ -6358,7 +6358,7 @@ var require_react_reconciler_production = __commonJS({
         }
         return false;
       }
-      function appendAllChildren(parent, workInProgress2, needsVisibilityToggle, isHidden2) {
+      function appendAllChildren(parent, workInProgress2, needsVisibilityToggle, isHidden3) {
         if (supportsMutation)
           for (needsVisibilityToggle = workInProgress2.child; null !== needsVisibilityToggle; ) {
             if (5 === needsVisibilityToggle.tag || 6 === needsVisibilityToggle.tag)
@@ -6381,14 +6381,14 @@ var require_react_reconciler_production = __commonJS({
           for (var node$85 = workInProgress2.child; null !== node$85; ) {
             if (5 === node$85.tag) {
               var instance2 = node$85.stateNode;
-              needsVisibilityToggle && isHidden2 && (instance2 = cloneHiddenInstance(
+              needsVisibilityToggle && isHidden3 && (instance2 = cloneHiddenInstance(
                 instance2,
                 node$85.type,
                 node$85.memoizedProps
               ));
               appendInitialChild(parent, instance2);
             } else if (6 === node$85.tag)
-              instance2 = node$85.stateNode, needsVisibilityToggle && isHidden2 && (instance2 = cloneHiddenTextInstance(
+              instance2 = node$85.stateNode, needsVisibilityToggle && isHidden3 && (instance2 = cloneHiddenTextInstance(
                 instance2,
                 node$85.memoizedProps
               )), appendInitialChild(parent, instance2);
@@ -6411,20 +6411,20 @@ var require_react_reconciler_production = __commonJS({
             node$85 = node$85.sibling;
           }
       }
-      function appendAllChildrenToContainer(containerChildSet, workInProgress2, needsVisibilityToggle, isHidden2) {
+      function appendAllChildrenToContainer(containerChildSet, workInProgress2, needsVisibilityToggle, isHidden3) {
         var hasOffscreenComponentChild = false;
         if (supportsPersistence)
           for (var node = workInProgress2.child; null !== node; ) {
             if (5 === node.tag) {
               var instance2 = node.stateNode;
-              needsVisibilityToggle && isHidden2 && (instance2 = cloneHiddenInstance(
+              needsVisibilityToggle && isHidden3 && (instance2 = cloneHiddenInstance(
                 instance2,
                 node.type,
                 node.memoizedProps
               ));
               appendChildToContainerChildSet(containerChildSet, instance2);
             } else if (6 === node.tag)
-              instance2 = node.stateNode, needsVisibilityToggle && isHidden2 && (instance2 = cloneHiddenTextInstance(
+              instance2 = node.stateNode, needsVisibilityToggle && isHidden3 && (instance2 = cloneHiddenTextInstance(
                 instance2,
                 node.memoizedProps
               )), appendChildToContainerChildSet(containerChildSet, instance2);
@@ -13811,9 +13811,9 @@ var require_react_reconciler_development = __commonJS({
         sourceFiber.lanes |= lane;
         var alternate = sourceFiber.alternate;
         null !== alternate && (alternate.lanes |= lane);
-        for (var isHidden2 = false, parent = sourceFiber.return; null !== parent; )
-          parent.childLanes |= lane, alternate = parent.alternate, null !== alternate && (alternate.childLanes |= lane), 22 === parent.tag && (sourceFiber = parent.stateNode, null === sourceFiber || sourceFiber._visibility & OffscreenVisible || (isHidden2 = true)), sourceFiber = parent, parent = parent.return;
-        return 3 === sourceFiber.tag ? (parent = sourceFiber.stateNode, isHidden2 && null !== update && (isHidden2 = 31 - clz32(lane), sourceFiber = parent.hiddenUpdates, alternate = sourceFiber[isHidden2], null === alternate ? sourceFiber[isHidden2] = [update] : alternate.push(update), update.lane = lane | 536870912), parent) : null;
+        for (var isHidden3 = false, parent = sourceFiber.return; null !== parent; )
+          parent.childLanes |= lane, alternate = parent.alternate, null !== alternate && (alternate.childLanes |= lane), 22 === parent.tag && (sourceFiber = parent.stateNode, null === sourceFiber || sourceFiber._visibility & OffscreenVisible || (isHidden3 = true)), sourceFiber = parent, parent = parent.return;
+        return 3 === sourceFiber.tag ? (parent = sourceFiber.stateNode, isHidden3 && null !== update && (isHidden3 = 31 - clz32(lane), sourceFiber = parent.hiddenUpdates, alternate = sourceFiber[isHidden3], null === alternate ? sourceFiber[isHidden3] = [update] : alternate.push(update), update.lane = lane | 536870912), parent) : null;
       }
       function getRootForUpdatedFiber(sourceFiber) {
         if (nestedUpdateCount > NESTED_UPDATE_LIMIT)
@@ -17234,7 +17234,7 @@ var require_react_reconciler_development = __commonJS({
         }
         return false;
       }
-      function appendAllChildren(parent, workInProgress2, needsVisibilityToggle, isHidden2) {
+      function appendAllChildren(parent, workInProgress2, needsVisibilityToggle, isHidden3) {
         if (supportsMutation)
           for (needsVisibilityToggle = workInProgress2.child; null !== needsVisibilityToggle; ) {
             if (5 === needsVisibilityToggle.tag || 6 === needsVisibilityToggle.tag)
@@ -17257,14 +17257,14 @@ var require_react_reconciler_development = __commonJS({
           for (var _node = workInProgress2.child; null !== _node; ) {
             if (5 === _node.tag) {
               var instance2 = _node.stateNode;
-              needsVisibilityToggle && isHidden2 && (instance2 = cloneHiddenInstance(
+              needsVisibilityToggle && isHidden3 && (instance2 = cloneHiddenInstance(
                 instance2,
                 _node.type,
                 _node.memoizedProps
               ));
               appendInitialChild(parent, instance2);
             } else if (6 === _node.tag)
-              instance2 = _node.stateNode, needsVisibilityToggle && isHidden2 && (instance2 = cloneHiddenTextInstance(
+              instance2 = _node.stateNode, needsVisibilityToggle && isHidden3 && (instance2 = cloneHiddenTextInstance(
                 instance2,
                 _node.memoizedProps
               )), appendInitialChild(parent, instance2);
@@ -17287,20 +17287,20 @@ var require_react_reconciler_development = __commonJS({
             _node = _node.sibling;
           }
       }
-      function appendAllChildrenToContainer(containerChildSet, workInProgress2, needsVisibilityToggle, isHidden2) {
+      function appendAllChildrenToContainer(containerChildSet, workInProgress2, needsVisibilityToggle, isHidden3) {
         var hasOffscreenComponentChild = false;
         if (supportsPersistence)
           for (var node = workInProgress2.child; null !== node; ) {
             if (5 === node.tag) {
               var instance2 = node.stateNode;
-              needsVisibilityToggle && isHidden2 && (instance2 = cloneHiddenInstance(
+              needsVisibilityToggle && isHidden3 && (instance2 = cloneHiddenInstance(
                 instance2,
                 node.type,
                 node.memoizedProps
               ));
               appendChildToContainerChildSet(containerChildSet, instance2);
             } else if (6 === node.tag)
-              instance2 = node.stateNode, needsVisibilityToggle && isHidden2 && (instance2 = cloneHiddenTextInstance(
+              instance2 = node.stateNode, needsVisibilityToggle && isHidden3 && (instance2 = cloneHiddenTextInstance(
                 instance2,
                 node.memoizedProps
               )), appendChildToContainerChildSet(containerChildSet, instance2);
@@ -38565,8 +38565,11 @@ function sanitize(s) {
 var NAME_CAP = 24;
 var ELLIPSIS = "\u2026";
 var UNNAMED = "(unnamed)";
-function isBidiFormat(cp) {
-  return cp === 8206 || cp === 8207 || cp >= 8234 && cp <= 8238 || cp >= 8294 && cp <= 8297;
+var MAX_CLUSTER_CP = 10;
+var MAX_TITLE_CP = 256;
+var HIDDEN = /[\p{Cf}\p{Default_Ignorable_Code_Point}]/u;
+function isHidden2(ch, cp) {
+  return cp !== 8205 && cp !== 65038 && cp !== 65039 && HIDDEN.test(ch);
 }
 var segmenter4;
 function graphemes(s) {
@@ -38581,10 +38584,24 @@ function cleanTitle(raw) {
   let out = "";
   for (const ch of sanitize(raw)) {
     const cp = ch.codePointAt(0) ?? 0;
-    if (isBidiFormat(cp)) continue;
+    if (isHidden2(ch, cp)) continue;
     out += ch;
   }
-  return out.replace(/\s+/g, " ").trim();
+  let kept = "";
+  for (const g of graphemes(out.replace(/\s+/g, " "))) {
+    kept += Array.from(g).length > MAX_CLUSTER_CP ? " " : g;
+  }
+  kept = kept.replace(/\s+/g, " ").trim();
+  let res = "";
+  let n = 0;
+  for (const g of graphemes(kept)) {
+    const len = Array.from(g).length;
+    if (n + len > MAX_TITLE_CP) break;
+    res += g;
+    n += len;
+  }
+  res = res.trim();
+  return /[^\s\u200d\ufe0e\ufe0f]/u.test(res) ? res : "";
 }
 function truncateLabel(s, max = NAME_CAP) {
   const g = graphemes(s);

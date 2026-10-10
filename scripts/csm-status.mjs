@@ -148,8 +148,8 @@ function sanitize(s) {
 // ---- Session name (NAME-02, D-07/D-08/D-09) --------------------------------
 // mirrors src/label.ts cleanTitle / truncateLabel / displayName; keep in
 // lockstep (Pitfall 8). This script is stdlib-only and cannot import src/.
-// Kept ASCII-only: the ellipsis is an escape and bidi code points are compared
-// numerically, never as regex literals.
+// Kept ASCII-only: the ellipsis is an escape and invisible code points are
+// matched by \p{...} / \u escapes or compared numerically, never as literals.
 
 /** D-09: display cap in grapheme clusters (the ellipsis is extra). */
 const NAME_CAP = 24;
@@ -157,14 +157,18 @@ const NAME_CAP = 24;
 /** U+2026 horizontal ellipsis (>= 0xA0, so sanitize() keeps it). */
 const ELLIPSIS = "\u2026";
 
-/** T-07-02: bidi/format code points that can visually reorder or hide text. */
-function isBidiFormat(cp) {
-  return (
-    cp === 0x200e ||
-    cp === 0x200f ||
-    (cp >= 0x202a && cp <= 0x202e) ||
-    (cp >= 0x2066 && cp <= 0x2069)
-  );
+/** T-07-06: longest grapheme cluster kept, in code points (RGI skin-toned kiss = 10). */
+const MAX_CLUSTER_CP = 10;
+
+/** T-07-06: total code points kept (whole clusters only); equals the hook writers' MAX_TITLE. */
+const MAX_TITLE_CP = 256;
+
+/** T-07-02 / T-07-06: format and default-ignorable (invisible) code points. */
+const HIDDEN = /[\p{Cf}\p{Default_Ignorable_Code_Point}]/u;
+
+/** Dropped: every hidden code point except ZWJ U+200D and the emoji selectors U+FE0E/U+FE0F. */
+function isHidden(ch, cp) {
+  return cp !== 0x200d && cp !== 0xfe0e && cp !== 0xfe0f && HIDDEN.test(ch);
 }
 
 let segmenter; // lazy: undefined = not probed, null = unavailable
@@ -181,16 +185,35 @@ function graphemes(s) {
   return Array.from(segmenter.segment(s), (x) => x.segment);
 }
 
-/** sanitize() first (D-09 order), drop bidi/format, collapse whitespace, trim. Non-string -> "". */
+/**
+ * sanitize() first (D-09 order), drop hidden code points, collapse whitespace, turn
+ * any cluster over MAX_CLUSTER_CP code points into a space, trim, keep whole
+ * clusters up to MAX_TITLE_CP code points; joiner/selector-only -> "".
+ * Non-string -> "".
+ */
 function cleanTitle(raw) {
   if (typeof raw !== "string") return "";
   let out = "";
   for (const ch of sanitize(raw)) {
     const cp = ch.codePointAt(0) ?? 0;
-    if (isBidiFormat(cp)) continue;
+    if (isHidden(ch, cp)) continue;
     out += ch;
   }
-  return out.replace(/\s+/g, " ").trim();
+  let kept = "";
+  for (const g of graphemes(out.replace(/\s+/g, " "))) {
+    kept += Array.from(g).length > MAX_CLUSTER_CP ? " " : g;
+  }
+  kept = kept.replace(/\s+/g, " ").trim();
+  let res = "";
+  let n = 0;
+  for (const g of graphemes(kept)) {
+    const len = Array.from(g).length;
+    if (n + len > MAX_TITLE_CP) break;
+    res += g;
+    n += len;
+  }
+  res = res.trim();
+  return /[^\s\u200d\ufe0e\ufe0f]/u.test(res) ? res : "";
 }
 
 /** Cap an ALREADY-cleaned string to `max` grapheme clusters plus ELLIPSIS. */

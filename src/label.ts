@@ -9,10 +9,17 @@ import { sanitize } from "./sanitize.js";
  * surfaces show an identical name:
  *
  *   - D-09 order: clean FIRST (sanitize() drops C0/C1 controls - T-07-01;
- *     the bidi/format code points U+200E, U+200F, U+202A-U+202E and
- *     U+2066-U+2069 are dropped - T-07-02; whitespace runs collapse; trim),
- *     THEN cap at NAME_CAP grapheme clusters plus one U+2026 ellipsis. Hidden
- *     bytes therefore never count toward the cap (T-07-06).
+ *     every format / default-ignorable code point (\p{Cf} and
+ *     \p{Default_Ignorable_Code_Point}: bidi controls incl. U+061C, zero-width
+ *     spaces, U+FEFF, U+00AD, tag characters U+E0000-U+E007F, variation
+ *     selectors) is dropped except ZWJ U+200D and the emoji presentation
+ *     selectors U+FE0E/U+FE0F - T-07-02; whitespace runs collapse; any grapheme
+ *     cluster longer than MAX_CLUSTER_CP code points (piled combining marks)
+ *     becomes a space; trim; whole clusters are kept up to MAX_TITLE_CP code
+ *     points), THEN cap at NAME_CAP grapheme clusters plus one U+2026
+ *     ellipsis. Invisible code points are removed rather than merely left
+ *     uncounted, and no cluster can carry more than MAX_CLUSTER_CP code
+ *     points, so a 24-grapheme label is bounded in code points too (T-07-06).
  *   - NAME-02 / D-01: labelLead() never returns blank - an empty,
  *     whitespace-only, non-string or control-only title counts as unnamed and
  *     falls back to the sanitized folder.
@@ -23,10 +30,13 @@ import { sanitize } from "./sanitize.js";
  * LOCKSTEP: scripts/csm-status.mjs and scripts/on-pre-tool.mjs are
  * self-contained stdlib-only scripts that cannot import src/; they carry
  * mirrors of NAME_CAP, ELLIPSIS, cleanTitle, truncateLabel and displayName.
- * Any change here must be made there too.
+ * scripts/on-user-prompt.mjs and scripts/on-session-start.mjs carry the
+ * writer-side normalizeTitle, which applies the same per-code-point,
+ * per-cluster and total caps. Any change here must be made there too.
  *
  * This source is kept ASCII-only (the ellipsis is written as an escape and
- * invisible code points are compared numerically, never as regex literals).
+ * invisible code points are matched by \p{...} / \u escapes or compared
+ * numerically, never written as literal characters).
  */
 
 /** D-09: display cap in grapheme clusters (the ellipsis is extra). */
@@ -38,14 +48,26 @@ export const ELLIPSIS = "\u2026";
 /** D-06/D-07: dim hint shown by SessionCard and CompactRow only. */
 export const UNNAMED = "(unnamed)";
 
-/** T-07-02: bidi/format code points that can visually reorder or hide text. */
-function isBidiFormat(cp: number): boolean {
-  return (
-    cp === 0x200e ||
-    cp === 0x200f ||
-    (cp >= 0x202a && cp <= 0x202e) ||
-    (cp >= 0x2066 && cp <= 0x2069)
-  );
+/**
+ * T-07-06: longest grapheme cluster kept, in code points. Covers every RGI
+ * emoji ZWJ sequence (the skin-toned kiss is 10); longer clusters are piled
+ * combining marks (zalgo) or hidden payloads and become a space.
+ */
+export const MAX_CLUSTER_CP = 10;
+
+/** T-07-06: total code points kept (whole clusters only); equals the hook writers' MAX_TITLE. */
+export const MAX_TITLE_CP = 256;
+
+/** T-07-02 / T-07-06: format and default-ignorable (invisible) code points. */
+const HIDDEN = /[\p{Cf}\p{Default_Ignorable_Code_Point}]/u;
+
+/**
+ * True for a code point that can reorder or hide text and is dropped: every
+ * \p{Cf} / default-ignorable code point except ZWJ (U+200D) and the emoji
+ * presentation selectors U+FE0E/U+FE0F, which emoji sequences need.
+ */
+function isHidden(ch: string, cp: number): boolean {
+  return cp !== 0x200d && cp !== 0xfe0e && cp !== 0xfe0f && HIDDEN.test(ch);
 }
 
 let segmenter: Intl.Segmenter | null | undefined;
@@ -63,18 +85,35 @@ function graphemes(s: string): string[] {
 }
 
 /**
- * Clean an untrusted title: sanitize() first (D-09 order), drop bidi/format
- * code points, collapse whitespace runs to one space, trim. Non-string -> "".
+ * Clean an untrusted title: sanitize() first (D-09 order), drop hidden
+ * (format / default-ignorable) code points, collapse whitespace, turn any
+ * cluster over MAX_CLUSTER_CP code points into a space, trim, keep whole
+ * clusters up to MAX_TITLE_CP code points. A result holding nothing but
+ * joiners/selectors is "". Non-string -> "". Idempotent.
  */
 export function cleanTitle(raw: unknown): string {
   if (typeof raw !== "string") return "";
   let out = "";
   for (const ch of sanitize(raw)) {
     const cp = ch.codePointAt(0) ?? 0;
-    if (isBidiFormat(cp)) continue;
+    if (isHidden(ch, cp)) continue;
     out += ch;
   }
-  return out.replace(/\s+/g, " ").trim();
+  let kept = "";
+  for (const g of graphemes(out.replace(/\s+/g, " "))) {
+    kept += Array.from(g).length > MAX_CLUSTER_CP ? " " : g;
+  }
+  kept = kept.replace(/\s+/g, " ").trim();
+  let res = "";
+  let n = 0;
+  for (const g of graphemes(kept)) {
+    const len = Array.from(g).length;
+    if (n + len > MAX_TITLE_CP) break;
+    res += g;
+    n += len;
+  }
+  res = res.trim();
+  return /[^\s\u200d\ufe0e\ufe0f]/u.test(res) ? res : "";
 }
 
 /**
