@@ -6,7 +6,8 @@ import * as path from "node:path";
 // RED: aggregate.ts (readAll) + store.ts (writeSnapshot/appendTouch) land in wave 01-02.
 import { sessionDir } from "./paths.js";
 import { writeSnapshot, appendTouch } from "./store.js";
-import { readAll } from "./aggregate.js";
+import { readAll, resolveTitle } from "./aggregate.js";
+import { resetTranscriptTitleCache } from "./transcript.js";
 import type { SessionState } from "./schema.js";
 
 let tmp: string;
@@ -26,6 +27,10 @@ afterEach(() => {
   delete process.env.CSM_ATTN_WINDOW_MS;
   delete process.env.CSM_RUN_WINDOW_MS;
   delete process.env.CSM_IDLE_WAIT_MS;
+  // Phase 7 Pitfall 5: the transcript title cache is module-level and keyed by
+  // session id; ids like "alpha" repeat across tests, so reset it every case.
+  resetTranscriptTitleCache();
+  delete process.env.CLAUDE_CONFIG_DIR;
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
@@ -52,6 +57,28 @@ interface SeedOpts {
   pid_started?: string;
   /** ISO-8601 string written into the `heartbeat` sidecar (last_seen source). */
   heartbeat?: string;
+  /** Phase 7 (NAME-01): `title` key of the seeded title.json shard. */
+  title?: string;
+  /** Phase 7: ISO `ts` of the seeded title.json (defaults to now). */
+  titleTs?: string;
+  /** Phase 7: `transcript_path` key of the seeded title.json. */
+  transcriptPath?: string;
+  /** Phase 7: raw title.json bytes written verbatim (torn/malformed cases). */
+  titleRaw?: string;
+}
+
+/**
+ * Write a session's title.json shard (07-01 shape `{ ts, title?, transcript_path? }`),
+ * only the keys that were provided.
+ */
+function writeTitleShard(
+  dir: string,
+  o: { title?: unknown; titleTs?: string; transcriptPath?: string },
+): void {
+  const rec: Record<string, unknown> = { ts: o.titleTs ?? new Date().toISOString() };
+  if (o.title !== undefined) rec.title = o.title;
+  if (o.transcriptPath !== undefined) rec.transcript_path = o.transcriptPath;
+  fs.writeFileSync(path.join(dir, "title.json"), JSON.stringify(rec), { mode: 0o600 });
 }
 
 function seedSession(id: string, startTime: string, opts: SeedOpts = {}): string {
@@ -71,7 +98,37 @@ function seedSession(id: string, startTime: string, opts: SeedOpts = {}): string
   if (opts.heartbeat !== undefined) {
     fs.writeFileSync(path.join(dir, "heartbeat"), opts.heartbeat, { mode: 0o600 });
   }
+  if (opts.titleRaw !== undefined) {
+    fs.writeFileSync(path.join(dir, "title.json"), opts.titleRaw, { mode: 0o600 });
+  } else if (
+    opts.title !== undefined ||
+    opts.titleTs !== undefined ||
+    opts.transcriptPath !== undefined
+  ) {
+    writeTitleShard(dir, opts);
+  }
   return dir;
+}
+
+/**
+ * Write a Claude Code transcript under `$CLAUDE_CONFIG_DIR/projects/<slug>/<id>.jsonl`
+ * (sets CLAUDE_CONFIG_DIR to `<tmp>/cfg` so the 07-03 path guard accepts it):
+ * one compact custom-title line per title plus one user line, each 0x0A
+ * terminated, then pins the mtime. Returns the transcript path.
+ */
+function writeTranscript(id: string, titles: string[], mtimeSec: number, slug = "p"): string {
+  const cfg = path.join(tmp, "cfg");
+  process.env.CLAUDE_CONFIG_DIR = cfg;
+  const dir = path.join(cfg, "projects", slug);
+  fs.mkdirSync(dir, { recursive: true });
+  const p = path.join(dir, `${id}.jsonl`);
+  const lines = titles.map((t) =>
+    JSON.stringify({ type: "custom-title", customTitle: t, sessionId: id }),
+  );
+  lines.push(JSON.stringify({ type: "user", sessionId: id, message: { role: "user", content: "hi" } }));
+  fs.writeFileSync(p, lines.map((l) => l + "\n").join(""), { mode: 0o600 });
+  fs.utimesSync(p, mtimeSec, mtimeSec);
+  return p;
 }
 
 describe("readAll", () => {
@@ -1467,5 +1524,134 @@ describe("subagent state (260927-73b)", () => {
     const rb = rowOf("a8-b", now, deadProbe);
     expect(rb.alive).toBe(false);
     expect(rb.readyToPrune).toBe(true);
+  });
+});
+
+describe("session title (NAME-01, D-02/D-03/D-04/D-10)", () => {
+  const rowById = (id: string) => {
+    const r = readAll().find((x) => x.session_id === id);
+    expect(r).toBeDefined();
+    return r!;
+  };
+
+  it("A1: title.json title only -> row.title", () => {
+    seedSession("alpha", new Date().toISOString(), { title: "Alpha" });
+    expect(rowById("alpha").title).toBe("Alpha");
+  });
+
+  it("A2: no title.json -> title undefined, row still returned", () => {
+    seedSession("alpha", new Date().toISOString());
+    expect(rowById("alpha").title).toBeUndefined();
+  });
+
+  it("A3: torn/malformed title.json -> title undefined, row present (T-07-10)", () => {
+    seedSession("alpha", new Date().toISOString(), { titleRaw: "{not json" });
+    expect(rowById("alpha").title).toBeUndefined();
+  });
+
+  it("A4: empty or non-string title -> title undefined", () => {
+    const now = new Date().toISOString();
+    const a = seedSession("alpha", now);
+    writeTitleShard(a, { title: "" });
+    const b = seedSession("beta", now);
+    writeTitleShard(b, { title: 42 });
+    expect(rowById("alpha").title).toBeUndefined();
+    expect(rowById("beta").title).toBeUndefined();
+  });
+
+  it("A5 (D-04): a fresher transcript /rename wins over an older title.json title", () => {
+    const p = writeTranscript("alpha", ["New"], 1700000060);
+    seedSession("alpha", new Date().toISOString(), {
+      title: "Old",
+      titleTs: new Date(1700000000000).toISOString(),
+      transcriptPath: p,
+    });
+    expect(rowById("alpha").title).toBe("New");
+  });
+
+  it("A6 (D-02/D-03): a newer title.json without a title overrides an older tail value", () => {
+    const p = writeTranscript("alpha", ["Z"], 1700000060);
+    seedSession("alpha", new Date().toISOString(), {
+      titleTs: new Date(1700000120000).toISOString(),
+      transcriptPath: p,
+    });
+    expect(rowById("alpha").title).toBeUndefined();
+  });
+
+  it("A7: a newer title.json title wins over a stale transcript value", () => {
+    const p = writeTranscript("alpha", ["Stale"], 1700000060);
+    seedSession("alpha", new Date().toISOString(), {
+      title: "Fresh",
+      titleTs: new Date(1700000120000).toISOString(),
+      transcriptPath: p,
+    });
+    expect(rowById("alpha").title).toBe("Fresh");
+  });
+
+  it("A8 (D-10): a /clear session in the same project dir never inherits the old name", () => {
+    const oldP = writeTranscript("old-s", ["Kept"], 1700000060, "proj");
+    const newP = writeTranscript("new-s", [], 1700000090, "proj");
+    const ts = new Date(1700000000000).toISOString();
+    seedSession("old-s", new Date().toISOString(), { titleTs: ts, transcriptPath: oldP });
+    seedSession("new-s", new Date().toISOString(), { titleTs: ts, transcriptPath: newP });
+    const rows = readAll();
+    expect(rows.find((r) => r.session_id === "new-s")?.title).toBeUndefined();
+    expect(rows.find((r) => r.session_id === "old-s")?.title).toBe("Kept");
+  });
+
+  it("A9 (T-07-03): a transcript_path outside the projects roots is ignored", () => {
+    writeTranscript("other", [], 1700000000); // sets CLAUDE_CONFIG_DIR to a real root
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "csm-agg-out-"));
+    try {
+      const p = path.join(outside, "alpha.jsonl");
+      fs.writeFileSync(
+        p,
+        JSON.stringify({ type: "custom-title", customTitle: "Evil", sessionId: "alpha" }) + "\n",
+        { mode: 0o600 },
+      );
+      fs.utimesSync(p, 1700000060, 1700000060);
+      seedSession("alpha", new Date().toISOString(), {
+        title: "Safe",
+        titleTs: new Date(1700000000000).toISOString(),
+        transcriptPath: p,
+      });
+      expect(rowById("alpha").title).toBe("Safe");
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("A10: title never changes sort order, alive, readyToPrune or dotState", () => {
+    const now = Date.now();
+    const a = seedSession("aaa-sess", new Date(now - 60_000).toISOString());
+    const b = seedSession("bbb-sess", new Date(now - 30_000).toISOString());
+    const snap = () =>
+      readAll(now).map((r) => ({
+        id: r.session_id,
+        alive: r.alive,
+        readyToPrune: r.readyToPrune,
+        dotState: r.dotState,
+      }));
+    const before = snap();
+    writeTitleShard(a, { title: "Zzz" });
+    writeTitleShard(b, { title: "Aaa" });
+    const after = snap();
+    expect(after).toEqual(before);
+    const titled = readAll(now);
+    expect(titled.map((r) => r.title)).toEqual(
+      before.map((r) => (r.id === "aaa-sess" ? "Zzz" : "Aaa")),
+    );
+  });
+
+  it("A11: resolveTitle freshness table (Pattern 3)", () => {
+    const t = (title: string, changedAtMs: number) => ({ title, changedAtMs });
+    expect(resolveTitle({ title: "X", tsMs: 10 }, t("Y", 20))).toBe("Y");
+    expect(resolveTitle({ title: "X", tsMs: 30 }, t("Y", 20))).toBe("X");
+    expect(resolveTitle({ tsMs: 30 }, t("Y", 20))).toBeUndefined();
+    expect(resolveTitle({}, t("Y", 20))).toBe("Y");
+    expect(resolveTitle({ title: "X", tsMs: 10 }, undefined)).toBe("X");
+    expect(resolveTitle({}, undefined)).toBeUndefined();
+    expect(resolveTitle({ title: "X" }, t("Y", 20))).toBe("Y");
+    expect(resolveTitle({ title: "X", tsMs: 20 }, t("Y", 20))).toBe("X");
   });
 });
