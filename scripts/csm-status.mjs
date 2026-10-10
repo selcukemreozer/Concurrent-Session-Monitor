@@ -145,6 +145,66 @@ function sanitize(s) {
   return out;
 }
 
+// ---- Session name (NAME-02, D-07/D-08/D-09) --------------------------------
+// mirrors src/label.ts cleanTitle / truncateLabel / displayName; keep in
+// lockstep (Pitfall 8). This script is stdlib-only and cannot import src/.
+// Kept ASCII-only: the ellipsis is an escape and bidi code points are compared
+// numerically, never as regex literals.
+
+/** D-09: display cap in grapheme clusters (the ellipsis is extra). */
+const NAME_CAP = 24;
+
+/** U+2026 horizontal ellipsis (>= 0xA0, so sanitize() keeps it). */
+const ELLIPSIS = "\u2026";
+
+/** T-07-02: bidi/format code points that can visually reorder or hide text. */
+function isBidiFormat(cp) {
+  return (
+    cp === 0x200e ||
+    cp === 0x200f ||
+    (cp >= 0x202a && cp <= 0x202e) ||
+    (cp >= 0x2066 && cp <= 0x2069)
+  );
+}
+
+let segmenter; // lazy: undefined = not probed, null = unavailable
+
+/** Split into grapheme clusters; code-point fallback when Intl.Segmenter is absent. */
+function graphemes(s) {
+  if (segmenter === undefined) {
+    segmenter =
+      typeof Intl !== "undefined" && typeof Intl.Segmenter === "function"
+        ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
+        : null;
+  }
+  if (segmenter === null) return Array.from(s);
+  return Array.from(segmenter.segment(s), (x) => x.segment);
+}
+
+/** sanitize() first (D-09 order), drop bidi/format, collapse whitespace, trim. Non-string -> "". */
+function cleanTitle(raw) {
+  if (typeof raw !== "string") return "";
+  let out = "";
+  for (const ch of sanitize(raw)) {
+    const cp = ch.codePointAt(0) ?? 0;
+    if (isBidiFormat(cp)) continue;
+    out += ch;
+  }
+  return out.replace(/\s+/g, " ").trim();
+}
+
+/** Cap an ALREADY-cleaned string to `max` grapheme clusters plus ELLIPSIS. */
+function truncateLabel(s, max = NAME_CAP) {
+  const g = graphemes(s);
+  return g.length > max ? g.slice(0, max).join("") + ELLIPSIS : s;
+}
+
+/** Display name, or undefined when the cleaned title is empty (unnamed; never "(unnamed)", D-07). */
+function displayName(raw) {
+  const clean = cleanTitle(raw);
+  return clean.length > 0 ? truncateLabel(clean, NAME_CAP) : undefined;
+}
+
 /** Basename of a path string WITHOUT opening it (mirrors Card.tsx basename). */
 function basename(p) {
   const parts = String(p).split("/");
@@ -212,6 +272,25 @@ function readIntent(dir) {
     if (typeof parsed?.intent === "string" && parsed.intent.length > 0) return parsed.intent;
   } catch {
     // absent/torn intent.txt self-heals (D-11)
+  }
+  return undefined;
+}
+
+/**
+ * Read the hook-cached native session name (title.json, NAME-02): a non-empty
+ * string title, else undefined; absent/torn => undefined (folder fallback).
+ *
+ * D-04 scope (RESEARCH Open Question 1): /csm-status reads ONLY this
+ * hook-cached title, never the transcript tail. A peer's mid-session /rename
+ * therefore shows here after that peer's next prompt (when on-user-prompt
+ * refreshes title.json), whereas the panel also reads the transcript tail.
+ */
+function readTitle(dir) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(path.join(dir, "title.json"), "utf8"));
+    if (typeof parsed?.title === "string" && parsed.title.length > 0) return parsed.title;
+  } catch {
+    // absent/torn title.json self-heals: the lead falls back to the folder
   }
   return undefined;
 }
@@ -516,7 +595,7 @@ function renderPorts(ports, rows) {
     }
     let g = sessionGroups.get(owner.session_id);
     if (!g) {
-      const heading = `${sanitize(owner.folder ?? "")} · ${sanitize(owner.branch ?? "") || "—"} · ${sanitize(String(owner.session_id).slice(0, 8))}`;
+      const heading = `${displayName(owner.title) ?? sanitize(owner.folder ?? "")} · ${sanitize(owner.branch ?? "") || "—"} · ${sanitize(String(owner.session_id).slice(0, 8))}`;
       g = { heading, ports: [] };
       sessionGroups.set(owner.session_id, g);
     }
@@ -679,6 +758,7 @@ async function main() {
       pid: typeof state.pid === "number" ? state.pid : undefined,
       cwd: typeof state.cwd === "string" ? state.cwd : undefined,
       intent: readIntent(dir),
+      title: readTitle(dir), // NAME-02 hook-cached native name (raw; rendered via displayName)
       target_branch: readTargetBranch(dir), // TB-03 declared target (current branch is state.branch)
       attention, // ATTN-04 pre-gated boolean: waiting on the human (detail-free)
       asking, // AQ-03 pre-gated boolean: an open AskUserQuestion (detail-free, wins over attention)
@@ -702,7 +782,8 @@ async function main() {
   // ---- Roster (one terse line per live session, writes-only) --------------
   const out = [];
   for (const r of rows) {
-    const folder = sanitize(r.folder ?? "");
+    // D-08: lead with the native name when set, else the folder (D-07: never "(unnamed)").
+    const lead = displayName(r.title) ?? sanitize(r.folder ?? "");
     const branch = sanitize(r.branch ?? "") || "—";
     const shortId = sanitize(String(r.session_id).slice(0, 8));
 
@@ -751,7 +832,7 @@ async function main() {
             ? ` ${SUBAGENT_GLYPH} subagent` + (r.subagentCount > 1 ? ` ×${r.subagentCount}` : "")
             : "";
 
-    out.push(`${folder} · ${branch}${targetToken} · ${shortId} · ${intentCol} · ${filesCol} · ${uptime}${statusMarker}${you}`);
+    out.push(`${lead} · ${branch}${targetToken} · ${shortId} · ${intentCol} · ${filesCol} · ${uptime}${statusMarker}${you}`);
   }
 
   // ---- Conflicts relevant to you (self-excluded) --------------------------
@@ -759,7 +840,7 @@ async function main() {
   // sessions that INCLUDE the caller (D-04). Mirror conflicts.detectConflicts.
   const groups = new Map(); // realpath -> Map<session_id, {label, lastTouch}>
   for (const r of rows) {
-    const label = `${sanitize(r.folder ?? "")} · ${sanitize(r.branch ?? "") || "—"} · ${sanitize(String(r.session_id).slice(0, 8))}`;
+    const label = `${displayName(r.title) ?? sanitize(r.folder ?? "")} · ${sanitize(r.branch ?? "") || "—"} · ${sanitize(String(r.session_id).slice(0, 8))}`;
     for (const f of r.files) {
       const rp = resolveRealpath(f.file_path, r.cwd);
       let g = groups.get(rp);
