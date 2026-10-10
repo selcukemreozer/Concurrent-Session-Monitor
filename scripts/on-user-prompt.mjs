@@ -19,6 +19,18 @@
 // ts are persisted; the prompt text is never read. on-activity writes "idle"
 // on a main-thread Stop.
 //
+// Session title (Phase 7, NAME-01, D-02): Claude Code reports the native
+// session name (/rename, claude -n, Ctrl+R) as the documented `session_title`
+// payload field. This hook records it, plus a validated `transcript_path`, in
+// the `title.json` snapshot shard (same-dir temp + renameSync) as
+// { ts, title?, transcript_path? }. The title is normalized before it touches
+// disk: C0/C1 controls become a space, bidi/format overrides are dropped,
+// whitespace collapses, trimmed, capped at MAX_TITLE code points. The record
+// mirrors Claude Code exactly: an absent title means "no custom title at ts"
+// (D-10, CSM keeps no name memory of its own). The shard is never merged into
+// session.json. This hook stays silent on stdout, so it can never emit a
+// session-title output that would rename the session (D-05 monitor-only).
+//
 // Passivity contract (T-1-05 / T-02-11): UserPromptSubmit stdout is
 // model-visible, so this hook writes NOTHING to stdout, wraps its whole body so
 // it ALWAYS exits 0, and is wired "async" so the prompt never waits on it.
@@ -31,6 +43,48 @@ const FILE_MODE = 0o600;
 
 // T-02-10: allowlist the untrusted session_id before it becomes a path segment.
 const SAFE_ID = /^[A-Za-z0-9._-]{1,128}$/;
+
+// Phase 7 (NAME-01) title.json bounds (T-07-10): stored title is capped in code
+// points; a transcript_path longer than this is not recorded.
+const MAX_TITLE = 256;
+const MAX_TRANSCRIPT_PATH = 4096;
+
+// T-07-01 / T-07-02: normalize the untrusted session_title before storage.
+// C0 (incl. ESC), DEL and C1 controls become a space so no escape sequence ever
+// reaches disk; bidi marks/embeddings/overrides/isolates are removed; whitespace
+// runs collapse; the result is trimmed and capped at MAX_TITLE code points.
+// A non-string yields "" (caller omits the title key).
+function normalizeTitle(raw) {
+  if (typeof raw !== "string") return "";
+  let out = "";
+  for (const ch of raw) {
+    const cp = ch.codePointAt(0);
+    if (cp <= 0x1f || cp === 0x7f || (cp >= 0x80 && cp <= 0x9f)) {
+      out += " ";
+    } else if (
+      cp === 0x200e ||
+      cp === 0x200f ||
+      (cp >= 0x202a && cp <= 0x202e) ||
+      (cp >= 0x2066 && cp <= 0x2069)
+    ) {
+      // Dropped: bidi/format override (T-07-02).
+    } else {
+      out += ch;
+    }
+  }
+  return Array.from(out.replace(/\s+/g, " ").trim()).slice(0, MAX_TITLE).join("");
+}
+
+// T-07-03 write-gate: only an absolute, bounded path whose basename is this
+// session's own `<session_id>.jsonl` is recorded (the reader re-validates).
+function validTranscriptPath(tp, id) {
+  return (
+    typeof tp === "string" &&
+    tp.length <= MAX_TRANSCRIPT_PATH &&
+    path.isAbsolute(tp) &&
+    path.basename(tp) === id + ".jsonl"
+  );
+}
 
 // D-01b store-location seam — identical precedence to src/paths.ts: 1)
 // CSM_STORE_DIR override, else 2) ~/.claude/csm. CLAUDE_PLUGIN_DATA is
@@ -93,6 +147,21 @@ try {
     writeAtomic(dir, "ask-resolved", iso);
     // 260927-46l D-01: a prompt starts a turn (the reader shows ▶ running).
     writeAtomic(dir, "turn.json", JSON.stringify({ state: "running", ts: iso }));
+    // Phase 7 NAME-01 (D-02): record the native session title + transcript
+    // path. Nothing usable -> no write (keeps the bare sidecar listing stable).
+    const title = normalizeTitle(payload.session_title);
+    const tpOk = validTranscriptPath(payload.transcript_path, id);
+    if (title || tpOk) {
+      writeAtomic(
+        dir,
+        "title.json",
+        JSON.stringify({
+          ts: iso,
+          ...(title ? { title } : {}),
+          ...(tpOk ? { transcript_path: payload.transcript_path } : {}),
+        }),
+      );
+    }
   }
 } catch {
   // Swallow every error (T-1-05): NEVER exit non-zero, NEVER write stdout.

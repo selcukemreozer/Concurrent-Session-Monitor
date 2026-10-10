@@ -9,7 +9,17 @@
 // non-repo cwd, an unwritable store dir — is swallowed and the process ALWAYS
 // exits 0. A non-zero SessionStart/hook exit could leak stderr into Claude's
 // context; that must never happen.
-import { readFileSync, mkdirSync, writeFileSync, renameSync } from "node:fs";
+//
+// Session title (Phase 7, NAME-01, D-02/D-10): after session.json, this hook
+// also records the documented `session_title` payload field (the native
+// /rename name) plus a validated `transcript_path` in the separate
+// `title.json` snapshot shard (same-dir temp + renameSync) as
+// { ts, title?, transcript_path? }, normalized exactly like
+// scripts/on-user-prompt.mjs. Every SessionStart (startup, resume, clear)
+// rewrites it from the payload; SessionEnd's rm -rf of the session dir removes
+// it. session.json's record shape is unchanged. Nothing is ever written to
+// stdout, so CSM can never rename the session (D-05 monitor-only).
+import { readFileSync, mkdirSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -22,6 +32,62 @@ const FILE_MODE = 0o600;
 // conservative allowlist BEFORE building any path; anything else is ignored
 // (no fs touch) and the hook still exits 0.
 const SAFE_ID = /^[A-Za-z0-9._-]{1,128}$/;
+
+// --- mirrors scripts/on-user-prompt.mjs; keep in lockstep (scripts cannot
+// import each other: each hook is a self-contained, build-free script).
+const MAX_TITLE = 256;
+const MAX_TRANSCRIPT_PATH = 4096;
+
+function normalizeTitle(raw) {
+  if (typeof raw !== "string") return "";
+  let out = "";
+  for (const ch of raw) {
+    const cp = ch.codePointAt(0);
+    if (cp <= 0x1f || cp === 0x7f || (cp >= 0x80 && cp <= 0x9f)) {
+      out += " ";
+    } else if (
+      cp === 0x200e ||
+      cp === 0x200f ||
+      (cp >= 0x202a && cp <= 0x202e) ||
+      (cp >= 0x2066 && cp <= 0x2069)
+    ) {
+      // Dropped: bidi/format override (T-07-02).
+    } else {
+      out += ch;
+    }
+  }
+  return Array.from(out.replace(/\s+/g, " ").trim()).slice(0, MAX_TITLE).join("");
+}
+
+function validTranscriptPath(tp, id) {
+  return (
+    typeof tp === "string" &&
+    tp.length <= MAX_TRANSCRIPT_PATH &&
+    path.isAbsolute(tp) &&
+    path.basename(tp) === id + ".jsonl"
+  );
+}
+
+// WR-05 atomic write: unique temp in the same dir + renameSync over the target
+// (rename(2) atomicity). Never throws: on any error the temp is removed on a
+// best-effort basis.
+function writeAtomic(dir, name, content) {
+  const tmp = path.join(
+    dir,
+    `.${name}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`,
+  );
+  try {
+    writeFileSync(tmp, content, { mode: FILE_MODE });
+    renameSync(tmp, path.join(dir, name));
+  } catch {
+    try {
+      unlinkSync(tmp);
+    } catch {
+      // Temp was never created or is already gone.
+    }
+  }
+}
+// --- end mirror
 
 // D-01b store-location seam — identical precedence to src/paths.ts so every
 // process agrees on where the shards live: 1) CSM_STORE_DIR override, else
@@ -179,6 +245,21 @@ try {
     );
     writeFileSync(tmp, JSON.stringify(record), { mode: FILE_MODE });
     renameSync(tmp, path.join(dir, "session.json"));
+
+    // Phase 7 NAME-01 (D-02): native session title + transcript path shard.
+    const title = normalizeTitle(payload.session_title);
+    const tpOk = validTranscriptPath(payload.transcript_path, id);
+    if (title || tpOk) {
+      writeAtomic(
+        dir,
+        "title.json",
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          ...(title ? { title } : {}),
+          ...(tpOk ? { transcript_path: payload.transcript_path } : {}),
+        }),
+      );
+    }
   }
 } catch {
   // Swallow everything (T-1-05): monitoring is passive, never blocks the agent.

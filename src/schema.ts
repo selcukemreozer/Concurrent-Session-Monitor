@@ -198,3 +198,35 @@ export interface TurnState {
    */
   agents?: number;
 }
+
+/**
+ * One session's native-name snapshot written to `title.json` (Phase 7,
+ * NAME-01, D-02).
+ *
+ * A SNAPSHOT shard written by both `scripts/on-session-start.mjs` and
+ * `scripts/on-user-prompt.mjs` for the same session via a same-dir temp file +
+ * rename (the one-session-many-hook precedent of the `resumed` sidecar), not a
+ * log. It mirrors Claude Code's documented `session_title` payload field, the
+ * user-set name from /rename, `claude -n` or Ctrl+R (D-05: CSM only reads it,
+ * never sets it). AI-generated titles never appear here because Claude Code
+ * excludes them from `session_title` (D-03). Display-only: removed with the
+ * session dir at SessionEnd and rewritten on every SessionStart (D-10). A
+ * separate shard read needs no SessionState change, so SESSION_SCHEMA_VERSION
+ * is NOT bumped.
+ */
+export interface TitleState {
+  /** ISO-8601 timestamp of the hook fire (Date.parse on the read side; NOT epoch ms). */
+  ts: string;
+  /**
+   * Normalized custom title (controls to space, bidi overrides removed,
+   * whitespace collapsed, trimmed, at most 256 code points). Absent means
+   * Claude Code reported no custom title at `ts`.
+   */
+  title?: string;
+  /**
+   * Absolute transcript path whose basename is `<session_id>.jsonl`; validated
+   * again by the reader before any read. Absent when the payload's value
+   * failed the write-gate.
+   */
+  transcript_path?: string;
+}
