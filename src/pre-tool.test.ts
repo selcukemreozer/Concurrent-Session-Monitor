@@ -71,6 +71,10 @@ interface SeedOpts {
   /** ms since epoch written into the heartbeat sidecar; omit for no heartbeat. */
   heartbeatMs?: number;
   pid?: number;
+  /** Native session name written as title.json { title, ts } (NAME-02); omitted => absent. */
+  title?: string;
+  /** Raw (possibly torn) title.json content (NAME-02); wins over `title`. */
+  titleRaw?: string;
 }
 
 /** Seed one session shard (session.json + optional files.jsonl + heartbeat). */
@@ -97,6 +101,11 @@ function seedSession(id: string, opts: SeedOpts = {}): string {
   }
   if (opts.heartbeatMs !== undefined) {
     fs.writeFileSync(path.join(dir, "heartbeat"), new Date(opts.heartbeatMs).toISOString());
+  }
+  if (opts.titleRaw !== undefined) {
+    fs.writeFileSync(path.join(dir, "title.json"), opts.titleRaw);
+  } else if (opts.title !== undefined) {
+    fs.writeFileSync(path.join(dir, "title.json"), JSON.stringify({ title: opts.title, ts: new Date().toISOString() }));
   }
   return dir;
 }
@@ -268,5 +277,78 @@ describe("on-pre-tool advisory (CONF-02, D-06/D-07)", () => {
     expect(quietWarns).toBe(false);
     expect(groupHasEdit2).toBe(false);
     expect(quietWarns).toBe(groupHasEdit2);
+  });
+});
+
+describe("on-pre-tool advisory \u2014 peer session name (NAME-02, D-08/D-09)", () => {
+  const fresh = () => Date.now();
+  const ELL = String.fromCodePoint(0x2026);
+  const ESC = String.fromCharCode(0x1b);
+  const RLO = String.fromCodePoint(0x202e);
+  const ctxOf = (stdout: string): string => JSON.parse(stdout).hookSpecificOutput.additionalContext;
+
+  it("P1: names a titled peer by its capped native name, then branch and shortid", () => {
+    const F = makeFile("shared.ts");
+    seedSession("actor", { heartbeatMs: fresh() });
+    seedSession("peer", { files: [F], heartbeatMs: fresh(), title: "Logitech MK295 Mac tutukluluk sorunu" });
+    const res = runPreTool(payload("actor", F));
+    expect(res.status).toBe(0);
+    expect(ctxOf(res.stdout).endsWith("is also held by Logitech MK295 Mac tutuk" + ELL + " \u00b7 main \u00b7 peer")).toBe(true);
+  });
+
+  it("P2: an unnamed peer keeps today's folder label and never prints (unnamed)", () => {
+    const F = makeFile("shared.ts");
+    seedSession("actor", { heartbeatMs: fresh() });
+    seedSession("peer", { folder: "peerproj", branch: "feat", files: [F], heartbeatMs: fresh() });
+    const res = runPreTool(payload("actor", F));
+    expect(res.status).toBe(0);
+    const ctx = ctxOf(res.stdout);
+    expect(ctx.endsWith("is also held by peerproj \u00b7 feat \u00b7 peer")).toBe(true);
+    expect(ctx).not.toContain("(unnamed)");
+  });
+
+  it("P3: control and bidi code points never reach the acting agent's context", () => {
+    const F = makeFile("shared.ts");
+    seedSession("actor", { heartbeatMs: fresh() });
+    seedSession("peer", { files: [F], heartbeatMs: fresh(), title: "ev" + ESC + "[2Jil" + RLO });
+    const res = runPreTool(payload("actor", F));
+    expect(res.status).toBe(0);
+    expect(res.stdout).not.toContain(ESC);
+    expect(res.stdout).not.toContain(RLO);
+    const ctx = ctxOf(res.stdout);
+    expect(ctx).not.toContain(ESC);
+    expect(ctx).toContain("ev[2Jil");
+  });
+
+  it("P4: a torn title.json falls back to the folder lead", () => {
+    const F = makeFile("shared.ts");
+    seedSession("actor", { heartbeatMs: fresh() });
+    seedSession("peer", { folder: "peerproj", files: [F], heartbeatMs: fresh(), titleRaw: "{bad" });
+    const res = runPreTool(payload("actor", F));
+    expect(res.status).toBe(0);
+    expect(ctxOf(res.stdout)).toContain("is also held by peerproj \u00b7 main \u00b7 peer");
+  });
+
+  it("P5: a titled or torn-title peer never blocks: exit 0, empty stderr, no permissionDecision", () => {
+    for (const opts of [{ title: "Logitech MK295 Mac tutukluluk sorunu" }, { titleRaw: "{bad" }]) {
+      fs.rmSync(path.join(store, "sessions"), { recursive: true, force: true });
+      const F = makeFile("shared.ts");
+      seedSession("actor", { heartbeatMs: fresh() });
+      seedSession("peer", { files: [F], heartbeatMs: fresh(), ...opts });
+      const res = runPreTool(payload("actor", F));
+      expect(res.status).toBe(0);
+      expect(res.stderr).toBe("");
+      expect(JSON.stringify(JSON.parse(res.stdout))).not.toContain("permissionDecision");
+    }
+  });
+
+  it("P6: titled sessions with no shared file produce no output", () => {
+    const F = makeFile("mine.ts");
+    const G = makeFile("theirs.ts");
+    seedSession("actor", { files: [F], heartbeatMs: fresh(), title: "Actor name" });
+    seedSession("peer", { files: [G], heartbeatMs: fresh(), title: "Peer name" });
+    const res = runPreTool(payload("actor", F));
+    expect(res.status).toBe(0);
+    expect(res.stdout).toBe("");
   });
 });
