@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import { sanitize } from "../sanitize.js";
+import { displayName, labelLead, UNNAMED } from "../label.js";
 import { fmtUptime } from "../liveness.js";
 import type { SessionRow } from "../aggregate.js";
 import type { Conflict, ConflictSession } from "../conflicts.js";
@@ -216,6 +217,8 @@ export function SessionCard({ s }: { s: SessionRow }) {
   const focusUrl = s.warp?.focus_url;
   const uptime = sanitize(fmtUptime(Date.parse(s.start_time), Date.now()));
   const reads = s.reads ?? [];
+  // NAME-02 / D-06: the capped, sanitized native name, or undefined (unnamed).
+  const name = displayName(s.title);
 
   // Per-card `|` alignment (T-3td-01): the left field is `sanitize(name)` for a
   // write and `READ_GLYPH + " " + sanitize(name)` for a read (so the read's
@@ -287,10 +290,17 @@ export function SessionCard({ s }: { s: SessionRow }) {
       paddingX={1}
       marginBottom={1}
     >
+      {/* Header (NAME-02, D-06/D-07): a named session leads with the bold
+          name and demotes the folder into the dim tail
+          (`● <name> · <folder> · <branch> · ...`); an unnamed one keeps the
+          bold folder followed by a dim `(unnamed)` hint. The name passes
+          through displayName() (sanitize, then the 24-grapheme cap, D-09).
+          Bold / dim only: no reserved palette color (T-07-13). */}
       <Box>
         <Text color={dotColor(s.dotState)}>{DOT + " "}</Text>
-        <Text bold>{sanitize(s.folder)}</Text>
+        <Text bold>{name ?? sanitize(s.folder)}</Text>
         <Text dimColor>
+          {name !== undefined ? " · " + sanitize(s.folder) : " " + UNNAMED}
           {" · "}
           {sanitize(s.branch) || "—"}
           {" · "}
@@ -376,9 +386,15 @@ export function SessionCard({ s }: { s: SessionRow }) {
  * A leading status token shows at most one state, asking > waiting > running >
  * subagent: a magenta `◉`, a yellowBright `◉`, a green `▶` (260927-46l), or a
  * bold turquoise `↻` (260927-73b).
+ *
+ * Session label (NAME-02, D-06/D-07): a named session leads with its native
+ * name (`<name> · branch · short-id · ...`, rendered through displayName(), so
+ * sanitized and capped at 24 graphemes, D-09); an unnamed session keeps the
+ * folder lead followed by a dim `(unnamed)` hint. Plain / dim only, no color.
  */
 export function CompactRow({ s }: { s: SessionRow }) {
   const uptime = sanitize(fmtUptime(Date.parse(s.start_time), Date.now()));
+  const name = displayName(s.title);
   return (
     <Text>
       {s.asking ? (
@@ -390,7 +406,14 @@ export function CompactRow({ s }: { s: SessionRow }) {
       ) : s.subagent ? (
         <Text color={SUBAGENT_COLOR} bold>{SUBAGENT_GLYPH + " "}</Text>
       ) : null}
-      {sanitize(s.folder)}
+      {name !== undefined ? (
+        name
+      ) : (
+        <>
+          {sanitize(s.folder)}
+          <Text dimColor>{" " + UNNAMED}</Text>
+        </>
+      )}
       {" · "}
       {sanitize(s.branch) || "—"}
       {" · "}
