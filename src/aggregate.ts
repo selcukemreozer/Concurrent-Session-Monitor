@@ -9,7 +9,13 @@ import type {
   AttentionState,
   AskingState,
   TurnState,
+  TitleState,
 } from "./schema.js";
+import {
+  readTranscriptTitle,
+  pruneTranscriptTitleCache,
+  type TranscriptTitle,
+} from "./transcript.js";
 import {
   isProcessAlive,
   resolveLastSeen,
@@ -260,6 +266,16 @@ export type SessionRow = SessionState & {
    * otherwise). Card-only passthrough.
    */
   subagent_count?: number;
+  /**
+   * The session's Claude Code native custom title (the `/rename` name),
+   * resolved from the `title.json` shard and the transcript tail
+   * (Phase 7 NAME-01, D-01..D-04) by {@link resolveTitle}. RAW untrusted text:
+   * every render surface applies `displayName` / `labelLead` (sanitize first,
+   * then the 24-grapheme cap, D-09). Absent means unnamed (D-07 fallback).
+   * Card/label-only: it never drives sort, liveness, or conflict detection.
+   * Additive; SESSION_SCHEMA_VERSION unchanged.
+   */
+  title?: string;
 };
 
 /**
@@ -556,6 +572,64 @@ function readTurn(dir: string): { turn_state?: TurnState["state"]; turn_ts?: str
 }
 
 /**
+ * Read one session's native-name snapshot from its `title.json` shard
+ * (Phase 7 07-01, written by scripts/on-session-start.mjs and
+ * scripts/on-user-prompt.mjs). Mirrors {@link readAsking}'s try/catch
+ * self-heal: an absent or torn title.json returns `{}` and the session is
+ * never dropped (T-07-10). Whitelists keys by type: `title` only when a
+ * non-empty string, `tsMs` only when `ts` is a string that parses to a finite
+ * number, `transcript_path` only when a string (re-validated by the 07-03
+ * path guard before any open, T-07-03). Nothing else passes through.
+ */
+function readTitleShard(dir: string): { title?: string; tsMs?: number; transcript_path?: string } {
+  try {
+    const parsed = JSON.parse(
+      fs.readFileSync(path.join(dir, "title.json"), "utf8"),
+    ) as Partial<TitleState> | null;
+    if (parsed === null || typeof parsed !== "object") return {};
+    const out: { title?: string; tsMs?: number; transcript_path?: string } = {};
+    if (typeof parsed.title === "string" && parsed.title.length > 0) out.title = parsed.title;
+    if (typeof parsed.ts === "string") {
+      const ms = Date.parse(parsed.ts);
+      if (Number.isFinite(ms)) out.tsMs = ms;
+    }
+    if (typeof parsed.transcript_path === "string") out.transcript_path = parsed.transcript_path;
+    return out;
+  } catch {
+    return {}; // absent/torn title.json self-heals (T-07-10)
+  }
+}
+
+/**
+ * Merge the two native name channels (Phase 7, RESEARCH Pattern 3).
+ *
+ * | title.json (h)            | transcript tail (t)          | result     |
+ * |---------------------------|------------------------------|------------|
+ * | any                       | absent                       | h.title    |
+ * | no tsMs                   | present                      | t.title    |
+ * | tsMs < t.changedAtMs      | present                      | t.title    |
+ * | tsMs >= t.changedAtMs     | present                      | h.title    |
+ *
+ * D-02: the documented title.json record is authoritative: when it is at
+ * least as new as the tail value its title wins, and when it carries NO title
+ * the session is unnamed (this is also the D-03 defence: a stale tail value
+ * never outlives a newer record). D-04: the tail wins only when STRICTLY
+ * fresher, so a mid-session `/rename` shows on the next panel tick before the
+ * next prompt rewrites title.json. Equal times favour the documented record.
+ *
+ * Fallback rule (RESEARCH assumption A2): if live UAT shows Claude Code does
+ * not deliver `session_title` on UserPromptSubmit, change ONLY this function
+ * so the transcript value wins whenever present: `return t?.title ?? h.title`.
+ */
+export function resolveTitle(
+  h: { title?: string; tsMs?: number },
+  t: TranscriptTitle | undefined,
+): string | undefined {
+  if (t !== undefined && (h.tsMs === undefined || t.changedAtMs > h.tsMs)) return t.title;
+  return h.title;
+}
+
+/**
  * The sole cross-session view (STATE-02): aggregate every session shard into
  * one array, apply the D-02 active window, and sort most-recently-active
  * first (D-09).
@@ -589,6 +663,12 @@ export function readAll(
     }
 
     const { files, lastActive } = activeFiles(dir, now);
+
+    // --- Native session name (Phase 7 NAME-01, D-01..D-04, D-10): keyed strictly
+    // by this session's id and its own transcript_path; never drives sort,
+    // liveness, or conflicts.
+    const titleShard = readTitleShard(dir);
+    const title = resolveTitle(titleShard, readTranscriptTitle(id, titleShard.transcript_path));
 
     // Read-side aggregate (D-06), independent of the write window. D-07: a path
     // in this session's active write set is a WRITE, never also a read — filter
@@ -751,6 +831,7 @@ export function readAll(
       ...readIntent(dir), // INT-01 additive read-side field (D-01 separate shard)
       ...readTargetBranch(dir), // TB-02 additive card-only field (D-01/D-BR-01 separate shard)
       ...readSkill(dir, now), // SKILL-03 additive card-only field (D-01 separate shard)
+      title, // NAME-01 additive card-only field (D-02 shard + D-04 tail)
       last_active: lastActive,
       last_seen: heartbeatMs !== undefined ? new Date(heartbeatMs).toISOString() : state.last_seen,
       alive,
@@ -774,6 +855,9 @@ export function readAll(
       subagent_count: subagent ? turnAgents : undefined,
     });
   }
+
+  // T-07-05: drop transcript-title cache entries of vanished session dirs.
+  pruneTranscriptTitleCache(new Set(ids));
 
   // D-09: most-recently-active first. Fall back to start_time when a session
   // has no active touches yet.
