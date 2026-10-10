@@ -629,11 +629,11 @@ var require_react_development = __commonJS({
         }
         return void 0 !== config.key;
       }
-      function defineKeyPropWarningGetter(props, displayName) {
+      function defineKeyPropWarningGetter(props, displayName2) {
         function warnAboutAccessingKey() {
           specialPropKeyWarningShown || (specialPropKeyWarningShown = true, console.error(
             "%s: `key` is not a prop. Trying to access it will result in `undefined` being returned. If you need to access the same value within the child component, you should pass it as a different prop. (https://react.dev/link/special-props)",
-            displayName
+            displayName2
           ));
         }
         warnAboutAccessingKey.isReactWarning = true;
@@ -859,8 +859,8 @@ var require_react_development = __commonJS({
           ioInfo = payload._ioInfo;
           if (null != ioInfo) {
             ioInfo.value = thenable;
-            var displayName = thenable.displayName;
-            "string" === typeof displayName && (ioInfo.name = displayName);
+            var displayName2 = thenable.displayName;
+            "string" === typeof displayName2 && (ioInfo.name = displayName2);
           }
           -1 === payload._status && (payload._status = 0, payload._result = thenable);
         }
@@ -28452,11 +28452,11 @@ var require_react_jsx_runtime_development = __commonJS({
         }
         return void 0 !== config.key;
       }
-      function defineKeyPropWarningGetter(props, displayName) {
+      function defineKeyPropWarningGetter(props, displayName2) {
         function warnAboutAccessingKey() {
           specialPropKeyWarningShown || (specialPropKeyWarningShown = true, console.error(
             "%s: `key` is not a prop. Trying to access it will result in `undefined` being returned. If you need to access the same value within the child component, you should pass it as a different prop. (https://react.dev/link/special-props)",
-            displayName
+            displayName2
           ));
         }
         warnAboutAccessingKey.isReactWarning = true;
@@ -38561,6 +38561,43 @@ function sanitize(s) {
   return out;
 }
 
+// src/label.ts
+var NAME_CAP = 24;
+var ELLIPSIS = "\u2026";
+var UNNAMED = "(unnamed)";
+function isBidiFormat(cp) {
+  return cp === 8206 || cp === 8207 || cp >= 8234 && cp <= 8238 || cp >= 8294 && cp <= 8297;
+}
+var segmenter4;
+function graphemes(s) {
+  if (segmenter4 === void 0) {
+    segmenter4 = typeof Intl !== "undefined" && typeof Intl.Segmenter === "function" ? new Intl.Segmenter(void 0, { granularity: "grapheme" }) : null;
+  }
+  if (segmenter4 === null) return Array.from(s);
+  return Array.from(segmenter4.segment(s), (x) => x.segment);
+}
+function cleanTitle(raw) {
+  if (typeof raw !== "string") return "";
+  let out = "";
+  for (const ch of sanitize(raw)) {
+    const cp = ch.codePointAt(0) ?? 0;
+    if (isBidiFormat(cp)) continue;
+    out += ch;
+  }
+  return out.replace(/\s+/g, " ").trim();
+}
+function truncateLabel(s, max = NAME_CAP) {
+  const g = graphemes(s);
+  return g.length > max ? g.slice(0, max).join("") + ELLIPSIS : s;
+}
+function displayName(raw) {
+  const clean = cleanTitle(raw);
+  return clean.length > 0 ? truncateLabel(clean, NAME_CAP) : void 0;
+}
+function labelLead(s) {
+  return displayName(s.title) ?? sanitize(s.folder);
+}
+
 // src/panel/Card.tsx
 var import_react34 = __toESM(require_react(), 1);
 
@@ -38928,6 +38965,7 @@ function SessionCard({ s }) {
   const focusUrl = s.warp?.focus_url;
   const uptime = sanitize(fmtUptime(Date.parse(s.start_time), Date.now()));
   const reads = s.reads ?? [];
+  const name = displayName(s.title);
   const writeParts = s.files.map((f) => splitPath(f.file_path));
   const readParts = reads.map((r) => splitPath(r.file_path));
   const W = Math.max(
@@ -38954,8 +38992,9 @@ function SessionCard({ s }) {
       children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Box_default, { children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: dotColor(s.dotState), children: DOT + " " }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { bold: true, children: sanitize(s.folder) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { bold: true, children: name ?? sanitize(s.folder) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Text, { dimColor: true, children: [
+            name !== void 0 ? " \xB7 " + sanitize(s.folder) : " " + UNNAMED,
             " \xB7 ",
             sanitize(s.branch) || "\u2014",
             " \xB7 ",
@@ -38972,8 +39011,8 @@ function SessionCard({ s }) {
         intentLine,
         typeof s.skill === "string" && s.skill.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: "  " + SKILL_GLYPH + " " + (s.skill_subagent ? sanitize(s.skill_subagent) + SKILL_SEP : "") + sanitize(s.skill) }) : null,
         s.files.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: "  (no active files)" }) : s.files.map((f, i) => {
-          const { name, dir } = writeParts[i];
-          const left = sanitize(name);
+          const { name: name2, dir } = writeParts[i];
+          const left = sanitize(name2);
           const d = sanitize(dir);
           return d === "" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { children: "  " + left }, f.file_path) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Text, { children: [
             "  " + left.padEnd(W) + " | ",
@@ -38981,8 +39020,8 @@ function SessionCard({ s }) {
           ] }, f.file_path);
         }),
         reads.map((r, i) => {
-          const { name, dir } = readParts[i];
-          const left = READ_GLYPH + " " + sanitize(name);
+          const { name: name2, dir } = readParts[i];
+          const left = READ_GLYPH + " " + sanitize(name2);
           const d = sanitize(dir);
           return d === "" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: READ_COLOR, children: "  " + left }, "r:" + r.file_path) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Text, { color: READ_COLOR, children: [
             "  " + left.padEnd(W) + " | ",
@@ -38995,9 +39034,13 @@ function SessionCard({ s }) {
 }
 function CompactRow({ s }) {
   const uptime = sanitize(fmtUptime(Date.parse(s.start_time), Date.now()));
+  const name = displayName(s.title);
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Text, { children: [
     s.asking ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "magenta", bold: true, children: ATTENTION_GLYPH + " " }) : s.attention ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "yellowBright", bold: true, children: ATTENTION_GLYPH + " " }) : s.running ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "green", children: RUN_GLYPH + " " }) : s.subagent ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: SUBAGENT_COLOR, bold: true, children: SUBAGENT_GLYPH + " " }) : null,
-    sanitize(s.folder),
+    name !== void 0 ? name : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+      sanitize(s.folder),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: " " + UNNAMED })
+    ] }),
     " \xB7 ",
     sanitize(s.branch) || "\u2014",
     " \xB7 ",
@@ -39020,10 +39063,9 @@ function basename2(rp) {
   return parts[parts.length - 1] || String(rp);
 }
 function label(s) {
-  const folder = sanitize(s.folder);
   const branch = sanitize(s.branch) || "\u2014";
   const id = sanitize(String(s.session_id).slice(0, 8));
-  return `${folder} \xB7 ${branch} \xB7 ${id}`;
+  return `${labelLead(s)} \xB7 ${branch} \xB7 ${id}`;
 }
 function ConflictBand({ conflicts }) {
   if (conflicts.length === 0) return null;
@@ -39039,11 +39081,10 @@ var PORTS_CAP = 12;
 var WARP_HEADING = "Warp'ta ba\u015Flatt\u0131n";
 var OTHER_HEADING = "Di\u011Fer";
 var PORT_CURSOR_GLYPH = "\u276F";
-function portHeading(folder, branch, session_id, intent) {
-  const f = sanitize(folder);
+function portHeading(folder, branch, session_id, intent, title) {
   const b = sanitize(branch) || "\u2014";
   const id = sanitize(String(session_id).slice(0, 8));
-  const base = `${f} \xB7 ${b} \xB7 ${id}`;
+  const base = `${labelLead({ title, folder })} \xB7 ${b} \xB7 ${id}`;
   return typeof intent === "string" && intent.length > 0 ? `${base} ${INTENT_GLYPH} ${sanitize(intent)}` : base;
 }
 function groupPorts(ports, rows) {
@@ -39061,7 +39102,7 @@ function groupPorts(ports, rows) {
     if (!g) {
       g = {
         key: row.session_id,
-        heading: portHeading(row.folder, row.branch, row.session_id, row.intent),
+        heading: portHeading(row.folder, row.branch, row.session_id, row.intent, row.title),
         ports: []
       };
       sessionGroups.set(row.session_id, g);
@@ -39193,9 +39234,9 @@ function PhasesPane({
   const total = phases.length;
   const completed = phases.filter(phaseComplete).length;
   const currentIdx = phases.findIndex((p) => !phaseComplete(p));
-  const NAME_CAP = 36;
+  const NAME_CAP2 = 36;
   const numWidth = Math.max(1, ...phases.map((p) => sanitize(String(p.number)).length));
-  const nameWidth = Math.min(NAME_CAP, Math.max(1, ...phases.map((p) => sanitize(String(p.name)).length)));
+  const nameWidth = Math.min(NAME_CAP2, Math.max(1, ...phases.map((p) => sanitize(String(p.name)).length)));
   const plansWidth = Math.max(
     1,
     ...phases.map((p) => (sanitize(String(p.plans)) + "/" + sanitize(String(p.summaries))).length)
@@ -39545,7 +39586,7 @@ function App2() {
     ),
     /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(ConflictBand, { conflicts: state.conflicts }),
     state.display.map(
-      (d) => d.ended ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { dimColor: true, color: "grey", children: `\u25CF ${sanitize(d.row.folder)} \xB7 ${shortId2(d.id)} \xB7 ended` }, d.id) : compact ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(CompactRow, { s: withLiveBranch(d.row) }, d.id) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(SessionCard, { s: withLiveBranch(d.row) }, d.id)
+      (d) => d.ended ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { dimColor: true, color: "grey", children: `\u25CF ${labelLead(d.row)} \xB7 ${shortId2(d.id)} \xB7 ended` }, d.id) : compact ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(CompactRow, { s: withLiveBranch(d.row) }, d.id) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(SessionCard, { s: withLiveBranch(d.row) }, d.id)
     ),
     /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Box_default, { flexDirection: "row", width: termCols, marginTop: 1, children: [
       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Box_default, { flexDirection: "column", flexBasis: "50%", flexGrow: 1, flexShrink: 1, paddingX: 1, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(PortsPane, { ports, rows: liveRows }) }),
