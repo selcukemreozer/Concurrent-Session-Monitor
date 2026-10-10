@@ -456,12 +456,16 @@ function basename(rp: string): string {
  * Every one of the three parts is passed through `sanitize()` before it reaches
  * the terminal (the established render-boundary rule; `osc8` is the sole
  * exemption and is NOT used by the band). T-03-01.
+ *
+ * Session label (NAME-02, D-07/D-08): the lead segment is labelLead(s), so a
+ * named session shows `<name> · branch · shortid` (name sanitized and capped at
+ * 24 graphemes, D-09) and an unnamed one keeps the exact folder label. The band
+ * never shows `(unnamed)` (D-07: that hint is card / compact-row only).
  */
 function label(s: ConflictSession): string {
-  const folder = sanitize(s.folder);
   const branch = sanitize(s.branch) || "—";
   const id = sanitize(String(s.session_id).slice(0, 8));
-  return `${folder} · ${branch} · ${id}`;
+  return `${labelLead(s)} · ${branch} · ${id}`;
 }
 
 /**
@@ -555,12 +559,22 @@ export interface PortConfirm {
  * non-empty intent is set — the sanitized intent is appended behind the same
  * `»` INTENT_GLYPH the card uses (D-04). When intent is absent the heading ends
  * at the shortId with NO trailing marker/placeholder (mirrors Card.tsx:143-150).
+ *
+ * Session label (NAME-02, D-08): the optional `title` makes the lead segment
+ * labelLead({ title, folder }), so a named session's heading reads
+ * `<name> · branch · shortid` (sanitized, 24-grapheme cap, D-09) while an
+ * unnamed one keeps the exact folder heading, with no `(unnamed)` (D-07).
  */
-function portHeading(folder: string, branch: string, session_id: string, intent?: string): string {
-  const f = sanitize(folder);
+function portHeading(
+  folder: string,
+  branch: string,
+  session_id: string,
+  intent?: string,
+  title?: string,
+): string {
   const b = sanitize(branch) || "—";
   const id = sanitize(String(session_id).slice(0, 8));
-  const base = `${f} · ${b} · ${id}`;
+  const base = `${labelLead({ title, folder })} · ${b} · ${id}`;
   return typeof intent === "string" && intent.length > 0
     ? `${base} ${INTENT_GLYPH} ${sanitize(intent)}`
     : base;
@@ -589,7 +603,7 @@ export function groupPorts(ports: ScannedPort[], rows: SessionRow[]): PortGroup[
     if (!g) {
       g = {
         key: row.session_id,
-        heading: portHeading(row.folder, row.branch, row.session_id, row.intent),
+        heading: portHeading(row.folder, row.branch, row.session_id, row.intent, row.title),
         ports: [],
       };
       sessionGroups.set(row.session_id, g);

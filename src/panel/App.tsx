@@ -3,6 +3,7 @@ import { Box, Text, useWindowSize, useInput, useStdin } from "ink";
 import { readAll, type SessionRow } from "../aggregate.js";
 import { pruneSession } from "../prune.js";
 import { sanitize } from "../sanitize.js";
+import { labelLead } from "../label.js";
 import { numEnv } from "../env.js";
 import { SessionCard, CompactRow, ConflictBand, PortsPane, PhasesPane, SUBAGENT_COLOR } from "./Card.js";
 import { detectConflicts, type Conflict } from "../conflicts.js";
@@ -472,7 +473,10 @@ export function App() {
       {state.display.map((d) =>
         d.ended ? (
           <Text key={d.id} dimColor color="grey">
-            {`● ${sanitize(d.row.folder)} · ${shortId(d.id)} · ended`}
+            {/* NAME-02 / D-08: the fading row keeps the native name (labelLead:
+                sanitized, 24-grapheme cap) so it never flips to the folder; an
+                unnamed row keeps the folder lead, no (unnamed). */}
+            {`● ${labelLead(d.row)} · ${shortId(d.id)} · ended`}
           </Text>
         ) : compact ? (
           <CompactRow key={d.id} s={withLiveBranch(d.row)} />
