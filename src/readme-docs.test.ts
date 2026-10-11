@@ -171,8 +171,20 @@ describe("README needs-you clear semantics (260927-1zw WR-03/WR-04)", () => {
     expect(README).toMatch(/approved tool/i);
   });
 
-  it("keeps the 30-minute safety-net default", () => {
-    expect(README).toContain("1800000");
+  // 261011-or2: row-scoped (the RUN row also contains 1800000).
+  it("documents the 3-hour waiting ceiling and the alive-pid asking rule", () => {
+    const row = README.split("\n").find((l) => l.startsWith("| `CSM_ATTN_WINDOW_MS`"));
+    expect(row).toBeDefined();
+    expect(row).toContain("`10800000`");
+    expect(row).toContain("(3 h)");
+    expect(row).toContain("process is alive");
+  });
+
+  it("the needs-you bullet names the 1 s idle wait and the alive-process asking rule", () => {
+    const line = README.split("\n").find((l) => l.includes("◉ asking"));
+    expect(line).toBeDefined();
+    expect(line).toContain("(1 s)");
+    expect(line).toContain("process is alive");
   });
 });
 
@@ -216,12 +228,15 @@ describe("README subagent state (260927-73b)", () => {
   });
 });
 
-// Quick 260927-4tv: the 10 s idle-waiting knob is documented in the env table.
+// Quick 260927-4tv / 261011-or2: the 1 s idle-waiting knob is documented in
+// the env table.
 describe("README documents CSM_IDLE_WAIT_MS (260927-4tv)", () => {
   const lines = readRel("../README.md").split("\n");
-  it("the env table documents CSM_IDLE_WAIT_MS with its 10000 default", () => {
+  it("the env table documents CSM_IDLE_WAIT_MS with its 1000 default", () => {
     const row = lines.find((l) => l.startsWith("| `CSM_IDLE_WAIT_MS`"));
     expect(row).toBeDefined();
-    expect(row).toContain("`10000`");
+    expect(row).toContain("`1000`");
+    expect(row).toContain("(1 s)");
+    expect(row).not.toContain("`10000`");
   });
 });
