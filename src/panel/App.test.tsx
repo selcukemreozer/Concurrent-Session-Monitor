@@ -89,8 +89,38 @@ vi.mock("../branch.js", async (importOriginal) => {
     branchScanMs: vi.fn(() => 1700),
   };
 });
+// RED (wave 08-06): App owns the OTURUMLAR resume pane (RESUME-04, D-14..D-19):
+// a visibility-gated slow discoverSessions scan plus Enter / `o` routed through
+// launch.ts. Mock ONLY the scan + its cadence, keeping every pure helper and
+// constant real (reconcileSelection / followOffset / RESUME_* / fmtAge, which
+// Card.tsx's SessionsPane also consumes), so these tests drive the WIRING and
+// never read the real ~/.claude tree.
+vi.mock("../sessions.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../sessions.js")>();
+  return {
+    ...actual,
+    discoverSessions: vi.fn(async () => []),
+    resumeScanMs: vi.fn(() => 4000),
+  };
+});
+// Mock the launcher's two side-effecting entry points so no test ever runs
+// pbcopy / osascript / open or touches the real clipboard or ~/.warp.
+vi.mock("./launch.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./launch.js")>();
+  return {
+    ...actual,
+    copyResume: vi.fn(async () => ({ ok: true, copied: true, message: "copied ✓" })),
+    openResume: vi.fn(async () => ({
+      ok: true,
+      copied: true,
+      message: "opened a new Terminal window · command copied",
+    })),
+  };
+});
 import { readAll } from "../aggregate.js";
 import { pruneSession } from "../prune.js";
+import { discoverSessions, resumeScanMs, RESUME_LIST_N, type ResumeRow } from "../sessions.js";
+import { copyResume, openResume } from "./launch.js";
 import { scanPorts, portScanMs } from "../ports.js";
 import type { ScannedPort } from "../ports.js";
 import {
@@ -110,6 +140,9 @@ const PHASE_CADENCE = 3000;
 
 /** The mocked branch-scan cadence (ms) — App arms its 4th interval at branchScanMs(). */
 const BRANCH_CADENCE = 1700;
+
+/** The mocked OTURUMLAR scan cadence (ms) — armed ONLY while the pane is visible (D-19). */
+const RESUME_CADENCE = 4000;
 
 /**
  * A minimal fake TTY stdin (Pitfall 1 / Wave 0 Gaps): an in-memory duplex with
@@ -134,6 +167,12 @@ const KEYS = {
   down: "[B",
   pageUp: "[5~",
   pageDown: "[6~",
+  enter: "\r",
+  r: "r",
+  o: "o",
+  ctrlR: "\x12",
+  metaO: "\x1bo",
+  ctrlC: "\x03",
 } as const;
 
 /** Emit a keypress into a fake TTY stdin. */
@@ -213,6 +252,17 @@ beforeEach(() => {
   // crashes. Tests that assert on these override them in their own beforeEach.
   vi.mocked(scanBranches).mockResolvedValue(new Map<string, string>());
   vi.mocked(branchScanMs).mockReturnValue(BRANCH_CADENCE);
+  // After GREEN (08-06), App imports ../sessions.js and ./launch.js. Re-arm the
+  // resume-scan and launcher mocks (restoreAllMocks may strip implementations)
+  // so App never awaits an undefined-returning discoverSessions()/copyResume().
+  vi.mocked(discoverSessions).mockResolvedValue([]);
+  vi.mocked(resumeScanMs).mockReturnValue(RESUME_CADENCE);
+  vi.mocked(copyResume).mockResolvedValue({ ok: true, copied: true, message: "copied ✓" });
+  vi.mocked(openResume).mockResolvedValue({
+    ok: true,
+    copied: true,
+    message: "opened a new Terminal window · command copied",
+  });
 });
 
 describe("App poll loop (PANEL-05 live refresh, Pitfall 4 full re-read)", () => {
@@ -980,5 +1030,284 @@ describe("App live-branch scan + merge (LB-02, D-LB-04)", () => {
     expect(scanBranches).toHaveBeenCalledTimes(2);
 
     unmount();
+  });
+});
+
+// RED (wave 08-06): the OTURUMLAR resume pane wiring (RESUME-04, CONTEXT
+// D-14..D-19). Everything is driven through a fake TTY stdin with real timers
+// and a small mocked cadence; discoverSessions / copyResume / openResume are
+// mocked above, so no test reads ~/.claude, touches the clipboard or opens a
+// terminal window.
+describe("App OTURUMLAR pane (Phase 8, D-14..D-19)", () => {
+  const TITLE = "◆ Concurrent Session Monitor";
+  const A_ID = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
+  const B_ID = "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb";
+  const C_ID = "cccccccc-3333-4333-8333-cccccccccccc";
+  const NOW = Date.now();
+  const A: ResumeRow = {
+    id: A_ID, label: "alpha-sess", labelKind: "name", folder: "proj",
+    cwd: "/w/a", mtimeMs: NOW - 60_000, live: false,
+  };
+  const B: ResumeRow = {
+    id: B_ID, label: "beta-sess", labelKind: "name", folder: "proj",
+    cwd: "/w/b", mtimeMs: NOW - 120_000, live: false,
+  };
+  const C: ResumeRow = {
+    id: C_ID, label: "gamma-sess", labelKind: "name", folder: "proj",
+    cwd: "/w/c", mtimeMs: NOW - 180_000, live: true,
+  };
+  // Two live focus rows so FAZLAR has content; the first is session A (D-11).
+  const rows = () => [
+    makeFocusRow(A_ID, "projA", "/projA"),
+    makeFocusRow("b", "projB", "/projB"),
+  ];
+
+  const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+  /** The most recent full frame (debug mode appends every frame to the buffer). */
+  const latest = (buf: string) => {
+    const i = buf.lastIndexOf(TITLE);
+    return i >= 0 ? buf.slice(i) : buf;
+  };
+  /** The line of the latest frame carrying the `▸` cursor. */
+  const cursorLine = (buf: string) => latest(buf).split("\n").find((l) => l.includes("▸")) ?? "";
+  const calls = () => vi.mocked(discoverSessions).mock.calls.length;
+
+  /** Render on a fake TTY (wide, so pane lines never wrap) and wait for FAZLAR. */
+  async function openTty() {
+    const stdin = fakeTtyStdin();
+    const cap = renderCapture(40, 160, stdin);
+    await vi.waitFor(() => expect(latest(cap.frame())).toContain("MILE"));
+    return { stdin, cap };
+  }
+  /** Press `r` and wait for the OTURUMLAR heading. */
+  async function openSessions(stdin: NodeJS.ReadStream, cap: ReturnType<typeof renderCapture>) {
+    press(stdin, KEYS.r);
+    await vi.waitFor(() => expect(latest(cap.frame())).toContain("OTURUMLAR"));
+  }
+
+  beforeEach(() => {
+    (readAll as unknown as { mockReset: () => void }).mockReset();
+    (pruneSession as unknown as { mockReset: () => void }).mockReset();
+    (readAll as unknown as { mockReturnValue: (v: unknown) => void }).mockReturnValue(rows());
+    vi.mocked(discoverSessions).mockClear();
+    vi.mocked(resumeScanMs).mockClear();
+    vi.mocked(copyResume).mockClear();
+    vi.mocked(openResume).mockClear();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("T1 non-TTY: no OTURUMLAR, no [r: hint, and the resume scan never runs (D-14, 04.2 D-08)", async () => {
+    const setSpy = vi.spyOn(global, "setInterval");
+    const cap = renderCapture(24, 80); // no stdin => non-TTY
+    await vi.waitFor(() => expect(cap.frame()).toContain("MILE"));
+    await sleep(50);
+    expect(cap.frame()).not.toContain("OTURUMLAR");
+    expect(cap.frame()).not.toContain("[r:");
+    expect(discoverSessions).not.toHaveBeenCalled();
+    expect(setSpy.mock.calls.some((c) => c[1] === RESUME_CADENCE)).toBe(false);
+    cap.inst.unmount();
+  });
+
+  it("T2 TTY default: FAZLAR with the [r: oturumlar] hint on the Tab line; no scan yet (D-14, D-19)", async () => {
+    const { cap } = await openTty();
+    await vi.waitFor(() => expect(latest(cap.frame())).toContain("Tab: switch"));
+    const hintLine = latest(cap.frame()).split("\n").find((l) => l.includes("Tab: switch")) ?? "";
+    expect(hintLine).toContain("[r: oturumlar]");
+    expect(cap.frame()).not.toContain("OTURUMLAR");
+    await sleep(100);
+    expect(discoverSessions).not.toHaveBeenCalled();
+    cap.inst.unmount();
+  });
+
+  it("T3 `r` toggles FAZLAR <-> OTURUMLAR; the scan gets n=RESUME_LIST_N and the live store ids (D-14, D-11)", async () => {
+    vi.mocked(discoverSessions).mockResolvedValue([A, B, C]);
+    const { stdin, cap } = await openTty();
+    press(stdin, KEYS.r);
+    await vi.waitFor(() => {
+      const f = latest(cap.frame());
+      expect(f).toContain("OTURUMLAR");
+      expect(f).toContain("alpha-sess");
+    });
+    const f = latest(cap.frame());
+    expect(f).toContain("[r: fazlar]");
+    expect(f).not.toContain("MILE");
+    expect(discoverSessions).toHaveBeenCalledTimes(1);
+    const opts = vi.mocked(discoverSessions).mock.calls[0]![0]!;
+    expect(opts.n).toBe(RESUME_LIST_N);
+    expect(opts.liveIds).toBeInstanceOf(Set);
+    expect(opts.liveIds!.has(A_ID)).toBe(true);
+
+    press(stdin, KEYS.r);
+    await vi.waitFor(() => expect(latest(cap.frame())).toContain("MILE"));
+    expect(latest(cap.frame())).not.toContain("OTURUMLAR");
+    cap.inst.unmount();
+  });
+
+  it("T4 the scan repeats at resumeScanMs() only while visible and stops when FAZLAR returns (D-19)", async () => {
+    vi.mocked(resumeScanMs).mockReturnValue(30);
+    const { stdin, cap } = await openTty();
+    press(stdin, KEYS.r);
+    await vi.waitFor(() => expect(calls()).toBeGreaterThanOrEqual(3));
+    press(stdin, KEYS.r);
+    await vi.waitFor(() => expect(latest(cap.frame())).toContain("MILE"));
+    const n = calls();
+    await sleep(200);
+    expect(calls()).toBe(n);
+    cap.inst.unmount();
+  });
+
+  it("T5 an in-flight scan blocks the next tick (overlap guard) and the pane shows scanning… (D-19)", async () => {
+    vi.mocked(resumeScanMs).mockReturnValue(30);
+    vi.mocked(discoverSessions).mockImplementation(() => new Promise<ResumeRow[]>(() => {}));
+    const { stdin, cap } = await openTty();
+    press(stdin, KEYS.r);
+    await sleep(200);
+    expect(discoverSessions).toHaveBeenCalledTimes(1);
+    expect(latest(cap.frame())).toContain("scanning…");
+    cap.inst.unmount();
+  });
+
+  it("T6 ↓ moves the cursor; it follows the session id across a reorder and falls back to the nearest row (D-15, D-17)", async () => {
+    vi.mocked(resumeScanMs).mockReturnValue(30);
+    vi.mocked(discoverSessions).mockResolvedValue([A, B, C]);
+    const { stdin, cap } = await openTty();
+    await openSessions(stdin, cap);
+    await vi.waitFor(() => expect(cursorLine(cap.frame())).toContain("alpha-sess"));
+
+    press(stdin, KEYS.down);
+    await vi.waitFor(() => expect(cursorLine(cap.frame())).toContain("beta-sess"));
+
+    vi.mocked(discoverSessions).mockResolvedValue([C, B, A]);
+    await vi.waitFor(() => {
+      const f = latest(cap.frame());
+      expect(f.indexOf("gamma-sess")).toBeGreaterThanOrEqual(0);
+      expect(f.indexOf("gamma-sess")).toBeLessThan(f.indexOf("alpha-sess"));
+    });
+    expect(cursorLine(cap.frame())).toContain("beta-sess");
+
+    vi.mocked(discoverSessions).mockResolvedValue([A, C]);
+    await vi.waitFor(() => expect(cursorLine(cap.frame())).toContain("gamma-sess"));
+    expect(latest(cap.frame())).not.toContain("beta-sess");
+    cap.inst.unmount();
+  });
+
+  it("T7 Enter copies the selected row; the result shows and clears on the next cursor move (D-15)", async () => {
+    vi.mocked(discoverSessions).mockResolvedValue([A, B, C]);
+    const { stdin, cap } = await openTty();
+    await openSessions(stdin, cap);
+    await vi.waitFor(() => expect(cursorLine(cap.frame())).toContain("alpha-sess"));
+    press(stdin, KEYS.down);
+    await vi.waitFor(() => expect(cursorLine(cap.frame())).toContain("beta-sess"));
+
+    press(stdin, KEYS.enter);
+    await vi.waitFor(() =>
+      expect(copyResume).toHaveBeenCalledWith(expect.objectContaining({ id: B_ID, live: false })),
+    );
+    await vi.waitFor(() => expect(latest(cap.frame())).toContain("copied ✓"));
+
+    press(stdin, KEYS.down);
+    await vi.waitFor(() => expect(latest(cap.frame())).not.toContain("copied ✓"));
+    cap.inst.unmount();
+  });
+
+  it("T8 `o` on a live row passes live:true and shows the copy-and-warn result (D-15, D-16)", async () => {
+    vi.mocked(discoverSessions).mockResolvedValue([A, B, C]);
+    vi.mocked(openResume).mockResolvedValueOnce({
+      ok: false,
+      copied: true,
+      message: "session still open, no new tab opened · command copied",
+    });
+    const { stdin, cap } = await openTty();
+    await openSessions(stdin, cap);
+    await vi.waitFor(() => expect(cursorLine(cap.frame())).toContain("alpha-sess"));
+    press(stdin, KEYS.down);
+    await vi.waitFor(() => expect(cursorLine(cap.frame())).toContain("beta-sess"));
+    press(stdin, KEYS.down);
+    await vi.waitFor(() => expect(cursorLine(cap.frame())).toContain("gamma-sess"));
+
+    press(stdin, KEYS.o);
+    await vi.waitFor(() =>
+      expect(openResume).toHaveBeenCalledWith(
+        expect.objectContaining({ id: C_ID, cwd: "/w/c", live: true }),
+      ),
+    );
+    await vi.waitFor(() =>
+      expect(latest(cap.frame())).toContain("session still open, no new tab opened"),
+    );
+    cap.inst.unmount();
+  });
+
+  it("T9 Enter / `o` do nothing on FAZLAR; Tab is a no-op in OTURUMLAR", async () => {
+    vi.mocked(discoverSessions).mockResolvedValue([A, B, C]);
+    const { stdin, cap } = await openTty();
+    await vi.waitFor(() => expect(latest(cap.frame())).toContain("Project 1/2"));
+    press(stdin, KEYS.enter);
+    await sleep(30);
+    press(stdin, KEYS.o);
+    await sleep(100);
+    expect(copyResume).not.toHaveBeenCalled();
+    expect(openResume).not.toHaveBeenCalled();
+
+    await openSessions(stdin, cap);
+    await vi.waitFor(() => expect(cursorLine(cap.frame())).toContain("alpha-sess"));
+    press(stdin, KEYS.tab);
+    await sleep(50);
+    press(stdin, KEYS.r);
+    await vi.waitFor(() => expect(latest(cap.frame())).toContain("MILE"));
+    expect(latest(cap.frame())).toContain("Project 1/2");
+    cap.inst.unmount();
+  });
+
+  it("T10 `r` / `o` with Ctrl or Meta are ignored", async () => {
+    vi.mocked(discoverSessions).mockResolvedValue([A, B, C]);
+    const { stdin, cap } = await openTty();
+    press(stdin, KEYS.ctrlR);
+    await sleep(100);
+    expect(latest(cap.frame())).not.toContain("OTURUMLAR");
+
+    await openSessions(stdin, cap);
+    await vi.waitFor(() => expect(cursorLine(cap.frame())).toContain("alpha-sess"));
+    press(stdin, KEYS.metaO);
+    await sleep(100);
+    expect(openResume).not.toHaveBeenCalled();
+    cap.inst.unmount();
+  });
+
+  it("T11 unmount with OTURUMLAR visible clears the scan interval", async () => {
+    vi.mocked(resumeScanMs).mockReturnValue(30);
+    const { stdin, cap } = await openTty();
+    await openSessions(stdin, cap);
+    await vi.waitFor(() => expect(calls()).toBeGreaterThanOrEqual(1));
+    expect(() => cap.inst.unmount()).not.toThrow();
+    const n = calls();
+    await sleep(150);
+    expect(calls()).toBe(n);
+  });
+
+  it("T12 Ctrl+C still unmounts cleanly with OTURUMLAR visible (04.2 D-07, locked)", async () => {
+    const stdin = fakeTtyStdin();
+    let buf = "";
+    const out = new Writable({ write(c, _e, cb) { buf += c.toString(); cb(); } }) as unknown as NodeJS.WriteStream;
+    (out as unknown as { columns: number }).columns = 160;
+    (out as unknown as { rows: number }).rows = 40;
+    const inst = render(React.createElement(App), {
+      stdout: out,
+      stdin,
+      debug: true,
+      patchConsole: false,
+      exitOnCtrlC: true,
+    });
+    await vi.waitFor(() => expect(latest(buf)).toContain("MILE"));
+    press(stdin, KEYS.r);
+    await vi.waitFor(() => expect(latest(buf)).toContain("OTURUMLAR"));
+    press(stdin, KEYS.ctrlC);
+    const exited = await Promise.race([
+      inst.waitUntilExit().then(() => true),
+      sleep(2000).then(() => false),
+    ]);
+    expect(exited).toBe(true);
   });
 });
