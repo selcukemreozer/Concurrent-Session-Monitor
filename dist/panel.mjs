@@ -38235,7 +38235,7 @@ function skillWindowMs() {
   return numEnv("CSM_SKILL_WINDOW_MS", 5 * 60 * 1e3);
 }
 function attnWindowMs() {
-  return numEnv("CSM_ATTN_WINDOW_MS", 108e5);
+  return numEnv("CSM_ATTN_WINDOW_MS", 36e5);
 }
 function runWindowMs() {
   return numEnv("CSM_RUN_WINDOW_MS", 18e5);

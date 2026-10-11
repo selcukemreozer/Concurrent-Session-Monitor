@@ -61,9 +61,9 @@ function skillWindowMs(): number {
 
 /**
  * The attention "needs-you" safety-net ceiling (ATTN-02/03, 260926-r7n,
- * 261011-or2), config-adjustable via CSM_ATTN_WINDOW_MS (default 10_800_000ms /
- * 3 h). A NEW numeric axis, DISTINCT from `windowMs()`/`readWindowMs()`/
- * `skillWindowMs()`.
+ * 261011-or2, 261011-qgi), config-adjustable via CSM_ATTN_WINDOW_MS (default
+ * 3_600_000ms / 60 min). A NEW numeric axis, DISTINCT from `windowMs()`/
+ * `readWindowMs()`/`skillWindowMs()`.
  *
  * It is the ◉ waiting ceiling (the Notification gate and idle-waiting), applied
  * whatever the pid verdict. It bounds ◉ asking ONLY when the pid verdict is not
@@ -83,17 +83,18 @@ function skillWindowMs(): number {
  * after those the marker stays until the next prompt or this ceiling (asking:
  * until the next prompt while the pid is alive). The ceiling was raised from
  * the former 90-second TTL to 30 min, then to 3 h (261011-or2: real questions
- * stayed open 33-583 min); an attention snapshot older than this expires the
- * flag if no resume signal ever follows. It also bounds the needs-you liveness
- * keepalive (WR-01), because the keepalive only holds while a marker gate holds
- * (an alive pid already keeps the row listed, so unbounded asking adds no
- * retention).
+ * stayed open 33-583 min), then lowered to 60 min (261011-qgi: a stale
+ * ◉ waiting should drop within the hour); an attention snapshot older than
+ * this expires the flag if no resume signal ever follows. It also bounds the
+ * needs-you liveness keepalive (WR-01), because the keepalive only holds while
+ * a marker gate holds (an alive pid already keeps the row listed, so unbounded
+ * asking adds no retention).
  *
- * Routed through `numEnv` so a NaN/negative override degrades to the 3-hour
+ * Routed through `numEnv` so a NaN/negative override degrades to the 60-minute
  * default. Read lazily (not module-const) so tests can flip the env per-case.
  */
 function attnWindowMs(): number {
-  return numEnv("CSM_ATTN_WINDOW_MS", 10_800_000);
+  return numEnv("CSM_ATTN_WINDOW_MS", 3_600_000);
 }
 
 /**
@@ -115,7 +116,7 @@ function runWindowMs(): number {
  * Stop has left `turn.json` "idle" for at least this long, the session is
  * treated as waiting on the human (◉ waiting), without waiting for Claude
  * Code's ~60 s idle_prompt Notification. Bounded above by `attnWindowMs()` (the
- * 3 h waiting ceiling): an idle turn older than the ceiling no longer
+ * 60-min waiting ceiling): an idle turn older than the ceiling no longer
  * idle-waits. Routed through `numEnv` so a NaN/negative override degrades to
  * the 1 s default (0 is accepted). Read lazily (not module-const) so tests can
  * flip the env per-case.
@@ -210,7 +211,7 @@ export type SessionRow = SessionState & {
    *
    * It is ALSO true for idle-waiting (260927-4tv D-02/D-03): `turn.json` has
    * said "idle" (a main-thread Stop) for at least CSM_IDLE_WAIT_MS (1 s) and
-   * less than `attnWindowMs()` (3 h, even for an alive pid), and the pid
+   * less than `attnWindowMs()` (60 min, even for an alive pid), and the pid
    * verdict is not "dead". Idle-waiting is
    * liveness evidence exactly like the Notification gate (D-05); the next
    * prompt (turn.json "running") clears it.
@@ -715,7 +716,7 @@ export function readAll(
     // attention shows ONLY while the snapshot ts is strictly newer than the
     // main-thread resume signal AND within attnWindowMs(). A main-thread tool
     // completion (e.g. the approved tool), a main-thread Stop or a new prompt
-    // flips it false next tick. The 3 h CSM_ATTN_WINDOW_MS ceiling is only the
+    // flips it false next tick. The 60-min CSM_ATTN_WINDOW_MS ceiling is only the
     // backstop for a session where no resume signal ever follows (Esc / deny
     // fire no hook); it applies even when the pid is alive.
     const attn = readAttention(dir);
@@ -818,7 +819,7 @@ export function readAll(
     // Needs-you keepalive (260927-1zw WR-01 / D-03): a session blocked on the
     // human emits no heartbeat, so an active marker is liveness evidence. It
     // keeps the row fresh (not stale, not readyToPrune, never pruned by App)
-    // while the marker gate holds. Waiting keepalive is bounded by the 3 h
+    // while the marker gate holds. Waiting keepalive is bounded by the 60-min
     // attnWindowMs() ceiling; asking keepalive is unbounded only while the pid
     // is alive (261011-or2), which is consistent because procAlive already
     // keeps `alive` true and blocks readyToPrune on its own. DISC-4: an
