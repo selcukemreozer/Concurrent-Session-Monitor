@@ -175,6 +175,11 @@ describe("readAll", () => {
 const deadProbe = (): "alive" | "dead" => "dead";
 const aliveProbe = (): "alive" | "dead" => "alive";
 
+// 261011-or2: the CSM_ATTN_WINDOW_MS default is 10_800_000 ms (3 h); these sit
+// one minute either side of it.
+const JUST_UNDER_3H = 10_740_000; // 2h59m
+const JUST_OVER_3H = 10_860_000; // 3h01m
+
 describe("readAll liveness (SC-3 / SC-4 / dot state)", () => {
   it("SC-4: dead-but-fresh row is alive (TTL authoritative) and not readyToPrune", () => {
     const now = Date.now();
@@ -654,8 +659,9 @@ describe("readTargetBranch surface (TB-02, D-01/D-BR-01/D-11)", () => {
 // attention_ts) (ATTN-02/03). attention.json is a SEPARATE writer from
 // session.json (D-01), format `{ type: string, ts: string }`. The gate is the
 // single genuinely-new rule in the phase (Pattern 2): the flag shows only while
-// the attention ts is BOTH within CSM_ATTN_WINDOW_MS (default 1_800_000 ms — a
-// 30-minute safety net, 260926-r7n) AND strictly NEWER than the session's last
+// the attention ts is BOTH within CSM_ATTN_WINDOW_MS (default 10_800_000 ms — a
+// 3-hour safety net, 261011-or2; was 30 min under 260926-r7n) AND strictly
+// NEWER than the session's last
 // activity (heartbeat / newest tool touch). Activity is the primary clear. All
 // timestamps are explicit ISO strings and `now` is injected, so the four gate
 // cases are deterministic with no timers. attention NEVER drives sort/liveness/
@@ -718,8 +724,9 @@ describe("readAttention gate (ATTN-02/03, D-04 window + newer-than-activity)", (
     expect(row!.attention).toBe(false);
   });
 
-  // --- 260926-r7n (AP-02): the default window is a 30-minute SAFETY NET, not
-  // the primary clear (activity is). A user who answers late must still see ◉.
+  // --- 260926-r7n (AP-02) / 261011-or2: the default window is a 3-hour SAFETY
+  // NET, not the primary clear (activity is). A user who answers late must
+  // still see ◉.
   it("D1 — default window keeps a long wait visible: attention 10 min ago, no activity since → attention true", () => {
     const now = Date.now();
     const dir = seedSession("at-long-wait", new Date(now - 3_600_000).toISOString(), {
@@ -731,18 +738,42 @@ describe("readAttention gate (ATTN-02/03, D-04 window + newer-than-activity)", (
     expect(row.attention).toBe(true);
   });
 
-  it("D2 — default safety net still expires: attention 31 min ago → attention false", () => {
+  it("D2 — default 3 h ceiling expires: attention 3h01m ago → attention false", () => {
     const now = Date.now();
-    const dir = seedSession("at-safety-net", new Date(now - 7_200_000).toISOString(), {
-      heartbeat: new Date(now - 3_600_000).toISOString(),
+    const dir = seedSession("at-safety-net", new Date(now - 14_400_000).toISOString(), {
+      heartbeat: new Date(now - 11_400_000).toISOString(),
     });
-    writeAttention(dir, { type: "permission_prompt", ts: new Date(now - 1_860_000).toISOString() });
+    writeAttention(dir, { type: "permission_prompt", ts: new Date(now - JUST_OVER_3H).toISOString() });
 
     const row = readAll(now).find((r) => r.session_id === "at-safety-net")!;
     expect(row.attention).toBe(false);
   });
 
-  it("D3 — an invalid override (NaN) degrades to the 30-min default: attention 10 min ago → attention true", () => {
+  it("D2b — default 3 h ceiling still holds: attention 2h59m ago → attention true", () => {
+    const now = Date.now();
+    const dir = seedSession("at-under-ceiling", new Date(now - 14_400_000).toISOString(), {
+      heartbeat: new Date(now - 11_400_000).toISOString(),
+    });
+    writeAttention(dir, { type: "permission_prompt", ts: new Date(now - JUST_UNDER_3H).toISOString() });
+
+    const row = readAll(now).find((r) => r.session_id === "at-under-ceiling")!;
+    expect(row.attention).toBe(true);
+  });
+
+  it("D2c — a known-alive pid does NOT lift the waiting ceiling: attention 3h01m ago → attention false", () => {
+    const now = Date.now();
+    const dir = seedSession("at-alive-ceiling", new Date(now - 14_400_000).toISOString(), {
+      pid: 4242,
+      heartbeat: new Date(now - 11_400_000).toISOString(),
+    });
+    writeAttention(dir, { type: "permission_prompt", ts: new Date(now - JUST_OVER_3H).toISOString() });
+
+    const row = readAll(now, aliveProbe).find((r) => r.session_id === "at-alive-ceiling")!;
+    expect(row.attention).toBe(false);
+    expect(row.alive).toBe(true); // shown via the alive pid, just without ◉
+  });
+
+  it("D3 — an invalid override (NaN) degrades to the 3-h default: attention 10 min ago → attention true", () => {
     process.env.CSM_ATTN_WINDOW_MS = "abc";
     const now = Date.now();
     const dir = seedSession("at-bad-override", new Date(now - 3_600_000).toISOString(), {
@@ -810,18 +841,23 @@ describe("readAsking gate + precedence (AQ-02)", () => {
     expect(askRow("ask-expired", now)!.asking).toBe(false);
   });
 
-  it("A4 default 30-min window: asking 10 min ago → true; asking 31 min ago → false", () => {
+  it("A4 default 3 h ceiling for a pid CSM cannot confirm: no pid, asking 10 min / 2h59m ago → true; 3h01m ago → false", () => {
     const now = Date.now();
     const d1 = seedSession("ask-long", new Date(now - 3_600_000).toISOString(), {
       heartbeat: new Date(now - 1_200_000).toISOString(),
     });
     writeAsking(d1, { ts: new Date(now - 600_000).toISOString() });
-    const d2 = seedSession("ask-net", new Date(now - 7_200_000).toISOString(), {
-      heartbeat: new Date(now - 3_600_000).toISOString(),
+    const d2 = seedSession("ask-under-3h", new Date(now - 14_400_000).toISOString(), {
+      heartbeat: new Date(now - 11_400_000).toISOString(),
     });
-    writeAsking(d2, { ts: new Date(now - 1_860_000).toISOString() });
+    writeAsking(d2, { ts: new Date(now - JUST_UNDER_3H).toISOString() });
+    const d3 = seedSession("ask-net", new Date(now - 14_400_000).toISOString(), {
+      heartbeat: new Date(now - 11_400_000).toISOString(),
+    });
+    writeAsking(d3, { ts: new Date(now - JUST_OVER_3H).toISOString() });
 
     expect(askRow("ask-long", now)!.asking).toBe(true);
+    expect(askRow("ask-under-3h", now)!.asking).toBe(true);
     expect(askRow("ask-net", now)!.asking).toBe(false);
   });
 
@@ -873,6 +909,73 @@ describe("readAsking gate + precedence (AQ-02)", () => {
       expect(row).toBeDefined();
       expect(row!.asking).toBe(false);
     }
+  });
+
+  // --- 261011-or2 (D-2): while the pid verdict is "alive" an open question has
+  // NO time ceiling; only the ask-resolved sidecar (answer / main-thread Stop /
+  // new prompt) or the lastSeenMs fallback clears it.
+  it("A8 alive pid: asking 4 h ago stays asking (no ceiling), the row is kept and not prunable", () => {
+    const now = Date.now();
+    const askTs = new Date(now - 14_400_000).toISOString();
+    const dir = seedSession("ask-alive-4h", new Date(now - 18_000_000).toISOString(), {
+      pid: 4242,
+      heartbeat: new Date(now - 14_400_000).toISOString(),
+    });
+    writeAsking(dir, { ts: askTs });
+    // ask-resolved older than the question (a prior, already-answered one).
+    fs.writeFileSync(path.join(dir, "ask-resolved"), new Date(now - 15_000_000).toISOString(), { mode: 0o600 });
+
+    const row = readAll(now, aliveProbe).find((r) => r.session_id === "ask-alive-4h")!;
+    expect(row.asking).toBe(true);
+    expect(row.asking_ts).toBe(askTs);
+    expect(row.alive).toBe(true);
+    expect(row.readyToPrune).toBe(false);
+    expect(row.dotState).toBe("idle"); // keepalive keeps it fresh
+  });
+
+  it("A8b alive pid ignores even an explicit ceiling: CSM_ATTN_WINDOW_MS=60000, asking 120s ago → asking true", () => {
+    process.env.CSM_ATTN_WINDOW_MS = "60000";
+    const now = Date.now();
+    const dir = seedSession("ask-alive-override", new Date(now - 600_000).toISOString(), {
+      pid: 4242,
+      heartbeat: new Date(now - 300_000).toISOString(),
+    });
+    writeAsking(dir, { ts: new Date(now - 120_000).toISOString() });
+
+    const row = readAll(now, aliveProbe).find((r) => r.session_id === "ask-alive-override")!;
+    expect(row.asking).toBe(true);
+  });
+
+  it("A8c alive pid: an ask-resolved sidecar newer than the 4 h-old question still clears it", () => {
+    const now = Date.now();
+    const dir = seedSession("ask-alive-answered", new Date(now - 18_000_000).toISOString(), {
+      pid: 4242,
+      heartbeat: new Date(now - 14_400_000).toISOString(),
+    });
+    writeAsking(dir, { ts: new Date(now - 14_400_000).toISOString() });
+    fs.writeFileSync(path.join(dir, "ask-resolved"), new Date(now - 14_000_000).toISOString(), { mode: 0o600 });
+
+    const row = readAll(now, aliveProbe).find((r) => r.session_id === "ask-alive-answered")!;
+    expect(row.asking).toBe(false);
+    expect(row.asking_ts).toBeUndefined();
+  });
+
+  it("A9 dead pid: asking 4 h ago is past the 3 h ceiling → asking false", () => {
+    const now = Date.now();
+    const dir = seedSession("ask-dead-4h", new Date(now - 18_000_000).toISOString(), {
+      pid: 4242,
+      heartbeat: new Date(now - 14_400_000).toISOString(),
+    });
+    writeAsking(dir, { ts: new Date(now - 14_400_000).toISOString() });
+    const noPid = seedSession("ask-nopid-4h", new Date(now - 18_000_000).toISOString(), {
+      heartbeat: new Date(now - 14_400_000).toISOString(),
+    });
+    writeAsking(noPid, { ts: new Date(now - 14_400_000).toISOString() });
+
+    const rows = readAll(now, deadProbe);
+    expect(rows.find((r) => r.session_id === "ask-dead-4h")!.asking).toBe(false);
+    // No pid (verdict unknown) is bounded by the ceiling too.
+    expect(rows.find((r) => r.session_id === "ask-nopid-4h")!.asking).toBe(false);
   });
 });
 
@@ -958,8 +1061,9 @@ describe("resume-signal gates (260927-1zw CR-01/WR-02)", () => {
 // --- Quick task 260927-1zw (WR-01): an active needs-you marker is liveness
 // evidence. A session blocked on the human with an old heartbeat and no
 // trustworthy pid must not go stale / readyToPrune (App would delete its shard).
-// Bounded by CSM_ATTN_WINDOW_MS through the marker gate; an authoritatively
-// dead pid is still reaped (DISC-4).
+// Bounded by CSM_ATTN_WINDOW_MS through the marker gate (waiting always; asking
+// only when the pid is not alive — 261011-or2, an alive pid already keeps the
+// row listed); an authoritatively dead pid is still reaped (DISC-4).
 describe("needs-you keepalive (260927-1zw WR-01)", () => {
   function writeSidecar(dir: string, name: string, iso: string): void {
     fs.writeFileSync(path.join(dir, name), iso, { mode: 0o600 });
@@ -998,10 +1102,10 @@ describe("needs-you keepalive (260927-1zw WR-01)", () => {
     expect(r.readyToPrune).toBe(false);
   });
 
-  it("W3 bounded by the window: no pid, heartbeat 40 min, asking 31 min → no keepalive", () => {
+  it("W3 bounded by the window: no pid, heartbeat 3h10m, asking 3h01m → no keepalive", () => {
     const now = Date.now();
-    const dir = seedSession("w3", ago(now, 7_200_000), { heartbeat: ago(now, 2_400_000) });
-    writeAsking(dir, { ts: ago(now, 1_860_000) });
+    const dir = seedSession("w3", ago(now, 14_400_000), { heartbeat: ago(now, 11_400_000) });
+    writeAsking(dir, { ts: ago(now, JUST_OVER_3H) });
     const r = readAll(now, deadProbe).find((x) => x.session_id === "w3")!;
     expect(r.asking).toBe(false);
     expect(r.alive).toBe(false);
@@ -1196,9 +1300,10 @@ describe("running state (260927-46l)", () => {
 });
 
 // --- Quick task 260927-4tv (D-02..D-05): idle-waiting. Once a main-thread Stop
-// has left turn.json "idle" for at least CSM_IDLE_WAIT_MS (default 10s), the
-// session shows ◉ waiting without waiting for Claude Code's ~60s idle_prompt
-// Notification. Bounded by CSM_ATTN_WINDOW_MS; a dead known pid never
+// has left turn.json "idle" for at least CSM_IDLE_WAIT_MS (default 1s since
+// 261011-or2; was 10s), the session shows ◉ waiting without waiting for Claude
+// Code's ~60s idle_prompt Notification. Bounded by the CSM_ATTN_WINDOW_MS 3 h
+// ceiling (even for an alive pid); a dead known pid never
 // idle-waits; asking still wins; a Notification's own type/ts win when both hold.
 describe("idle-waiting (260927-4tv)", () => {
   function writeTurn(dir: string, snap: Record<string, unknown>): void {
@@ -1212,18 +1317,18 @@ describe("idle-waiting (260927-4tv)", () => {
     process.env.CSM_STALE_MS = "120000";
   });
 
-  it("I1 threshold: idle 9s → not waiting; idle 11s → waiting idle_prompt with the turn ts; future ts → not waiting", () => {
+  it("I1 threshold: idle 500ms → not waiting; idle 1.5s → waiting idle_prompt with the turn ts; future ts → not waiting", () => {
     const now = Date.now();
-    const a = seedSession("i1-9s", ago(now, 600_000), { heartbeat: ago(now, 9_000) });
-    writeTurn(a, { state: "idle", ts: ago(now, 9_000) });
-    const ra = rowOf("i1-9s", now);
+    const a = seedSession("i1-500ms", ago(now, 600_000), { heartbeat: ago(now, 500) });
+    writeTurn(a, { state: "idle", ts: ago(now, 500) });
+    const ra = rowOf("i1-500ms", now);
     expect(ra.attention).toBe(false);
     expect(ra.running).toBe(false);
 
-    const b = seedSession("i1-11s", ago(now, 600_000), { heartbeat: ago(now, 11_000) });
-    const turnTs = ago(now, 11_000);
+    const b = seedSession("i1-1500ms", ago(now, 600_000), { heartbeat: ago(now, 1_500) });
+    const turnTs = ago(now, 1_500);
     writeTurn(b, { state: "idle", ts: turnTs });
-    const rb = rowOf("i1-11s", now);
+    const rb = rowOf("i1-1500ms", now);
     expect(rb.attention).toBe(true);
     expect(rb.attention_type).toBe("idle_prompt");
     expect(rb.attention_ts).toBe(turnTs);
@@ -1246,14 +1351,27 @@ describe("idle-waiting (260927-4tv)", () => {
     expect(r.dotState).toBe("idle");
   });
 
-  it("I3 ceiling: idle 31 min → no waiting, reaped; CSM_ATTN_WINDOW_MS=60000 caps it (TTL still alive)", () => {
+  it("I3 ceiling: idle 2h59m → waiting + alive; 3h01m → no waiting, reaped; alive pid at 3h01m → no waiting; CSM_ATTN_WINDOW_MS=60000 caps it", () => {
     const now = Date.now();
-    const a = seedSession("i3-a", ago(now, 7_200_000), { heartbeat: ago(now, 1_860_000) });
-    writeTurn(a, { state: "idle", ts: ago(now, 1_860_000) });
+    const u = seedSession("i3-under", ago(now, 14_400_000), { heartbeat: ago(now, JUST_UNDER_3H) });
+    writeTurn(u, { state: "idle", ts: ago(now, JUST_UNDER_3H) });
+    const ru = rowOf("i3-under", now);
+    expect(ru.attention).toBe(true);
+    expect(ru.alive).toBe(true); // needs-you keepalive
+    expect(ru.readyToPrune).toBe(false);
+
+    const a = seedSession("i3-a", ago(now, 14_400_000), { heartbeat: ago(now, JUST_OVER_3H) });
+    writeTurn(a, { state: "idle", ts: ago(now, JUST_OVER_3H) });
     const ra = rowOf("i3-a", now);
     expect(ra.attention).toBe(false);
     expect(ra.alive).toBe(false);
     expect(ra.readyToPrune).toBe(true);
+
+    const p = seedSession("i3-alive", ago(now, 14_400_000), { pid: 4242, heartbeat: ago(now, JUST_OVER_3H) });
+    writeTurn(p, { state: "idle", ts: ago(now, JUST_OVER_3H) });
+    const rp = rowOf("i3-alive", now, aliveProbe);
+    expect(rp.attention).toBe(false); // an alive pid does not lift the waiting ceiling
+    expect(rp.alive).toBe(true);
 
     process.env.CSM_ATTN_WINDOW_MS = "60000";
     const b = seedSession("i3-b", ago(now, 600_000), { heartbeat: ago(now, 90_000) });
@@ -1263,7 +1381,7 @@ describe("idle-waiting (260927-4tv)", () => {
     expect(rb.alive).toBe(true); // still within the 2-min TTL
   });
 
-  it("I4 CSM_IDLE_WAIT_MS override; NaN/negative degrade to 10s; 0 accepted", () => {
+  it("I4 CSM_IDLE_WAIT_MS override; NaN/negative degrade to 1s; 0 accepted", () => {
     const now = Date.now();
     const mk = (id: string, idleMs: number) => {
       const dir = seedSession(id, ago(now, 600_000), { heartbeat: ago(now, 5_000) });
@@ -1275,17 +1393,17 @@ describe("idle-waiting (260927-4tv)", () => {
     expect(rowOf("i4-30s", now).attention).toBe(false);
     expect(rowOf("i4-90s", now).attention).toBe(true);
 
-    mk("i4-11s", 11_000);
-    mk("i4-5s", 5_000);
+    mk("i4-1500ms", 1_500);
+    mk("i4-500ms", 500);
     for (const bad of ["abc", "-5"]) {
       process.env.CSM_IDLE_WAIT_MS = bad;
-      expect(rowOf("i4-11s", now).attention, bad).toBe(true);
-      expect(rowOf("i4-5s", now).attention, bad).toBe(false);
+      expect(rowOf("i4-1500ms", now).attention, bad).toBe(true);
+      expect(rowOf("i4-500ms", now).attention, bad).toBe(false);
     }
 
     process.env.CSM_IDLE_WAIT_MS = "0";
-    mk("i4-1s", 1_000);
-    expect(rowOf("i4-1s", now).attention).toBe(true);
+    mk("i4-200ms", 200);
+    expect(rowOf("i4-200ms", now).attention).toBe(true);
   });
 
   it("I5 dead known pid never idle-waits: fresh heartbeat → stale dot but alive; old heartbeat → reaped", () => {
@@ -1482,8 +1600,10 @@ describe("subagent state (260927-73b)", () => {
     expect(rowOf("a6-b", now).subagent).toBe(true);
 
     delete process.env.CSM_RUN_WINDOW_MS;
-    const c = seedSession("a6-c", ago(now, 7_200_000), { heartbeat: ago(now, 1_860_000) });
-    writeTurn(c, { state: "idle", ts: ago(now, 1_860_000), agents: 1 });
+    // 261011-or2: past both the 30-min run window AND the 3 h idle-waiting
+    // ceiling, so neither subagent nor the idle-waiting fallback holds.
+    const c = seedSession("a6-c", ago(now, 14_400_000), { heartbeat: ago(now, JUST_OVER_3H) });
+    writeTurn(c, { state: "idle", ts: ago(now, JUST_OVER_3H), agents: 1 });
     const rc = rowOf("a6-c", now);
     expect(rc.subagent).toBe(false);
     expect(rc.alive).toBe(false);

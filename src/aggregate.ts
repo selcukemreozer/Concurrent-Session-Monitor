@@ -60,9 +60,16 @@ function skillWindowMs(): number {
 }
 
 /**
- * The attention "needs-you" safety-net ceiling (ATTN-02/03, 260926-r7n),
- * config-adjustable via CSM_ATTN_WINDOW_MS (default 1_800_000ms / 30 min). A
- * NEW numeric axis, DISTINCT from `windowMs()`/`readWindowMs()`/`skillWindowMs()`.
+ * The attention "needs-you" safety-net ceiling (ATTN-02/03, 260926-r7n,
+ * 261011-or2), config-adjustable via CSM_ATTN_WINDOW_MS (default 10_800_000ms /
+ * 3 h). A NEW numeric axis, DISTINCT from `windowMs()`/`readWindowMs()`/
+ * `skillWindowMs()`.
+ *
+ * It is the ◉ waiting ceiling (the Notification gate and idle-waiting), applied
+ * whatever the pid verdict. It bounds ◉ asking ONLY when the pid verdict is not
+ * "alive" (unknown or dead): while the session process is alive an open
+ * question has no time ceiling and clears only via the `ask-resolved` sidecar
+ * (answer, main-thread Stop, new prompt) or the `lastSeenMs` fallback.
  *
  * This is a SAFETY NET, not the primary clear. The primary clears are the
  * resume sidecars (260927-1zw): ◉ waiting drops once the main-thread `resumed`
@@ -73,17 +80,20 @@ function skillWindowMs(): number {
  * and sibling tools never clear a marker. When a sidecar is absent (hooks that
  * predate it) the heartbeat-derived last activity is the fallback clear.
  * Approving/denying a permission, rejecting a question and Esc fire no hook, so
- * after those the marker stays until the next prompt or this ceiling. The
- * ceiling was raised from the former 90-second TTL; an attention snapshot older
- * than this expires the flag if no resume signal ever follows. It also bounds
- * the needs-you liveness keepalive (WR-01), because the keepalive only holds
- * while a marker gate holds.
+ * after those the marker stays until the next prompt or this ceiling (asking:
+ * until the next prompt while the pid is alive). The ceiling was raised from
+ * the former 90-second TTL to 30 min, then to 3 h (261011-or2: real questions
+ * stayed open 33-583 min); an attention snapshot older than this expires the
+ * flag if no resume signal ever follows. It also bounds the needs-you liveness
+ * keepalive (WR-01), because the keepalive only holds while a marker gate holds
+ * (an alive pid already keeps the row listed, so unbounded asking adds no
+ * retention).
  *
- * Routed through `numEnv` so a NaN/negative override degrades to the 30-minute
+ * Routed through `numEnv` so a NaN/negative override degrades to the 3-hour
  * default. Read lazily (not module-const) so tests can flip the env per-case.
  */
 function attnWindowMs(): number {
-  return numEnv("CSM_ATTN_WINDOW_MS", 1_800_000);
+  return numEnv("CSM_ATTN_WINDOW_MS", 10_800_000);
 }
 
 /**
@@ -100,17 +110,18 @@ function runWindowMs(): number {
 }
 
 /**
- * The idle-waiting threshold (260927-4tv D-02), config-adjustable via
- * CSM_IDLE_WAIT_MS (default 10_000ms / 10 s). Once a main-thread Stop has left
- * `turn.json` "idle" for at least this long, the session is treated as waiting
- * on the human (◉ waiting), without waiting for Claude Code's ~60 s idle_prompt
- * Notification. Bounded above by `attnWindowMs()`: an idle turn older than the
- * ceiling no longer idle-waits. Routed through `numEnv` so a NaN/negative
- * override degrades to the 10 s default (0 is accepted). Read lazily (not
- * module-const) so tests can flip the env per-case.
+ * The idle-waiting threshold (260927-4tv D-02, 261011-or2), config-adjustable
+ * via CSM_IDLE_WAIT_MS (default 1_000ms / 1 s; was 10 s). Once a main-thread
+ * Stop has left `turn.json` "idle" for at least this long, the session is
+ * treated as waiting on the human (◉ waiting), without waiting for Claude
+ * Code's ~60 s idle_prompt Notification. Bounded above by `attnWindowMs()` (the
+ * 3 h waiting ceiling): an idle turn older than the ceiling no longer
+ * idle-waits. Routed through `numEnv` so a NaN/negative override degrades to
+ * the 1 s default (0 is accepted). Read lazily (not module-const) so tests can
+ * flip the env per-case.
  */
 function idleWaitMs(): number {
-  return numEnv("CSM_IDLE_WAIT_MS", 10_000);
+  return numEnv("CSM_IDLE_WAIT_MS", 1_000);
 }
 
 /** One file a session is actively touching within the window. */
@@ -198,8 +209,9 @@ export type SessionRow = SessionState & {
    * row is counted once.
    *
    * It is ALSO true for idle-waiting (260927-4tv D-02/D-03): `turn.json` has
-   * said "idle" (a main-thread Stop) for at least CSM_IDLE_WAIT_MS and less
-   * than `attnWindowMs()`, and the pid verdict is not "dead". Idle-waiting is
+   * said "idle" (a main-thread Stop) for at least CSM_IDLE_WAIT_MS (1 s) and
+   * less than `attnWindowMs()` (3 h, even for an alive pid), and the pid
+   * verdict is not "dead". Idle-waiting is
    * liveness evidence exactly like the Notification gate (D-05); the next
    * prompt (turn.json "running") clears it.
    *
@@ -222,9 +234,10 @@ export type SessionRow = SessionState & {
   /**
    * Whether Claude asked this session's user a question via AskUserQuestion and
    * it is still open (260926-vfm, AQ-02). PRE-GATED reader-side on the
-   * `asking.json` shard: within `attnWindowMs()` AND strictly NEWER than the
-   * answer-specific `ask-resolved` sidecar (260927-1zw WR-02), falling back to
-   * `lastSeenMs` when that sidecar is absent. Sibling tool completions and
+   * `asking.json` shard: strictly NEWER than the answer-specific
+   * `ask-resolved` sidecar (260927-1zw WR-02), falling back to `lastSeenMs`
+   * when that sidecar is absent, AND — unless the pid verdict is "alive", in
+   * which case there is no time ceiling (261011-or2) — within `attnWindowMs()`. Sibling tool completions and
    * subagent activity never clear it. Asking takes precedence over attention.
    * It drives no sort or conflict detection; like `attention`, an open question
    * counts as liveness evidence (WR-01 keepalive) for a non-dead session.
@@ -693,7 +706,8 @@ export function readAll(
     // DISC-1 fallback: a session whose hooks predate these sidecars (or that
     // has not seen its first prompt yet) has none, so fall back to the legacy
     // heartbeat-derived lastSeenMs. Such sessions then behave exactly as before,
-    // instead of resurfacing already-answered markers for up to 30 minutes.
+    // instead of resurfacing already-answered markers until the
+    // CSM_ATTN_WINDOW_MS ceiling.
     const resumedMs = resolveSidecarMs(dir, "resumed") ?? lastSeenMs;
     const askResolvedMs = resolveSidecarMs(dir, "ask-resolved") ?? lastSeenMs;
 
@@ -701,24 +715,18 @@ export function readAll(
     // attention shows ONLY while the snapshot ts is strictly newer than the
     // main-thread resume signal AND within attnWindowMs(). A main-thread tool
     // completion (e.g. the approved tool), a main-thread Stop or a new prompt
-    // flips it false next tick. The 30-minute window is only the backstop for a
-    // session where no resume signal ever follows (Esc / deny fire no hook).
+    // flips it false next tick. The 3 h CSM_ATTN_WINDOW_MS ceiling is only the
+    // backstop for a session where no resume signal ever follows (Esc / deny
+    // fire no hook); it applies even when the pid is alive.
     const attn = readAttention(dir);
     const attnMs = attn.attention_ts !== undefined ? Date.parse(attn.attention_ts) : NaN;
     const rawWaiting =
       !Number.isNaN(attnMs) && now - attnMs < attnWindowMs() && attnMs > resumedMs;
 
-    // --- Asking gate (260926-vfm AQ-02, 260927-1zw WR-02): the same window on
-    // the asking.json shard, compared against the answer-specific
-    // `ask-resolved` sidecar. Asking WINS over attention: permission_prompt /
-    // idle_prompt Notifications fire while a question is open, and the question
-    // is the more specific signal. Answering fires the main-thread
-    // PostToolUse(AskUserQuestion) → on-activity writes ask-resolved →
-    // askMs <= askResolvedMs clears it on the next tick. Sibling tools cannot.
+    // asking.json is read here; the asking GATE is computed after the pid
+    // verdict below, because its ceiling depends on it (261011-or2).
     const ask = readAsking(dir);
     const askMs = ask.asking_ts !== undefined ? Date.parse(ask.asking_ts) : NaN;
-    const asking =
-      !Number.isNaN(askMs) && now - askMs < attnWindowMs() && askMs > askResolvedMs;
     // PID-reuse guard (CR-01/WR-03): consult the captured `pid_started` identity
     // token. When the pid probes alive but its re-derived start-time differs from
     // what SessionStart recorded, the numeric pid has been recycled by another
@@ -733,6 +741,22 @@ export function readAll(
     // so the reader must defer to the TTL/heartbeat for the dot rather than
     // asserting "stale" and mislabelling a genuinely-live session.
     const procDead = verdict === "dead";
+
+    // --- Asking gate (260926-vfm AQ-02, 260927-1zw WR-02, 261011-or2) on the
+    // asking.json shard, compared against the answer-specific `ask-resolved`
+    // sidecar. Asking WINS over attention: permission_prompt / idle_prompt
+    // Notifications fire while a question is open, and the question is the more
+    // specific signal. Answering fires the main-thread
+    // PostToolUse(AskUserQuestion) → on-activity writes ask-resolved →
+    // askMs <= askResolvedMs clears it on the next tick. Sibling tools cannot.
+    // The time ceiling is pid-dependent, so this MUST follow the verdict: while
+    // the pid is alive an open question has NO ceiling (a blocked session can
+    // wait for hours); for an unknown or dead pid attnWindowMs() still expires
+    // it, so a crashed or untrackable session cannot keep a stale question.
+    const asking =
+      !Number.isNaN(askMs) &&
+      askMs > askResolvedMs &&
+      (procAlive || now - askMs < attnWindowMs());
 
     // --- Running gate (260927-46l D-02). turn.json "running" (on-user-prompt)
     // until a main-thread Stop writes "idle". The window reference is the newer
@@ -794,7 +818,10 @@ export function readAll(
     // Needs-you keepalive (260927-1zw WR-01 / D-03): a session blocked on the
     // human emits no heartbeat, so an active marker is liveness evidence. It
     // keeps the row fresh (not stale, not readyToPrune, never pruned by App)
-    // while the marker gate holds, which bounds it by attnWindowMs(). DISC-4: an
+    // while the marker gate holds. Waiting keepalive is bounded by the 3 h
+    // attnWindowMs() ceiling; asking keepalive is unbounded only while the pid
+    // is alive (261011-or2), which is consistent because procAlive already
+    // keeps `alive` true and blocks readyToPrune on its own. DISC-4: an
     // authoritatively dead pid gets no keepalive, so a crashed session is still
     // reaped normally. A running turn (260927-46l D-03) is liveness evidence
     // too: a session deep in a long Bash / web fetch / thinking emits no

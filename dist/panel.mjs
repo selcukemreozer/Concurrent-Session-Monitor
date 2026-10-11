@@ -38235,13 +38235,13 @@ function skillWindowMs() {
   return numEnv("CSM_SKILL_WINDOW_MS", 5 * 60 * 1e3);
 }
 function attnWindowMs() {
-  return numEnv("CSM_ATTN_WINDOW_MS", 18e5);
+  return numEnv("CSM_ATTN_WINDOW_MS", 108e5);
 }
 function runWindowMs() {
   return numEnv("CSM_RUN_WINDOW_MS", 18e5);
 }
 function idleWaitMs() {
-  return numEnv("CSM_IDLE_WAIT_MS", 1e4);
+  return numEnv("CSM_IDLE_WAIT_MS", 1e3);
 }
 function activeFiles(dir, now) {
   let raw;
@@ -38472,10 +38472,10 @@ function readAll(now = Date.now(), probe = defaultProbe, startedProbe = defaultS
     const rawWaiting = !Number.isNaN(attnMs) && now - attnMs < attnWindowMs() && attnMs > resumedMs;
     const ask = readAsking(dir);
     const askMs = ask.asking_ts !== void 0 ? Date.parse(ask.asking_ts) : NaN;
-    const asking = !Number.isNaN(askMs) && now - askMs < attnWindowMs() && askMs > askResolvedMs;
     const verdict = isProcessAlive(state.pid, probe, state.pid_started, startedProbe);
     const procAlive = verdict === "alive";
     const procDead = verdict === "dead";
+    const asking = !Number.isNaN(askMs) && askMs > askResolvedMs && (procAlive || now - askMs < attnWindowMs());
     const turn = readTurn(dir);
     const turnMs = turn.turn_ts !== void 0 ? Date.parse(turn.turn_ts) : NaN;
     const runRefMs = Math.max(turnMs, heartbeatMs ?? -Infinity);

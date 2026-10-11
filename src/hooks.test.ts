@@ -1444,7 +1444,7 @@ describe("idle-waiting end-to-end (260927-4tv)", () => {
     JSON.parse(fs.readFileSync(path.join(sessDir(id), "turn.json"), "utf8"));
   const rowAt = (id: string, at: number) => readAll(at).find((r) => r.session_id === id)!;
 
-  it("Z1 prompt → Stop → +9s not waiting → +11s waiting → new prompt clears it", () => {
+  it("Z1 prompt → Stop → +0.5s not waiting → +1.5s waiting → new prompt clears it", () => {
     const id = "z1";
     seed(id);
     run(onActivity, { session_id: id, hook_event_name: "Stop", stop_hook_active: false });
@@ -1452,11 +1452,11 @@ describe("idle-waiting end-to-end (260927-4tv)", () => {
     expect(idle.state).toBe("idle");
     const T = Date.parse(idle.ts);
 
-    let r = rowAt(id, T + 9_000);
+    let r = rowAt(id, T + 500);
     expect(r.attention).toBe(false);
     expect(r.running).toBe(false);
 
-    r = rowAt(id, T + 11_000);
+    r = rowAt(id, T + 1_500);
     expect(r.attention).toBe(true);
     expect(r.attention_type).toBe("idle_prompt");
     expect(r.attention_ts).toBe(idle.ts);
@@ -1466,7 +1466,7 @@ describe("idle-waiting end-to-end (260927-4tv)", () => {
     const running = readTurnFile(id);
     expect(running.state).toBe("running");
     const P = Date.parse(running.ts);
-    r = rowAt(id, P + 11_000);
+    r = rowAt(id, P + 1_500);
     expect(r.attention).toBe(false);
     expect(r.running).toBe(true);
   });
@@ -1482,15 +1482,24 @@ describe("idle-waiting end-to-end (260927-4tv)", () => {
     expect(r.running).toBe(true);
   });
 
-  it("Z3 OR path: an idle_prompt Notification after the Stop shows waiting before the 10s threshold", () => {
-    const id = "z3";
-    seed(id);
-    run(onActivity, { session_id: id, hook_event_name: "Stop", stop_hook_active: false });
-    run(onNotification, { session_id: id, hook_event_name: "Notification", notification_type: "idle_prompt" });
-    const attnTs = JSON.parse(fs.readFileSync(path.join(sessDir(id), "attention.json"), "utf8")).ts;
-    const r = rowAt(id, Date.now());
-    expect(r.attention).toBe(true);
-    expect(r.attention_ts).toBe(attnTs);
+  it("Z3 OR path: an idle_prompt Notification after the Stop shows waiting before the idle threshold", () => {
+    // Pin a long idle threshold so only the Notification gate can show waiting
+    // here (the 1 s default could be crossed by slow hook spawns).
+    const priorIdle = process.env.CSM_IDLE_WAIT_MS;
+    process.env.CSM_IDLE_WAIT_MS = "60000";
+    try {
+      const id = "z3";
+      seed(id);
+      run(onActivity, { session_id: id, hook_event_name: "Stop", stop_hook_active: false });
+      run(onNotification, { session_id: id, hook_event_name: "Notification", notification_type: "idle_prompt" });
+      const attnTs = JSON.parse(fs.readFileSync(path.join(sessDir(id), "attention.json"), "utf8")).ts;
+      const r = rowAt(id, Date.now());
+      expect(r.attention).toBe(true);
+      expect(r.attention_ts).toBe(attnTs);
+    } finally {
+      if (priorIdle === undefined) delete process.env.CSM_IDLE_WAIT_MS;
+      else process.env.CSM_IDLE_WAIT_MS = priorIdle;
+    }
   });
 });
 
