@@ -38002,22 +38002,26 @@ import * as os4 from "node:os";
 import * as path2 from "node:path";
 var TAIL_BYTES = 256 * 1024;
 var MAX_TITLE_LINE = 4096;
+var HEAD_BYTES = 256 * 1024;
+var MAX_SCAN_LINE = 64 * 1024;
 var SAFE_ID_PATTERN2 = /^[A-Za-z0-9._-]{1,128}$/;
 var MAX_PATH = 4096;
 var MARKER = '"type":"custom-title"';
 var NEWLINE = 10;
-function scanCustomTitle(buf, atBoundary, sessionId) {
+function windowLines(buf, atBoundary) {
   let first = 0;
   if (!atBoundary) {
     const nl = buf.indexOf(NEWLINE);
-    if (nl < 0) return void 0;
+    if (nl < 0) return [];
     first = nl + 1;
   }
   const last = buf.lastIndexOf(NEWLINE);
-  if (last < first) return void 0;
-  const text = buf.subarray(first, last + 1).toString("utf8");
+  if (last < first) return [];
+  return buf.subarray(first, last).toString("utf8").split("\n");
+}
+function scanCustomTitle(buf, atBoundary, sessionId) {
   let found;
-  for (const line of text.split("\n")) {
+  for (const line of windowLines(buf, atBoundary)) {
     if (line.length === 0 || line.length > MAX_TITLE_LINE) continue;
     if (!line.includes(MARKER)) continue;
     let parsed;
@@ -38035,13 +38039,46 @@ function scanCustomTitle(buf, atBoundary, sessionId) {
   }
   return found;
 }
+function openFlags() {
+  return fs3.constants.O_RDONLY | fs3.constants.O_NONBLOCK | (fs3.constants.O_NOFOLLOW ?? 0);
+}
+function windowRange(size, from, budget) {
+  const b = Math.max(0, budget);
+  const start = from === "tail" ? Math.max(0, size - b) : 0;
+  return { start, want: Math.min(b, size - start) };
+}
+function readWindowSync(realPath, from, budget) {
+  try {
+    const fd = fs3.openSync(realPath, openFlags());
+    try {
+      const st = fs3.fstatSync(fd);
+      if (!st.isFile()) return void 0;
+      const { start, want } = windowRange(st.size, from, budget);
+      const out = Buffer.alloc(want);
+      let filled = 0;
+      while (filled < want) {
+        const n = fs3.readSync(fd, out, filled, want - filled, start + filled);
+        if (n <= 0) break;
+        filled += n;
+      }
+      return {
+        buf: out.subarray(0, filled),
+        atBoundary: start === 0,
+        reachedEof: start + filled >= st.size,
+        size: st.size,
+        mtimeMs: st.mtimeMs
+      };
+    } finally {
+      fs3.closeSync(fd);
+    }
+  } catch {
+    return void 0;
+  }
+}
 function safeSessionId(sessionId) {
   return typeof sessionId === "string" && SAFE_ID_PATTERN2.test(sessionId) && sessionId !== "." && sessionId !== "..";
 }
-function allowedRoots() {
-  const candidates = [path2.join(os4.homedir(), ".claude", "projects")];
-  const cfg = process.env.CLAUDE_CONFIG_DIR;
-  if (typeof cfg === "string" && cfg.length > 0) candidates.push(path2.join(cfg, "projects"));
+function realRoots(candidates) {
   const roots = [];
   for (const c of candidates) {
     try {
@@ -38051,12 +38088,18 @@ function allowedRoots() {
   }
   return roots;
 }
+function allowedRoots() {
+  const candidates = [path2.join(os4.homedir(), ".claude", "projects")];
+  const cfg = process.env.CLAUDE_CONFIG_DIR;
+  if (typeof cfg === "string" && cfg.length > 0) candidates.push(path2.join(cfg, "projects"));
+  return realRoots(candidates);
+}
 function isInside(root, real) {
   const rel = path2.relative(root, real);
   if (rel.length === 0 || path2.isAbsolute(rel)) return false;
   return rel.split(path2.sep)[0] !== "..";
 }
-function isAllowedTranscriptPath(sessionId, p) {
+function isAllowedTranscriptPath(sessionId, p, roots) {
   try {
     if (!safeSessionId(sessionId)) return void 0;
     if (typeof p !== "string" || p.length === 0 || p.length > MAX_PATH) return void 0;
@@ -38066,7 +38109,7 @@ function isAllowedTranscriptPath(sessionId, p) {
     if (path2.basename(p) !== expected) return void 0;
     const real = fs3.realpathSync(p);
     if (path2.basename(real) !== expected) return void 0;
-    for (const root of allowedRoots()) {
+    for (const root of roots === void 0 ? allowedRoots() : realRoots(roots)) {
       if (isInside(root, real)) return real;
     }
     return void 0;
@@ -38076,25 +38119,10 @@ function isAllowedTranscriptPath(sessionId, p) {
 }
 function readTailCustomTitle(realPath, sessionId, budget = TAIL_BYTES) {
   try {
-    const flags = fs3.constants.O_RDONLY | fs3.constants.O_NONBLOCK | (fs3.constants.O_NOFOLLOW ?? 0);
-    const fd = fs3.openSync(realPath, flags);
-    try {
-      const st = fs3.fstatSync(fd);
-      if (!st.isFile()) return void 0;
-      const start = Math.max(0, st.size - Math.max(0, budget));
-      const want = st.size - start;
-      const out = Buffer.alloc(want);
-      let filled = 0;
-      while (filled < want) {
-        const n = fs3.readSync(fd, out, filled, want - filled, start + filled);
-        if (n <= 0) break;
-        filled += n;
-      }
-      const title = scanCustomTitle(out.subarray(0, filled), start === 0, sessionId);
-      return { title, size: st.size, mtimeMs: st.mtimeMs };
-    } finally {
-      fs3.closeSync(fd);
-    }
+    const window2 = readWindowSync(realPath, "tail", budget);
+    if (window2 === void 0) return void 0;
+    const title = scanCustomTitle(window2.buf, window2.atBoundary, sessionId);
+    return { title, size: window2.size, mtimeMs: window2.mtimeMs };
   } catch {
     return void 0;
   }

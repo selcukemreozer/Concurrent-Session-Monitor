@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
@@ -46,6 +47,23 @@ import * as path from "node:path";
  *
  * Hooks never call this module: the transcript read stays off the hook hot
  * path. Only reader-side TypeScript (src/aggregate.ts) imports it.
+ *
+ * Phase 8 (resume picker, RESUME-01/02): this module is also the single
+ * transcript-IO seam for session discovery. One bounded TAIL window
+ * (scanTailFacts / readTailFactsAsync) yields entrypoint, cwd, hasAssistant,
+ * custom-title, ai-title and last-prompt with last-wins semantics; entrypoint
+ * is always classified from the tail, never the head. One bounded HEAD window
+ * (scanFirstPrompt / readFirstPromptAsync) yields the first real user prompt
+ * (promptLabel). Both windows go through one shared reader (readWindowSync /
+ * readWindowAsync): O_RDONLY | O_NONBLOCK | O_NOFOLLOW open, fstat isFile,
+ * one positional read of at most `budget` bytes, never a whole-file read;
+ * the async flavour keeps the panel event loop free and never rejects. Lines
+ * over MAX_SCAN_LINE (and metadata lines over MAX_TITLE_LINE) are skipped
+ * before JSON.parse. The D-03 note above still holds for the LIVE label
+ * surfaces (only custom-title names a running session); ai-title and
+ * last-prompt are read only for the resume picker (CONTEXT D-06 / D-07).
+ * Extracted strings are raw and untrusted: every consumer must run
+ * cleanTitle, then truncateLabel, then sanitize before display.
  */
 
 /** Default tail budget: the last 256 KiB of the transcript. */
@@ -53,6 +71,53 @@ export const TAIL_BYTES = 256 * 1024;
 
 /** Lines longer than this are skipped before JSON.parse. */
 export const MAX_TITLE_LINE = 4096;
+
+/** Default head budget for the first-prompt scan: the first 256 KiB. */
+export const HEAD_BYTES = 256 * 1024;
+
+/** Carrier / user / assistant lines longer than this are never parsed. */
+export const MAX_SCAN_LINE = 64 * 1024;
+
+/** A Claude Code session id as accepted by `--resume` (lowercase UUID). */
+export const SESSION_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** Built-in slash commands that never make a meaningful session label. */
+export const TRIVIAL_COMMANDS: ReadonlySet<string> = new Set([
+  "clear",
+  "reload-plugins",
+  "model",
+  "effort",
+  "compact",
+  "resume",
+  "exit",
+  "config",
+  "help",
+  "status",
+  "cost",
+  "login",
+  "logout",
+]);
+
+/** Facts gathered from one tail window (all last-wins). */
+export type TailFacts = {
+  entrypoint?: string;
+  cwd?: string;
+  hasAssistant: boolean;
+  customTitle?: string;
+  aiTitle?: string;
+  lastPrompt?: string;
+};
+
+/** One bounded positional window of a transcript file. */
+export type TranscriptWindow = {
+  buf: Buffer;
+  /** True when the window starts at offset 0 (no torn leading line). */
+  atBoundary: boolean;
+  /** True when the window reaches the end of the file. */
+  reachedEof: boolean;
+  size: number;
+  mtimeMs: number;
+};
 
 export type TranscriptTitle = { title: string; changedAtMs: number };
 
@@ -67,26 +132,40 @@ const MARKER = '"type":"custom-title"';
 
 const NEWLINE = 0x0a;
 
+/** Compact markers for the tail-facts scan (escaped mentions never match). */
+const META_MARKERS = ['"type":"custom-title"', '"type":"ai-title"', '"type":"last-prompt"'];
+const CARRIER_MARKER = '"entrypoint":"';
+const ASSISTANT_MARKER = '"type":"assistant"';
+const USER_MARKER = '"type":"user"';
+
 /**
- * Return the LAST matching customTitle in the complete-line span of `buf`.
+ * The complete lines of a window.
  *
  * When `atBoundary` is false the window starts mid-line, so everything up to
  * and including the first newline is discarded (byte-level, before decoding,
  * so a split UTF-8 sequence at the window start never reaches the decoder).
- * Everything after the last newline is a torn line and is ignored.
+ * Everything after the last newline is a torn line and is ignored. Only the
+ * complete span is decoded as UTF-8.
  */
-export function scanCustomTitle(buf: Buffer, atBoundary: boolean, sessionId: string): string | undefined {
+function windowLines(buf: Buffer, atBoundary: boolean): string[] {
   let first = 0;
   if (!atBoundary) {
     const nl = buf.indexOf(NEWLINE);
-    if (nl < 0) return undefined;
+    if (nl < 0) return [];
     first = nl + 1;
   }
   const last = buf.lastIndexOf(NEWLINE);
-  if (last < first) return undefined;
-  const text = buf.subarray(first, last + 1).toString("utf8");
+  if (last < first) return [];
+  return buf.subarray(first, last).toString("utf8").split("\n");
+}
+
+/**
+ * Return the LAST matching customTitle in the complete-line span of `buf`
+ * (torn-line rules: see windowLines).
+ */
+export function scanCustomTitle(buf: Buffer, atBoundary: boolean, sessionId: string): string | undefined {
   let found: string | undefined;
-  for (const line of text.split("\n")) {
+  for (const line of windowLines(buf, atBoundary)) {
     if (line.length === 0 || line.length > MAX_TITLE_LINE) continue;
     if (!line.includes(MARKER)) continue;
     let parsed: unknown;
@@ -105,6 +184,245 @@ export function scanCustomTitle(buf: Buffer, atBoundary: boolean, sessionId: str
   return found;
 }
 
+/**
+ * Scan one tail window for the resume-picker facts (all last-wins).
+ * Only lines carrying a compact marker are parsed; lines over MAX_SCAN_LINE
+ * are skipped, and metadata values come only from lines of at most
+ * MAX_TITLE_LINE chars. Lines with a different sessionId are ignored.
+ */
+export function scanTailFacts(buf: Buffer, atBoundary: boolean, sessionId: string): TailFacts {
+  const f: TailFacts = { hasAssistant: false };
+  for (const line of windowLines(buf, atBoundary)) {
+    if (line.length === 0 || line.length > MAX_SCAN_LINE) continue;
+    const isMeta = META_MARKERS.some((m) => line.includes(m));
+    const isCarrier = line.includes(CARRIER_MARKER);
+    const isAssistant = line.includes(ASSISTANT_MARKER);
+    if (!isMeta && !isCarrier && !isAssistant) continue;
+    const metaOk = line.length <= MAX_TITLE_LINE;
+    if (isMeta && !metaOk && !isCarrier && !isAssistant) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (parsed === null || typeof parsed !== "object") continue;
+    const o = parsed as {
+      type?: unknown;
+      sessionId?: unknown;
+      customTitle?: unknown;
+      aiTitle?: unknown;
+      lastPrompt?: unknown;
+      entrypoint?: unknown;
+      cwd?: unknown;
+    };
+    if (o.sessionId !== undefined && o.sessionId !== sessionId) continue;
+    if (metaOk) {
+      if (o.type === "custom-title" && typeof o.customTitle === "string") f.customTitle = o.customTitle;
+      else if (o.type === "ai-title" && typeof o.aiTitle === "string") f.aiTitle = o.aiTitle;
+      else if (o.type === "last-prompt" && typeof o.lastPrompt === "string") f.lastPrompt = o.lastPrompt;
+    }
+    if (o.type === "assistant") f.hasAssistant = true;
+    if (typeof o.entrypoint === "string") f.entrypoint = o.entrypoint;
+    if (typeof o.cwd === "string") f.cwd = o.cwd;
+  }
+  return f;
+}
+
+/** Leading wrappers that are tool / command output, never a user prompt. */
+const NOISE = /^<(local-command-(stdout|stderr)|command-caveat|system-reminder|bash-(input|stdout|stderr))>/;
+const COMMAND_NAME = /<command-name>\/?([^<]{1,80})<\/command-name>/;
+const COMMAND_ARGS = /<command-args>([^<]{0,200})<\/command-args>/;
+
+/**
+ * The raw label text of one parsed transcript line when it is a real user
+ * prompt, else undefined. A slash-command wrapper renders as `/name args`
+ * (tag order independent); trivial built-ins and command / tool output give
+ * undefined. The caller cleans and caps the result.
+ */
+export function promptLabel(o: unknown): string | undefined {
+  if (o === null || typeof o !== "object") return undefined;
+  const line = o as { type?: unknown; isMeta?: unknown; message?: unknown };
+  if (line.type !== "user" || line.isMeta === true) return undefined;
+  const message = line.message;
+  if (message === null || typeof message !== "object") return undefined;
+  const content = (message as { content?: unknown }).content;
+  let text: string | undefined;
+  if (typeof content === "string") {
+    text = content;
+  } else if (Array.isArray(content)) {
+    for (const part of content as unknown[]) {
+      if (part === null || typeof part !== "object") continue;
+      const pt = part as { type?: unknown; text?: unknown };
+      if (pt.type === "text" && typeof pt.text === "string") {
+        text = pt.text;
+        break;
+      }
+    }
+  }
+  if (text === undefined) return undefined;
+  const t = text.trim();
+  if (t.length === 0 || NOISE.test(t)) return undefined;
+  if (t.includes("<command-name>")) {
+    const name = COMMAND_NAME.exec(t)?.[1]?.trim();
+    if (name === undefined || name.length === 0) return undefined;
+    if (TRIVIAL_COMMANDS.has(name)) return undefined;
+    const args = COMMAND_ARGS.exec(t)?.[1]?.trim();
+    return args !== undefined && args.length > 0 ? `/${name} ${args}` : `/${name}`;
+  }
+  return t;
+}
+
+/** The first real user prompt in a head window (offset 0), else undefined. */
+export function scanFirstPrompt(buf: Buffer, sessionId: string): string | undefined {
+  for (const line of windowLines(buf, true)) {
+    if (line.length === 0 || line.length > MAX_SCAN_LINE) continue;
+    if (!line.includes(USER_MARKER)) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (parsed === null || typeof parsed !== "object") continue;
+    const sid = (parsed as { sessionId?: unknown }).sessionId;
+    if (sid !== undefined && sid !== sessionId) continue;
+    const label = promptLabel(parsed);
+    if (label !== undefined) return label;
+  }
+  return undefined;
+}
+
+/** Guarded open flags: never follow a symlink, never block on a FIFO. */
+function openFlags(): number {
+  return fs.constants.O_RDONLY | fs.constants.O_NONBLOCK | (fs.constants.O_NOFOLLOW ?? 0);
+}
+
+function windowRange(size: number, from: "head" | "tail", budget: number): { start: number; want: number } {
+  const b = Math.max(0, budget);
+  const start = from === "tail" ? Math.max(0, size - b) : 0;
+  return { start, want: Math.min(b, size - start) };
+}
+
+/**
+ * Read one bounded window (head or tail) of a validated transcript path.
+ * Synchronous flavour (one-shot callers and the Phase 7 title reader).
+ * Returns undefined on any failure, including a non-regular file.
+ */
+export function readWindowSync(
+  realPath: string,
+  from: "head" | "tail",
+  budget: number,
+): TranscriptWindow | undefined {
+  try {
+    const fd = fs.openSync(realPath, openFlags());
+    try {
+      const st = fs.fstatSync(fd);
+      if (!st.isFile()) return undefined;
+      const { start, want } = windowRange(st.size, from, budget);
+      const out = Buffer.alloc(want);
+      let filled = 0;
+      while (filled < want) {
+        const n = fs.readSync(fd, out, filled, want - filled, start + filled);
+        if (n <= 0) break;
+        filled += n;
+      }
+      return {
+        buf: out.subarray(0, filled),
+        atBoundary: start === 0,
+        reachedEof: start + filled >= st.size,
+        size: st.size,
+        mtimeMs: st.mtimeMs,
+      };
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Asynchronous flavour of readWindowSync for the panel (fs/promises, never
+ * blocks the event loop, never rejects).
+ */
+export async function readWindowAsync(
+  realPath: string,
+  from: "head" | "tail",
+  budget: number,
+): Promise<TranscriptWindow | undefined> {
+  let fh: fsp.FileHandle | undefined;
+  try {
+    fh = await fsp.open(realPath, openFlags());
+    const st = await fh.stat();
+    if (!st.isFile()) return undefined;
+    const { start, want } = windowRange(st.size, from, budget);
+    const out = Buffer.alloc(want);
+    let filled = 0;
+    while (filled < want) {
+      const { bytesRead } = await fh.read(out, filled, want - filled, start + filled);
+      if (bytesRead <= 0) break;
+      filled += bytesRead;
+    }
+    return {
+      buf: out.subarray(0, filled),
+      atBoundary: start === 0,
+      reachedEof: start + filled >= st.size,
+      size: st.size,
+      mtimeMs: st.mtimeMs,
+    };
+  } catch {
+    return undefined;
+  } finally {
+    if (fh !== undefined) {
+      try {
+        await fh.close();
+      } catch {
+        // already closed or unclosable: nothing to do
+      }
+    }
+  }
+}
+
+/**
+ * One guarded tail window scanned for TailFacts, plus the file size and
+ * mtime. `realPath` must already be validated. Never rejects.
+ */
+export async function readTailFactsAsync(
+  realPath: string,
+  sessionId: string,
+  budget = TAIL_BYTES,
+): Promise<(TailFacts & { size: number; mtimeMs: number }) | undefined> {
+  try {
+    const w = await readWindowAsync(realPath, "tail", budget);
+    if (w === undefined) return undefined;
+    return { ...scanTailFacts(w.buf, w.atBoundary, sessionId), size: w.size, mtimeMs: w.mtimeMs };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * One guarded head window scanned for the first real prompt. `final` is true
+ * when the answer cannot change as the file grows: a prompt was found, or the
+ * file already exceeds the head budget. Never rejects.
+ */
+export async function readFirstPromptAsync(
+  realPath: string,
+  sessionId: string,
+  budget = HEAD_BYTES,
+): Promise<{ prompt?: string; final: boolean } | undefined> {
+  try {
+    const w = await readWindowAsync(realPath, "head", budget);
+    if (w === undefined) return undefined;
+    const prompt = scanFirstPrompt(w.buf, sessionId);
+    const final = prompt !== undefined || w.size > Math.max(0, budget);
+    return prompt === undefined ? { final } : { prompt, final };
+  } catch {
+    return undefined;
+  }
+}
+
 function safeSessionId(sessionId: unknown): sessionId is string {
   return (
     typeof sessionId === "string" &&
@@ -114,11 +432,8 @@ function safeSessionId(sessionId: unknown): sessionId is string {
   );
 }
 
-/** Realpath'd allowed projects roots; read the env lazily on every call. */
-function allowedRoots(): string[] {
-  const candidates = [path.join(os.homedir(), ".claude", "projects")];
-  const cfg = process.env.CLAUDE_CONFIG_DIR;
-  if (typeof cfg === "string" && cfg.length > 0) candidates.push(path.join(cfg, "projects"));
+/** Realpath each candidate root, skipping absent ones. */
+function realRoots(candidates: readonly string[]): string[] {
   const roots: string[] = [];
   for (const c of candidates) {
     try {
@@ -130,6 +445,19 @@ function allowedRoots(): string[] {
   return roots;
 }
 
+/** Realpath'd allowed projects roots; read the env lazily on every call. */
+function allowedRoots(): string[] {
+  const candidates = [path.join(os.homedir(), ".claude", "projects")];
+  const cfg = process.env.CLAUDE_CONFIG_DIR;
+  if (typeof cfg === "string" && cfg.length > 0) candidates.push(path.join(cfg, "projects"));
+  return realRoots(candidates);
+}
+
+/** The deduplicated realpath'd projects roots (discovery walks these). */
+export function projectRoots(): string[] {
+  return [...new Set(allowedRoots())];
+}
+
 function isInside(root: string, real: string): boolean {
   const rel = path.relative(root, real);
   if (rel.length === 0 || path.isAbsolute(rel)) return false;
@@ -139,8 +467,14 @@ function isInside(root: string, real: string): boolean {
 /**
  * Validate an untrusted transcript path for `sessionId` (T-07-03).
  * Returns the realpath when every check passes, else undefined. Never throws.
+ * `roots` (Phase 8), when given, replaces the default allowed roots; each is
+ * realpath'd and absent ones are skipped.
  */
-export function isAllowedTranscriptPath(sessionId: string, p: unknown): string | undefined {
+export function isAllowedTranscriptPath(
+  sessionId: string,
+  p: unknown,
+  roots?: readonly string[],
+): string | undefined {
   try {
     if (!safeSessionId(sessionId)) return undefined;
     if (typeof p !== "string" || p.length === 0 || p.length > MAX_PATH) return undefined;
@@ -150,7 +484,7 @@ export function isAllowedTranscriptPath(sessionId: string, p: unknown): string |
     if (path.basename(p) !== expected) return undefined;
     const real = fs.realpathSync(p);
     if (path.basename(real) !== expected) return undefined;
-    for (const root of allowedRoots()) {
+    for (const root of roots === undefined ? allowedRoots() : realRoots(roots)) {
       if (isInside(root, real)) return real;
     }
     return undefined;
@@ -171,25 +505,10 @@ export function readTailCustomTitle(
   budget = TAIL_BYTES,
 ): { title?: string; size: number; mtimeMs: number } | undefined {
   try {
-    const flags = fs.constants.O_RDONLY | fs.constants.O_NONBLOCK | (fs.constants.O_NOFOLLOW ?? 0);
-    const fd = fs.openSync(realPath, flags);
-    try {
-      const st = fs.fstatSync(fd);
-      if (!st.isFile()) return undefined;
-      const start = Math.max(0, st.size - Math.max(0, budget));
-      const want = st.size - start;
-      const out = Buffer.alloc(want);
-      let filled = 0;
-      while (filled < want) {
-        const n = fs.readSync(fd, out, filled, want - filled, start + filled);
-        if (n <= 0) break;
-        filled += n;
-      }
-      const title = scanCustomTitle(out.subarray(0, filled), start === 0, sessionId);
-      return { title, size: st.size, mtimeMs: st.mtimeMs };
-    } finally {
-      fs.closeSync(fd);
-    }
+    const window = readWindowSync(realPath, "tail", budget);
+    if (window === undefined) return undefined;
+    const title = scanCustomTitle(window.buf, window.atBoundary, sessionId);
+    return { title, size: window.size, mtimeMs: window.mtimeMs };
   } catch {
     return undefined;
   }
