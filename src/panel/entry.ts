@@ -13,9 +13,14 @@
 // the first frame. On a clean exit (Ink Ctrl+C unmount, SIGINT, SIGTERM, SIGHUP)
 // unregisterPanel removes the file only if it still holds our pid. Both never
 // throw.
+//
+// Phase 8 (RESUME-04): on the same clean exit cleanupWarpTabConfig removes the
+// ~/.warp/tab_configs/csm-resume.toml that THIS panel wrote for an `o` launch
+// in Warp (marker-checked, never throws), and touches nothing else.
 import type { Instance } from "ink";
 import { run } from "./main.js"; // the sole rendering call site stays in main.tsx
 import { registerPanel, unregisterPanel } from "./registration.js";
+import { cleanupWarpTabConfig } from "./launch.js";
 
 // D-07 reconciliation: as of Phase 04.2 the panel enters raw mode WHEN A TTY IS
 // PRESENT (App's TTY-guarded FAZLAR keyboard via useInput). In that case Ink's
@@ -44,6 +49,7 @@ process.on("SIGHUP", shutdown);
 // Synchronous fs in an exit listener is allowed; unregisterPanel never throws.
 process.on("exit", () => {
   unregisterPanel();
+  cleanupWarpTabConfig();
 });
 
 instance = run();
@@ -52,3 +58,4 @@ registerPanel();
 // Keep the process alive until Ink exits (unmount on signal, or an internal exit).
 await instance.waitUntilExit();
 unregisterPanel();
+cleanupWarpTabConfig();
