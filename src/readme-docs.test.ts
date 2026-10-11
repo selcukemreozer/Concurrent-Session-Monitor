@@ -171,12 +171,13 @@ describe("README needs-you clear semantics (260927-1zw WR-03/WR-04)", () => {
     expect(README).toMatch(/approved tool/i);
   });
 
-  // 261011-or2: row-scoped (the RUN row also contains 1800000).
-  it("documents the 3-hour waiting ceiling and the alive-pid asking rule", () => {
+  // 261011-or2 / 261011-qgi: row-scoped (the RUN row also contains 1800000).
+  it("documents the 60-minute waiting ceiling and the alive-pid asking rule", () => {
     const row = README.split("\n").find((l) => l.startsWith("| `CSM_ATTN_WINDOW_MS`"));
     expect(row).toBeDefined();
-    expect(row).toContain("`10800000`");
-    expect(row).toContain("(3 h)");
+    expect(row).toContain("`3600000`");
+    expect(row).toContain("(60 min)");
+    expect(row).not.toContain("(3 h)");
     expect(row).toContain("process is alive");
   });
 
