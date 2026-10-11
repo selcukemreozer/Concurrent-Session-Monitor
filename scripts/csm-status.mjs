@@ -93,20 +93,23 @@ function staleMs() {
   return numEnv("CSM_STALE_MS", 120000);
 }
 /**
- * Attention safety-net ceiling (mirrors aggregate.attnWindowMs, 260926-r7n):
- * the longest a session's "asking" / "waiting on you" flag can stay shown when
- * no resume signal follows. Default 1800000 (30 min). This is a SAFETY NET, not
- * the primary clear. The primary clears are the resume sidecars (260927-1zw):
+ * Attention safety-net ceiling (mirrors aggregate.attnWindowMs, 260926-r7n,
+ * 261011-or2): the longest a session's "waiting on you" flag can stay shown
+ * when no resume signal follows, whatever the pid says. Default 10800000
+ * (3 h). It bounds an "asking" flag ONLY when the pid is not alive (absent or
+ * exited); while the pid is alive an open question has no time ceiling and
+ * clears only via ask-resolved or the lastSeenMs fallback. This is a SAFETY
+ * NET, not the primary clear. The primary clears are the resume sidecars (260927-1zw):
  * `resumed` (main-thread PostToolUse / Stop via on-activity, and on-user-prompt)
  * clears waiting; `ask-resolved` (main-thread AskUserQuestion completion or
  * Stop via on-activity, and on-user-prompt) clears asking. The heartbeat is
  * only the fallback clear when a sidecar is absent. Subagent activity never
  * clears a flag, and Esc / reject / approve / deny fire no hook. The ceiling
  * also bounds the WR-01 needs-you keepalive. A NaN/negative override degrades
- * to the 30-minute default.
+ * to the 3-hour default.
  */
 function attnWindowMs() {
-  return numEnv("CSM_ATTN_WINDOW_MS", 1800000);
+  return numEnv("CSM_ATTN_WINDOW_MS", 10800000);
 }
 /**
  * Running-state safety net (mirrors aggregate.runWindowMs, 260927-46l): a turn
@@ -119,14 +122,15 @@ function runWindowMs() {
   return numEnv("CSM_RUN_WINDOW_MS", 1800000);
 }
 /**
- * Idle-waiting threshold (mirrors aggregate.idleWaitMs, 260927-4tv): once a
- * main-thread Stop has left turn.json "idle" for at least this long (default
- * 10000 ms / 10 s), the session is waiting on the human and shows ◉ waiting,
- * without waiting for Claude Code's ~60 s idle_prompt Notification. Bounded
- * above by attnWindowMs(). A NaN/negative override degrades to the default.
+ * Idle-waiting threshold (mirrors aggregate.idleWaitMs, 260927-4tv,
+ * 261011-or2): once a main-thread Stop has left turn.json "idle" for at least
+ * this long (default 1000 ms / 1 s), the session is waiting on the human and
+ * shows ◉ waiting, without waiting for Claude Code's ~60 s idle_prompt
+ * Notification. Bounded above by attnWindowMs() (the 3 h waiting ceiling). A
+ * NaN/negative override degrades to the default (0 is accepted).
  */
 function idleWaitMs() {
-  return numEnv("CSM_IDLE_WAIT_MS", 10000);
+  return numEnv("CSM_IDLE_WAIT_MS", 1000);
 }
 
 /**
@@ -697,27 +701,26 @@ async function main() {
     const resumedMs = resolveSidecarMs(dir, "resumed") ?? lastSeenMs;
     const askResolvedMs = resolveSidecarMs(dir, "ask-resolved") ?? lastSeenMs;
 
-    // ATTN-04 reader gate — within the window AND strictly newer than the
-    // main-thread resume signal. NaN ts self-heals to false. Computed BEFORE the
-    // liveness check because an active marker is liveness evidence (WR-01).
+    // ATTN-04 reader gate — within the 3 h window (even for a live pid) AND
+    // strictly newer than the main-thread resume signal. NaN ts self-heals to
+    // false. Computed before the keepalive because an active marker is liveness
+    // evidence (WR-01).
     const attn = readAttention(dir);
     const attnMs = attn ? Date.parse(attn.ts) : NaN;
     const rawWaiting =
       !Number.isNaN(attnMs) && now - attnMs < attnWindowMs() && attnMs > resumedMs;
 
-    // AQ-03 asking gate (260926-vfm, 260927-1zw WR-02) — the same window,
-    // strictly newer than the answer-specific ask-resolved signal, and asking
-    // WINS over attention (a Notification can fire while a question is open;
-    // the question is the more specific signal). Sibling tools cannot clear it.
+    // asking.json is read here; the asking GATE follows the pid probe below
+    // because its ceiling depends on it (261011-or2).
     const askTs = readAsking(dir);
     const askMs = askTs !== undefined ? Date.parse(askTs) : NaN;
-    const asking =
-      !Number.isNaN(askMs) && now - askMs < attnWindowMs() && askMs > askResolvedMs;
 
     // Cheap liveness (T-04-09b): heartbeat-fresh OR keepalive OR pid alive. No
     // lstart guard. WR-01 / D-03: a session blocked on the human emits no
     // heartbeat, so an active marker keeps it listed; the marker gate bounds
-    // this by attnWindowMs() (idle-waiting included, 260927-4tv D-05).
+    // waiting by attnWindowMs() (idle-waiting included, 260927-4tv D-05), and
+    // asking too unless the pid is alive (261011-or2), which already keeps the
+    // row listed on its own.
     // 260927-46l D-03: a running turn (a long Bash, a
     // web fetch, thinking) emits no heartbeat either, so the raw running gate
     // keeps it listed too, bounded by runWindowMs(). DISC-4: a known pid that
@@ -726,6 +729,22 @@ async function main() {
     const pidValid = typeof state.pid === "number" && Number.isInteger(state.pid) && state.pid > 0;
     const procAlive = pidAlive(state.pid);
     const procDead = pidValid && !procAlive;
+
+    // AQ-03 asking gate (260926-vfm, 260927-1zw WR-02, 261011-or2) — mirrors
+    // aggregate.readAll: strictly newer than the answer-specific ask-resolved
+    // signal, and asking WINS over attention (a Notification can fire while a
+    // question is open; the question is the more specific signal). Sibling
+    // tools cannot clear it. The ceiling is pid-dependent, so this follows the
+    // probe: a live pid has NO ceiling; an absent or exited pid is bounded by
+    // attnWindowMs(). One unavoidable difference: procAlive here is the cheap
+    // kill -0 probe WITHOUT the pid_started reuse guard (passivity contract
+    // T-04-09b), so a recycled pid that readAll would call "dead" counts as
+    // alive here and keeps an old question flagged. The panel (readAll) is the
+    // authority; do not add an lstart probe.
+    const asking =
+      !Number.isNaN(askMs) &&
+      askMs > askResolvedMs &&
+      (procAlive || now - askMs < attnWindowMs());
 
     // Running gate (260927-46l D-02) — mirrors aggregate.readAll exactly: turn
     // "running", ts parses, pid not dead, and now minus the newer of the turn
@@ -769,6 +788,8 @@ async function main() {
     const subagent = rawSubagent && !asking && !attention;
 
     // mirrors aggregate.readAll (260927-73b D-03): the subagent gate is liveness evidence.
+    // 261011-or2: asking keepalive is unbounded only while the pid is alive
+    // (procAlive already lists the row); waiting keepalive keeps the 3 h ceiling.
     const keepalive = ((asking || rawWaiting || rawIdleWaiting) && !procDead) || rawRunning || rawSubagent;
     const alive = heartbeatFresh || keepalive || procAlive;
     if (!alive) continue; // live-only roster (D-04)
