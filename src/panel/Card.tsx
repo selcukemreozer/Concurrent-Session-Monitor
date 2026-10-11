@@ -7,6 +7,7 @@ import type { SessionRow } from "../aggregate.js";
 import type { Conflict, ConflictSession } from "../conflicts.js";
 import { livePidMap, attribute, type ScannedPort, type KillSignal } from "../ports.js";
 import { FAZLAR_VISIBLE_ROWS, type Progress, type Phase, type FocusEntry } from "../phases.js";
+import { RESUME_VISIBLE_ROWS, fmtAge, type ResumeRow } from "../sessions.js";
 
 // ESC (0x1B) and ST (ESC "\") as raw bytes, built without embedding control
 // characters in source. These frame an OSC-8 hyperlink.
@@ -904,6 +905,13 @@ function PhaseRow({
  * widths are computed across the FULL phase list (not the scroll window) so the
  * status column never jumps while scrolling. It does NOT touch
  * SessionCard/CompactRow/ConflictBand/PortsPane — additive only (D-06).
+ *
+ * `paneHint` (Phase 8, D-14): an optional toggle hint (App passes
+ * FAZLAR_TOGGLE_HINT, `[r: oturumlar]`). ONLY when `interactive` is true it is
+ * appended (two spaces + the sanitized hint) to the `Project i/N … Tab: switch`
+ * line and to the `no GSD projects` / `no roadmap` lines. With `interactive`
+ * false the hint is ignored entirely, so the non-TTY render stays byte-identical
+ * with or without it (RESEARCH Pitfall 3) — the `r` key is inert without a TTY.
  */
 export function PhasesPane({
   focus,
@@ -912,6 +920,7 @@ export function PhasesPane({
   progress,
   scrollOffset,
   interactive,
+  paneHint = null,
 }: {
   focus: FocusEntry | null;
   index: number;
@@ -919,18 +928,21 @@ export function PhasesPane({
   progress: Progress | null;
   scrollOffset: number;
   interactive: boolean;
+  paneHint?: string | null;
 }) {
+  // D-14: the toggle hint is a TTY-only affordance; empty on the non-TTY path.
+  const hint = interactive && paneHint ? "  " + sanitize(paneHint) : "";
   if (focus === null) {
     return (
       <Box flexDirection="column">
-        <Text dimColor>{"no GSD projects"}</Text>
+        <Text dimColor>{"no GSD projects" + hint}</Text>
       </Box>
     );
   }
   if (progress === null || progress.phases.length === 0) {
     return (
       <Box flexDirection="column">
-        <Text dimColor>{"no roadmap"}</Text>
+        <Text dimColor>{"no roadmap" + hint}</Text>
       </Box>
     );
   }
@@ -971,7 +983,7 @@ export function PhasesPane({
     <Box flexDirection="column">
       <Text bold>{sanitize(milestoneLine)}</Text>
       {interactive ? (
-        <Text dimColor>{`Project ${index + 1}/${count} · ${sanitize(focus.name)} · Tab: switch`}</Text>
+        <Text dimColor>{`Project ${index + 1}/${count} · ${sanitize(focus.name)} · Tab: switch${hint}`}</Text>
       ) : (
         <Text dimColor>{sanitize("⌨ keys off — panel started without a TTY (run directly in a terminal, not via pipe/background)")}</Text>
       )}
@@ -986,6 +998,129 @@ export function PhasesPane({
         />
       ))}
       {hasMore ? <Text dimColor>{sanitize(indicator)}</Text> : null}
+    </Box>
+  );
+}
+
+// ---- Phase 8 (RESUME-04): the OTURUMLAR resume pane ----
+
+/** Bold heading of the OTURUMLAR (sessions) pane (D-14). */
+export const SESSIONS_HEADING = "OTURUMLAR";
+
+/** Dim hint after the OTURUMLAR heading: `r` flips the right pane back (D-14). */
+export const SESSIONS_TOGGLE_HINT = "[r: fazlar]";
+
+/** Hint App passes to PhasesPane on a TTY: `r` opens OTURUMLAR (D-14). */
+export const FAZLAR_TOGGLE_HINT = "[r: oturumlar]";
+
+/** Dim neutral marker for a session that is open right now (D-11). */
+export const LIVE_MARK = "· live";
+
+/**
+ * One OTURUMLAR row (D-18): `<cursor><label> · <folder> · <age> · <shortid>[ · live]`.
+ *
+ * The whole row is ONE `<Text wrap="truncate-end">` so a wide (CJK / emoji)
+ * label is cut at the pane edge instead of wrapping; the row count — and so the
+ * window math — stays fixed (T-08-18, RESEARCH Pitfall 4). Styling is bold and
+ * dim only, never a `color` (D-08 reserved palette):
+ *  - labelKind "name"    → bold label (a native /rename or custom title);
+ *  - labelKind "derived" → dim label inside curly quotes `“…”`, so an ai-title or
+ *    first prompt can never pose as a real name (T-08-19);
+ *  - labelKind "unnamed" → dim `(unnamed)`.
+ * The age is fmtAge (D-13), the shortid is the roster card's first-8-chars id
+ * (dim), and a live row ends in a dim `· live` (D-11; no crashed tag, D-12).
+ * Every field passes sanitize() again here even though the reducer cleaned it
+ * (T-08-01).
+ */
+function SessionRowLine({ row, selected, now }: { row: ResumeRow; selected: boolean; now: number }) {
+  const label = sanitize(row.label);
+  let labelNode: React.ReactNode;
+  if (row.labelKind === "name") labelNode = <Text bold>{label}</Text>;
+  else if (row.labelKind === "derived") labelNode = <Text dimColor>{"“" + label + "”"}</Text>;
+  else labelNode = <Text dimColor>{label}</Text>;
+  const middle = " · " + sanitize(row.folder) + " · " + sanitize(fmtAge(row.mtimeMs, now)) + " · ";
+  return (
+    <Text wrap="truncate-end">
+      {selected ? <Text bold>{CURRENT_GLYPH + " "}</Text> : "  "}
+      {labelNode}
+      {middle}
+      <Text dimColor>{shortId(row.id)}</Text>
+      {row.live ? <Text dimColor>{" " + LIVE_MARK}</Text> : null}
+    </Text>
+  );
+}
+
+/**
+ * The OTURUMLAR pane (RESUME-04): the newest resumable sessions, shown in the
+ * right pane in place of FAZLAR when the user presses `r`.
+ *
+ * Pure presentation — NO scanning, NO timers, NO keyboard (App.tsx owns the
+ * discovery cadence, the cursor/scroll state and the copy/open keys, 08-06).
+ *
+ * Layout:
+ *  1. a bold `OTURUMLAR` heading + the dim `[r: fazlar]` toggle hint (D-14);
+ *  2. `rows === null` → a dim `scanning…` line (the accepted brief empty moment
+ *     while the first scan runs, D-19); `[]` → a dim `no resumable sessions`;
+ *  3. otherwise a RESUME_VISIBLE_ROWS window from the clamped `scrollOffset`, one
+ *     SessionRowLine per session (D-18 label · folder · age · shortid, D-08
+ *     bold/dim styling, D-11 dim `· live`, D-13 age); the row whose id equals
+ *     `cursorId` starts with a bold `▸ `, every other row with two spaces (D-15);
+ *  4. a dim `▲N ▼M i–j/total` indicator when the list is longer than the window;
+ *  5. a dim sanitized `status` line (e.g. the copy/open result) when set.
+ *
+ * Deliberately absent: no `(you)` marker (D-05) and no last-prompt text — one
+ * line per session (D-07; /csm-resume shows the `↳ last:` line instead). No
+ * `color` prop is used anywhere (D-08 reserved palette), and every rendered
+ * string passes sanitize() (T-08-01).
+ */
+export function SessionsPane({
+  rows,
+  cursorId,
+  scrollOffset,
+  status = null,
+  now,
+}: {
+  rows: ResumeRow[] | null;
+  cursorId: string | null;
+  scrollOffset: number;
+  status?: string | null;
+  now: number;
+}) {
+  const heading = (
+    <Text>
+      <Text bold>{SESSIONS_HEADING}</Text>
+      <Text dimColor>{"  " + sanitize(SESSIONS_TOGGLE_HINT)}</Text>
+    </Text>
+  );
+  const statusLine = status ? <Text dimColor>{sanitize(status)}</Text> : null;
+
+  if (rows === null || rows.length === 0) {
+    return (
+      <Box flexDirection="column">
+        {heading}
+        <Text dimColor>{rows === null ? "scanning…" : "no resumable sessions"}</Text>
+        {statusLine}
+      </Box>
+    );
+  }
+
+  // Clamp defensively even though App clamps too, so the pane never over-slices.
+  const total = rows.length;
+  const start = Math.min(Math.max(0, scrollOffset), Math.max(0, total - RESUME_VISIBLE_ROWS));
+  const windowRows = rows.slice(start, start + RESUME_VISIBLE_ROWS);
+  const above = start;
+  const below = total - (start + windowRows.length);
+  const hasMore = total > RESUME_VISIBLE_ROWS;
+  const indicator = `  ${above > 0 ? "▲" + above + " " : ""}${below > 0 ? "▼" + below + " " : ""}${start + 1}–${start + windowRows.length}/${total}`;
+
+  return (
+    <Box flexDirection="column">
+      {heading}
+      {windowRows.map((r) => (
+        <SessionRowLine key={r.id} row={r} selected={r.id === cursorId} now={now} />
+      ))}
+      {hasMore ? <Text dimColor>{sanitize(indicator)}</Text> : null}
+      {statusLine}
     </Box>
   );
 }

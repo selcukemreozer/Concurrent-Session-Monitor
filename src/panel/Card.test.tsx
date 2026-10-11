@@ -1875,7 +1875,9 @@ describe("SessionsPane (OTURUMLAR, Phase 8)", () => {
   });
 
   it("P8: a wide label never wraps — each row stays one line at 40 columns (T-08-18 / Pitfall 4)", () => {
-    const wide = "漢".repeat(16) + "…"; // 32 cells of CJK + the cap glyph
+    // 28 cells of CJK + the cap glyph + the derived quotes: the first " · " still
+    // fits in 40 columns, the rest of the row (folder, age, shortid) is cut.
+    const wide = "漢".repeat(14) + "…";
     const rows = [
       makeResume({ id: rid(1), label: wide, labelKind: "derived", folder: "mvp-dashboard-be…" }),
       makeResume({ id: rid(2), label: wide, labelKind: "derived", folder: "mvp-dashboard-be…" }),

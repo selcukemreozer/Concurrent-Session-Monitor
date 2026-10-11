@@ -39274,13 +39274,15 @@ function PhasesPane({
   count,
   progress,
   scrollOffset,
-  interactive
+  interactive,
+  paneHint = null
 }) {
+  const hint = interactive && paneHint ? "  " + sanitize(paneHint) : "";
   if (focus === null) {
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Box_default, { flexDirection: "column", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: "no GSD projects" }) });
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Box_default, { flexDirection: "column", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: "no GSD projects" + hint }) });
   }
   if (progress === null || progress.phases.length === 0) {
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Box_default, { flexDirection: "column", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: "no roadmap" }) });
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Box_default, { flexDirection: "column", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: "no roadmap" + hint }) });
   }
   const phases = progress.phases;
   const total = phases.length;
@@ -39305,7 +39307,7 @@ function PhasesPane({
   const indicator = `  ${above > 0 ? "\u25B2" + above + " " : ""}${below > 0 ? "\u25BC" + below + " " : ""}${start + 1}\u2013${start + windowPhases.length}/${total}`;
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Box_default, { flexDirection: "column", children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { bold: true, children: sanitize(milestoneLine) }),
-    interactive ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: `Project ${index + 1}/${count} \xB7 ${sanitize(focus.name)} \xB7 Tab: switch` }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: sanitize("\u2328 keys off \u2014 panel started without a TTY (run directly in a terminal, not via pipe/background)") }),
+    interactive ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: `Project ${index + 1}/${count} \xB7 ${sanitize(focus.name)} \xB7 Tab: switch${hint}` }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: sanitize("\u2328 keys off \u2014 panel started without a TTY (run directly in a terminal, not via pipe/background)") }),
     windowPhases.map((p, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       PhaseRow,
       {
