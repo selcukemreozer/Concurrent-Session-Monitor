@@ -94,11 +94,12 @@ function staleMs() {
 }
 /**
  * Attention safety-net ceiling (mirrors aggregate.attnWindowMs, 260926-r7n,
- * 261011-or2): the longest a session's "waiting on you" flag can stay shown
- * when no resume signal follows, whatever the pid says. Default 10800000
- * (3 h). It bounds an "asking" flag ONLY when the pid is not alive (absent or
- * exited); while the pid is alive an open question has no time ceiling and
- * clears only via ask-resolved or the lastSeenMs fallback. This is a SAFETY
+ * 261011-or2, 261011-qgi): the longest a session's "waiting on you" flag can
+ * stay shown when no resume signal follows, whatever the pid says. Default
+ * 3600000 (60 min; was 3 h under 261011-or2). It bounds an "asking" flag
+ * ONLY when the pid is not alive (absent or exited); while the pid is alive
+ * an open question has no time ceiling and clears only via ask-resolved or
+ * the lastSeenMs fallback. This is a SAFETY
  * NET, not the primary clear. The primary clears are the resume sidecars (260927-1zw):
  * `resumed` (main-thread PostToolUse / Stop via on-activity, and on-user-prompt)
  * clears waiting; `ask-resolved` (main-thread AskUserQuestion completion or
@@ -106,10 +107,10 @@ function staleMs() {
  * only the fallback clear when a sidecar is absent. Subagent activity never
  * clears a flag, and Esc / reject / approve / deny fire no hook. The ceiling
  * also bounds the WR-01 needs-you keepalive. A NaN/negative override degrades
- * to the 3-hour default.
+ * to the 60-minute default.
  */
 function attnWindowMs() {
-  return numEnv("CSM_ATTN_WINDOW_MS", 10800000);
+  return numEnv("CSM_ATTN_WINDOW_MS", 3600000);
 }
 /**
  * Running-state safety net (mirrors aggregate.runWindowMs, 260927-46l): a turn
@@ -126,7 +127,7 @@ function runWindowMs() {
  * 261011-or2): once a main-thread Stop has left turn.json "idle" for at least
  * this long (default 1000 ms / 1 s), the session is waiting on the human and
  * shows ◉ waiting, without waiting for Claude Code's ~60 s idle_prompt
- * Notification. Bounded above by attnWindowMs() (the 3 h waiting ceiling). A
+ * Notification. Bounded above by attnWindowMs() (the 60-min waiting ceiling). A
  * NaN/negative override degrades to the default (0 is accepted).
  */
 function idleWaitMs() {
@@ -701,7 +702,7 @@ async function main() {
     const resumedMs = resolveSidecarMs(dir, "resumed") ?? lastSeenMs;
     const askResolvedMs = resolveSidecarMs(dir, "ask-resolved") ?? lastSeenMs;
 
-    // ATTN-04 reader gate — within the 3 h window (even for a live pid) AND
+    // ATTN-04 reader gate — within the 60-min window (even for a live pid) AND
     // strictly newer than the main-thread resume signal. NaN ts self-heals to
     // false. Computed before the keepalive because an active marker is liveness
     // evidence (WR-01).
@@ -789,7 +790,7 @@ async function main() {
 
     // mirrors aggregate.readAll (260927-73b D-03): the subagent gate is liveness evidence.
     // 261011-or2: asking keepalive is unbounded only while the pid is alive
-    // (procAlive already lists the row); waiting keepalive keeps the 3 h ceiling.
+    // (procAlive already lists the row); waiting keepalive keeps the 60-min ceiling.
     const keepalive = ((asking || rawWaiting || rawIdleWaiting) && !procDead) || rawRunning || rawSubagent;
     const alive = heartbeatFresh || keepalive || procAlive;
     if (!alive) continue; // live-only roster (D-04)

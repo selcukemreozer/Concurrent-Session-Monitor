@@ -147,9 +147,10 @@ function seed(storeDir: string, id: string, opts: SeedOpts = {}): void {
   }
 }
 
-// 261011-or2: one minute either side of the 10_800_000 ms (3 h) default.
-const JUST_UNDER_3H = 10_740_000; // 2h59m
-const JUST_OVER_3H = 10_860_000; // 3h01m
+// 261011-qgi: one minute either side of the 3_600_000 ms (60 min) default
+// (was 3 h under 261011-or2).
+const JUST_UNDER_60M = 3_540_000; // 59 min
+const JUST_OVER_60M = 3_660_000; // 61 min
 
 /**
  * Run `fn` with the needs-you timing knobs removed from process.env (which
@@ -476,9 +477,9 @@ describe("csm-status reader — Ports: block (INT-02, PORT-05)", () => {
 // rule — and appends a detail-free "◉ waiting" marker to a waiting live session's
 // roster line (ATTN-04). A non-waiting live session omits it. lastSeenMs is
 // heartbeat-based (verified: csm-status.mjs line 472), so an attention ts newer
-// than the heartbeat and within CSM_ATTN_WINDOW_MS (default 10800000 — a 3-hour
-// safety net, 261011-or2; was 30 min under 260926-r7n; activity is the primary
-// clear) surfaces the marker
+// than the heartbeat and within CSM_ATTN_WINDOW_MS (default 3600000 — a 60-minute
+// safety net, 261011-qgi; was 3 h under 261011-or2 and 30 min under
+// 260926-r7n; activity is the primary clear) surfaces the marker
 // regardless of write timestamps. RED until csm-status.mjs adds the inline
 // read + marker.
 describe("csm-status reader — attention marker (ATTN-04)", () => {
@@ -491,7 +492,7 @@ describe("csm-status reader — attention marker (ATTN-04)", () => {
       heartbeat: new Date(now - 30_000).toISOString(), // fresh (live) but 30s ago
       writes: ["/repo/a.ts"],
       intent: "awaiting approval",
-      // Attention 5s ago: newer than the heartbeat, well within the 3 h window.
+      // Attention 5s ago: newer than the heartbeat, well within the 60-min window.
       attention: { type: "permission_prompt", ts: new Date(now - 5_000).toISOString() },
     });
 
@@ -513,7 +514,7 @@ describe("csm-status reader — attention marker (ATTN-04)", () => {
     expect(line).not.toContain(ATTENTION_GLYPH);
   });
 
-  // --- 260926-r7n (AP-02) / 261011-or2: the inline mirror shares the 3-hour
+  // --- 260926-r7n (AP-02) / 261011-or2 / 261011-qgi: the inline mirror shares the 60-minute
   // safety-net default. CSM_ATTN_WINDOW_MS is removed from the spawned env so
   // the DEFAULT is exercised; pid = the test runner keeps the session live
   // despite a stale heartbeat.
@@ -535,13 +536,13 @@ describe("csm-status reader — attention marker (ATTN-04)", () => {
     expect(line).toContain("waiting");
   });
 
-  it("S2 — waiting keeps its 3 h ceiling even with a live pid: attention 3h01m ago, heartbeat 3h10m ago → listed, no ◉", () => {
+  it("S2 — waiting keeps its 60-min ceiling even with a live pid: attention 61 min ago, heartbeat 70 min ago → listed, no ◉", () => {
     const now = Date.now();
     seed(tmp, "delta444-dddd", {
       folder: "projDelta",
       pid: process.pid,
-      heartbeat: new Date(now - 11_400_000).toISOString(),
-      attention: { type: "permission_prompt", ts: new Date(now - JUST_OVER_3H).toISOString() },
+      heartbeat: new Date(now - 4_200_000).toISOString(),
+      attention: { type: "permission_prompt", ts: new Date(now - JUST_OVER_60M).toISOString() },
     });
 
     const res = withoutAttnEnv(() => runStatus("delta444-dddd", tmp));
@@ -551,13 +552,13 @@ describe("csm-status reader — attention marker (ATTN-04)", () => {
     expect(line).not.toContain(ATTENTION_GLYPH);
   });
 
-  it("S2b — under the 3 h ceiling with a live pid: attention 2h59m ago, heartbeat 3h10m ago → ◉ waiting", () => {
+  it("S2b — under the 60-min ceiling with a live pid: attention 59 min ago, heartbeat 70 min ago → ◉ waiting", () => {
     const now = Date.now();
     seed(tmp, "delta555-dddd", {
       folder: "projDelta2",
       pid: process.pid,
-      heartbeat: new Date(now - 11_400_000).toISOString(),
-      attention: { type: "permission_prompt", ts: new Date(now - JUST_UNDER_3H).toISOString() },
+      heartbeat: new Date(now - 4_200_000).toISOString(),
+      attention: { type: "permission_prompt", ts: new Date(now - JUST_UNDER_60M).toISOString() },
     });
 
     const res = withoutAttnEnv(() => runStatus("delta555-dddd", tmp));
@@ -646,7 +647,7 @@ describe("csm-status reader — asking marker (AQ-03)", () => {
   });
 
   // --- 261011-or2 (D-2/D-6): asking has no ceiling while the pid is alive;
-  // for an exited or absent pid the 3 h CSM_ATTN_WINDOW_MS default applies.
+  // for an exited or absent pid the 60-min CSM_ATTN_WINDOW_MS default applies.
   it("C6 live pid: asking 4 h ago, heartbeat 4 h ago → ◉ asking (no ceiling)", () => {
     const now = Date.now();
     seed(tmp, "aq666666-ffff", {
@@ -680,18 +681,18 @@ describe("csm-status reader — asking marker (AQ-03)", () => {
     expect(line).not.toContain(GLYPH + " asking");
   });
 
-  it("C8 no pid: asking 4 h ago → no ◉ asking; asking 2h59m ago → ◉ asking", () => {
+  it("C8 no pid: asking 61 min ago → no ◉ asking; asking 59 min ago → ◉ asking", () => {
     const now = Date.now();
     seed(tmp, "aq888888-hhhh", {
       folder: "projEight",
       heartbeat: new Date(now - 5_000).toISOString(),
-      asking: { ts: new Date(now - 14_400_000).toISOString() },
+      asking: { ts: new Date(now - JUST_OVER_60M).toISOString() },
       askResolved: new Date(now - 15_000_000).toISOString(),
     });
     seed(tmp, "aq999999-iiii", {
       folder: "projNine",
       heartbeat: new Date(now - 5_000).toISOString(),
-      asking: { ts: new Date(now - JUST_UNDER_3H).toISOString() },
+      asking: { ts: new Date(now - JUST_UNDER_60M).toISOString() },
       askResolved: new Date(now - 15_000_000).toISOString(),
     });
     const res = withoutAttnEnv(() => runStatus("aq888888-hhhh", tmp));
@@ -998,8 +999,8 @@ describe("csm-status reader — running marker (260927-46l)", () => {
       ["mpara-h8-aaaa", { heartbeat: ago(20_000), turn: { state: "idle", ts: ago(20_000) } }],
       ["mpara-i9-aaaa", { heartbeat: ago(300_000), turn: { state: "idle", ts: ago(360_000) } }],
       ["mpara-j0-aaaa", { heartbeat: ago(3_000), turn: { state: "idle", ts: ago(3_000) } }],
-      // 261011-or2: past the 3 h idle-waiting ceiling (no pid) → reaped by both.
-      ["mpara-k1-aaaa", { heartbeat: ago(JUST_OVER_3H), turn: { state: "idle", ts: ago(JUST_OVER_3H) } }],
+      // 261011-or2 / 261011-qgi: past the 60-min idle-waiting ceiling (no pid) → reaped by both.
+      ["mpara-k1-aaaa", { heartbeat: ago(JUST_OVER_60M), turn: { state: "idle", ts: ago(JUST_OVER_60M) } }],
       // 260927-73b subagent fixtures (D-04).
       ["mpara-l2-aaaa", { heartbeat: ago(5_000), turn: { state: "idle", ts: ago(20_000), agents: 1 } }],
       ["mpara-m3-aaaa", { heartbeat: ago(5_000), turn: { state: "idle", ts: ago(20_000), agents: 3 } }],
@@ -1123,17 +1124,17 @@ describe("csm-status reader — idle-waiting (260927-4tv)", () => {
     expect(line).toContain(" ◉ waiting");
   });
 
-  it("S4 ceiling: idle 3h01m (no pid) → not listed", () => {
+  it("S4 ceiling: idle 61 min (no pid) → not listed", () => {
     const id = "sfour444-aaaa";
-    seed(tmp, id, { heartbeat: ago(JUST_OVER_3H), turn: { state: "idle", ts: ago(JUST_OVER_3H) } });
+    seed(tmp, id, { heartbeat: ago(JUST_OVER_60M), turn: { state: "idle", ts: ago(JUST_OVER_60M) } });
     const res = withoutAttnEnv(() => runStatus(id, tmp, env));
     expect(res.status).toBe(0);
     expect(lineFor(res.stdout, id)).toBeUndefined();
   });
 
-  it("S4b under the ceiling: idle 2h59m (no pid) → listed with ' ◉ waiting'", () => {
+  it("S4b under the ceiling: idle 59 min (no pid) → listed with ' ◉ waiting'", () => {
     const id = "sfour4bb-aaaa";
-    seed(tmp, id, { heartbeat: ago(JUST_UNDER_3H), turn: { state: "idle", ts: ago(JUST_UNDER_3H) } });
+    seed(tmp, id, { heartbeat: ago(JUST_UNDER_60M), turn: { state: "idle", ts: ago(JUST_UNDER_60M) } });
     const res = withoutAttnEnv(() => runStatus(id, tmp, env));
     expect(res.status).toBe(0);
     const line = lineFor(res.stdout, id);
