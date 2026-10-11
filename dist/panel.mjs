@@ -39001,7 +39001,7 @@ function SessionCard({ s }) {
     (best, f) => best && Date.parse(best.ts) >= Date.parse(f.ts) ? best : f,
     void 0
   );
-  const intentLine = typeof s.intent === "string" && s.intent.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { children: "  " + INTENT_GLYPH + " " + sanitize(s.intent) }) : newestWrite ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: "  ~ " + sanitize(splitPath(newestWrite.file_path).name) }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: "  ~ (idle)" });
+  const intentLine = typeof s.intent === "string" && s.intent.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { children: "  " + INTENT_GLYPH + " " + sanitize(s.intent) }) : newestWrite ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: "  ~ " + sanitize(splitPath(newestWrite.file_path).name) }) : null;
   const targetBranch = typeof s.target_branch === "string" && s.target_branch.length > 0 ? sanitize(s.target_branch) : "";
   const curBranch = sanitize(s.branch) || "\u2014";
   const targetSegment = targetBranch === "" ? null : targetBranch === sanitize(s.branch) ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: " \xB7 " + BRANCH_GLYPH + " " + targetBranch }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { bold: true, children: " \xB7 " + BRANCH_GLYPH + " " + curBranch + " " + NEQ_GLYPH + " " + targetBranch });
@@ -39034,7 +39034,7 @@ function SessionCard({ s }) {
         s.asking ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "magenta", bold: true, children: "  " + ATTENTION_GLYPH + " asking" }) : s.attention ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "yellowBright", bold: true, children: "  " + ATTENTION_GLYPH + " waiting" }) : s.running ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "green", children: "  " + RUN_GLYPH + " running" }) : s.subagent ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: SUBAGENT_COLOR, bold: true, children: "  " + SUBAGENT_GLYPH + " subagent" + (Number.isInteger(s.subagent_count) && s.subagent_count > 1 ? " \xD7" + sanitize(String(s.subagent_count)) : "") }) : null,
         intentLine,
         typeof s.skill === "string" && s.skill.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: "  " + SKILL_GLYPH + " " + (s.skill_subagent ? sanitize(s.skill_subagent) + SKILL_SEP : "") + sanitize(s.skill) }) : null,
-        s.files.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: "  (no active files)" }) : s.files.map((f, i) => {
+        s.files.map((f, i) => {
           const { name: name2, dir } = writeParts[i];
           const left = sanitize(name2);
           const d = sanitize(dir);

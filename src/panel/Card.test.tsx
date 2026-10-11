@@ -351,13 +351,50 @@ describe("SessionCard intent line (PANEL-02 D-10/D-11/D-12)", () => {
     expect(line.trim().length).toBeGreaterThan(0);
   });
 
-  it("renders a non-blank dim idle indicator when there is no intent and no files (D-11)", () => {
+  it("renders only the header row inside the border when there is no intent and no files (261011-pfq)", () => {
     const out = stripAnsi(
       renderToString(<SessionCard s={makeRow({ intent: undefined, files: [] })} />),
     );
     expect(out).not.toContain(INTENT_GLYPH);
-    // never a blank line: a `(idle)` indicator is shown instead
-    expect(out).toContain("(idle)");
+    // no placeholder filler lines on an idle card
+    expect(out).not.toContain("(idle)");
+    expect(out).not.toContain("(no active files)");
+    expect(out).not.toContain("~ ");
+    // top border, header, bottom border — nothing else
+    const lines = out.split("\n").filter((l) => l.trim().length > 0);
+    expect(lines).toHaveLength(3);
+  });
+
+  it("shows the `~ <basename>` line and the write lines when files are active but no intent (261011-pfq)", () => {
+    const out = stripAnsi(
+      renderToString(
+        <SessionCard
+          s={makeRow({
+            intent: undefined,
+            files: [
+              { file_path: "/repo/src/a.ts", ts: now() },
+              { file_path: "/repo/src/b.ts", ts: now() },
+            ],
+          })}
+        />,
+      ),
+    );
+    expect(out).toMatch(/~ [ab]\.ts/);
+    expect(out).toContain("a.ts");
+    expect(out).toContain("b.ts");
+    expect(out).toContain("/repo/src");
+    expect(out).not.toContain("(no active files)");
+  });
+
+  it("shows the intent line and no `(no active files)` text when there is an intent but no files (261011-pfq)", () => {
+    const out = stripAnsi(
+      renderToString(<SessionCard s={makeRow({ intent: "planning phase 8", files: [] })} />),
+    );
+    expect(out).toContain(INTENT_GLYPH + " planning phase 8");
+    expect(out).not.toContain("(no active files)");
+    expect(out).not.toContain("(idle)");
+    const lines = out.split("\n").filter((l) => l.trim().length > 0);
+    expect(lines).toHaveLength(4); // border, header, intent, border
   });
 
   it("sanitizes an ESC byte embedded in the intent before render (T-04-05)", () => {
@@ -421,10 +458,10 @@ describe("SessionCard skill line (SKILL-04/SKILL-02, D-02/D-03/D-04)", () => {
     expect(skillIdx).toBeLessThan(readIdx); // above the read list
   });
 
-  it("omits the skill line entirely when no skill is in-window, keeping the card non-blank (D-02/D-11)", () => {
+  it("omits the skill line entirely when no skill is in-window (D-02; no idle filler per 261011-pfq)", () => {
     const idle = stripAnsi(renderToString(<SessionCard s={makeRow({ skill: undefined, files: [] })} />));
     expect(idle).not.toContain(SKILL_GLYPH); // no skill glyph
-    expect(idle).toContain("(idle)"); // the existing idle fallback still fills the card
+    expect(idle).not.toContain("(idle)"); // no idle filler line either (261011-pfq)
 
     const recent = stripAnsi(
       renderToString(

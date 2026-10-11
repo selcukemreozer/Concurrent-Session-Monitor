@@ -651,17 +651,17 @@ describe("App height-driven compact overflow (D-13)", () => {
   it("collapses to one-line CompactRow rows when the rows do not fit", () => {
     const { inst, frame } = renderCapture(6, 120); // tiny height, wide enough not to wrap
     const out = frame();
-    // CompactRow ends each line with the active-file count token ("0f"); the full
-    // SessionCard instead prints "(no active files)".
+    // CompactRow ends each line with the active-file count token ("0f"); only the
+    // full SessionCard draws a round border (its "╭" corner) — CompactRow has none.
     expect(out).toContain("0f");
-    expect(out).not.toContain("(no active files)");
+    expect(out).not.toContain("╭");
     inst.unmount();
   });
 
   it("renders full SessionCards when there is ample height", () => {
     const { inst, frame } = renderCapture(80, 120); // tall terminal
     const out = frame();
-    expect(out).toContain("(no active files)");
+    expect(out).toContain("╭"); // SessionCard round-border corner
     expect(out).not.toContain("0f");
     inst.unmount();
   });

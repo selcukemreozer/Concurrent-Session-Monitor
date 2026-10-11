@@ -199,7 +199,8 @@ function splitPath(rp: string): { name: string; dir: string } {
  * first 8 chars of the session id (D-05), the best-effort model (D-09, "—" when
  * unknown), and compact uptime (D-10). A cyan clickable go-to-pane link appears
  * only when Warp supplied a focus_url (D-06). Below the header, each active file
- * path is listed, or a dim "(no active files)" hint when none are in the window.
+ * path is listed; when none are in the window no file line is drawn at all
+ * (quick 261011-pfq), keeping an idle card to its header row.
  * Below the write lines, each active READ path (`s.reads`, card-only per D-10)
  * is rendered on its own line with a distinct blue `◇` glyph (PANEL-06 D-08/D-09)
  * — purely additive, guarded by `s.reads ?? []`, each path sanitized.
@@ -236,9 +237,10 @@ export function SessionCard({ s }: { s: SessionRow }) {
   // Intent line (PANEL-02 D-10): drawn immediately under the header and ABOVE
   // both file lists. When `s.intent` is a non-empty string, render it behind the
   // INTENT_GLYPH (sanitized — untrusted agent text, T-04-05). Otherwise fall back
-  // so the line is NEVER blank (D-11): a dim `~ <basename>` derived from the
-  // newest active write (max Date.parse(ts)), or a dim `~ (idle)` when there are
-  // no active writes either.
+  // to a dim `~ <basename>` derived from the newest active write (max
+  // Date.parse(ts)). An idle session with no intent and no active writes shows no
+  // activity line at all (quick 261011-pfq, reverses D-11's never-blank rule for
+  // that case only), keeping the card compact.
   const newestWrite = s.files.reduce<SessionRow["files"][number] | undefined>(
     (best, f) => (best && Date.parse(best.ts) >= Date.parse(f.ts) ? best : f),
     undefined,
@@ -248,9 +250,7 @@ export function SessionCard({ s }: { s: SessionRow }) {
       <Text>{"  " + INTENT_GLYPH + " " + sanitize(s.intent)}</Text>
     ) : newestWrite ? (
       <Text dimColor>{"  ~ " + sanitize(splitPath(newestWrite.file_path).name)}</Text>
-    ) : (
-      <Text dimColor>{"  ~ (idle)"}</Text>
-    );
+    ) : null;
 
   // Declared-target-branch header segment (TB-03 D-BR-03/D-BR-05): rendered ONLY
   // when a non-empty target is declared. Compare the SEPARATELY-sanitized target
@@ -341,23 +341,19 @@ export function SessionCard({ s }: { s: SessionRow }) {
             sanitize(s.skill)}
         </Text>
       ) : null}
-      {s.files.length === 0 ? (
-        <Text dimColor>{"  (no active files)"}</Text>
-      ) : (
-        s.files.map((f, i) => {
-          const { name, dir } = writeParts[i];
-          const left = sanitize(name);
-          const d = sanitize(dir);
-          return d === "" ? (
-            <Text key={f.file_path}>{"  " + left}</Text>
-          ) : (
-            <Text key={f.file_path}>
-              {"  " + left.padEnd(W) + " | "}
-              <Text dimColor>{d}</Text>
-            </Text>
-          );
-        })
-      )}
+      {s.files.map((f, i) => {
+        const { name, dir } = writeParts[i];
+        const left = sanitize(name);
+        const d = sanitize(dir);
+        return d === "" ? (
+          <Text key={f.file_path}>{"  " + left}</Text>
+        ) : (
+          <Text key={f.file_path}>
+            {"  " + left.padEnd(W) + " | "}
+            <Text dimColor>{d}</Text>
+          </Text>
+        );
+      })}
       {reads.map((r, i) => {
         const { name, dir } = readParts[i];
         const left = READ_GLYPH + " " + sanitize(name);
