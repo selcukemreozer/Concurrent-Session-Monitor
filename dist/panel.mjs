@@ -913,21 +913,21 @@ var require_react_development = __commonJS({
         );
         actScopeDepth = prevActScopeDepth;
       }
-      function recursivelyFlushAsyncActWork(returnValue, resolve2, reject) {
+      function recursivelyFlushAsyncActWork(returnValue, resolve3, reject) {
         var queue = ReactSharedInternals.actQueue;
         if (null !== queue)
           if (0 !== queue.length)
             try {
               flushActQueue(queue);
               enqueueTask(function() {
-                return recursivelyFlushAsyncActWork(returnValue, resolve2, reject);
+                return recursivelyFlushAsyncActWork(returnValue, resolve3, reject);
               });
               return;
             } catch (error) {
               ReactSharedInternals.thrownErrors.push(error);
             }
           else ReactSharedInternals.actQueue = null;
-        0 < ReactSharedInternals.thrownErrors.length ? (queue = aggregateErrors(ReactSharedInternals.thrownErrors), ReactSharedInternals.thrownErrors.length = 0, reject(queue)) : resolve2(returnValue);
+        0 < ReactSharedInternals.thrownErrors.length ? (queue = aggregateErrors(ReactSharedInternals.thrownErrors), ReactSharedInternals.thrownErrors.length = 0, reject(queue)) : resolve3(returnValue);
       }
       function flushActQueue(queue) {
         if (!isFlushing) {
@@ -1114,7 +1114,7 @@ var require_react_development = __commonJS({
             ));
           });
           return {
-            then: function(resolve2, reject) {
+            then: function(resolve3, reject) {
               didAwaitActCall = true;
               thenable.then(
                 function(returnValue) {
@@ -1124,7 +1124,7 @@ var require_react_development = __commonJS({
                       flushActQueue(queue), enqueueTask(function() {
                         return recursivelyFlushAsyncActWork(
                           returnValue,
-                          resolve2,
+                          resolve3,
                           reject
                         );
                       });
@@ -1138,7 +1138,7 @@ var require_react_development = __commonJS({
                       ReactSharedInternals.thrownErrors.length = 0;
                       reject(_thrownError);
                     }
-                  } else resolve2(returnValue);
+                  } else resolve3(returnValue);
                 },
                 function(error) {
                   popActScope(prevActQueue, prevActScopeDepth);
@@ -1160,15 +1160,15 @@ var require_react_development = __commonJS({
         if (0 < ReactSharedInternals.thrownErrors.length)
           throw callback = aggregateErrors(ReactSharedInternals.thrownErrors), ReactSharedInternals.thrownErrors.length = 0, callback;
         return {
-          then: function(resolve2, reject) {
+          then: function(resolve3, reject) {
             didAwaitActCall = true;
             0 === prevActScopeDepth ? (ReactSharedInternals.actQueue = queue, enqueueTask(function() {
               return recursivelyFlushAsyncActWork(
                 returnValue$jscomp$0,
-                resolve2,
+                resolve3,
                 reject
               );
-            })) : resolve2(returnValue$jscomp$0);
+            })) : resolve3(returnValue$jscomp$0);
           }
         };
       };
@@ -3094,10 +3094,10 @@ var require_react_reconciler_production = __commonJS({
           refCount: 0
         };
       }
-      function releaseCache(cache4) {
-        cache4.refCount--;
-        0 === cache4.refCount && scheduleCallback$2(NormalPriority, function() {
-          cache4.controller.abort();
+      function releaseCache(cache5) {
+        cache5.refCount--;
+        0 === cache5.refCount && scheduleCallback$2(NormalPriority, function() {
+          cache5.controller.abort();
         });
       }
       function noop$1() {
@@ -3250,8 +3250,8 @@ var require_react_reconciler_production = __commonJS({
           currentEntangledActionThenable = {
             status: "pending",
             value: void 0,
-            then: function(resolve2) {
-              entangledListeners.push(resolve2);
+            then: function(resolve3) {
+              entangledListeners.push(resolve3);
             }
           };
         }
@@ -3274,8 +3274,8 @@ var require_react_reconciler_production = __commonJS({
           status: "pending",
           value: null,
           reason: null,
-          then: function(resolve2) {
-            listeners.push(resolve2);
+          then: function(resolve3) {
+            listeners.push(resolve3);
           }
         };
         thenable.then(
@@ -8373,21 +8373,21 @@ var require_react_reconciler_production = __commonJS({
             case 23:
             case 22:
               if (null !== fiber.memoizedState && null !== fiber.memoizedState.cachePool) {
-                var cache4 = fiber.memoizedState.cachePool.pool;
-                null != cache4 && cache4.refCount++;
+                var cache5 = fiber.memoizedState.cachePool.pool;
+                null != cache5 && cache5.refCount++;
               }
               break;
             case 24:
               releaseCache(fiber.memoizedState.cache);
           }
-          cache4 = fiber.child;
-          if (null !== cache4) cache4.return = fiber, nextEffect = cache4;
+          cache5 = fiber.child;
+          if (null !== cache5) cache5.return = fiber, nextEffect = cache5;
           else
             a: for (fiber = deletedSubtreeRoot; null !== nextEffect; ) {
-              cache4 = nextEffect;
-              var sibling = cache4.sibling, returnFiber = cache4.return;
-              detachFiberAfterEffects(cache4);
-              if (cache4 === fiber) {
+              cache5 = nextEffect;
+              var sibling = cache5.sibling, returnFiber = cache5.return;
+              detachFiberAfterEffects(cache5);
+              if (cache5 === fiber) {
                 nextEffect = null;
                 break a;
               }
@@ -10078,8 +10078,8 @@ var require_react_reconciler_production = __commonJS({
         hydrationErrors: null
       }, offscreenSubtreeIsHidden = false, offscreenSubtreeWasHidden = false, needsFormReset = false, PossiblyWeakSet = "function" === typeof WeakSet ? WeakSet : Set, nextEffect = null, hostParent = null, hostParentIsContainer = false, currentHoistableRoot = null, suspenseyCommitFlag = 8192, DefaultAsyncDispatcher = {
         getCacheForType: function(resourceType) {
-          var cache4 = readContext(CacheContext), cacheForType = cache4.data.get(resourceType);
-          void 0 === cacheForType && (cacheForType = resourceType(), cache4.data.set(resourceType, cacheForType));
+          var cache5 = readContext(CacheContext), cacheForType = cache5.data.get(resourceType);
+          void 0 === cacheForType && (cacheForType = resourceType(), cache5.data.set(resourceType, cacheForType));
           return cacheForType;
         },
         cacheSignal: function() {
@@ -10436,10 +10436,10 @@ var require_react_reconciler_development = __commonJS({
           fiber = fiber.next, id--;
         return fiber;
       }
-      function copyWithSetImpl(obj, path9, index, value) {
-        if (index >= path9.length) return value;
-        var key = path9[index], updated = isArrayImpl(obj) ? obj.slice() : assign({}, obj);
-        updated[key] = copyWithSetImpl(obj[key], path9, index + 1, value);
+      function copyWithSetImpl(obj, path11, index, value) {
+        if (index >= path11.length) return value;
+        var key = path11[index], updated = isArrayImpl(obj) ? obj.slice() : assign({}, obj);
+        updated[key] = copyWithSetImpl(obj[key], path11, index + 1, value);
         return updated;
       }
       function copyWithRename(obj, oldPath, newPath) {
@@ -10466,11 +10466,11 @@ var require_react_reconciler_development = __commonJS({
         );
         return updated;
       }
-      function copyWithDeleteImpl(obj, path9, index) {
-        var key = path9[index], updated = isArrayImpl(obj) ? obj.slice() : assign({}, obj);
-        if (index + 1 === path9.length)
+      function copyWithDeleteImpl(obj, path11, index) {
+        var key = path11[index], updated = isArrayImpl(obj) ? obj.slice() : assign({}, obj);
+        if (index + 1 === path11.length)
           return isArrayImpl(updated) ? updated.splice(key, 1) : delete updated[key], updated;
-        updated[key] = copyWithDeleteImpl(obj[key], path9, index + 1);
+        updated[key] = copyWithDeleteImpl(obj[key], path11, index + 1);
         return updated;
       }
       function shouldSuspendImpl() {
@@ -12574,19 +12574,19 @@ var require_react_reconciler_development = __commonJS({
           refCount: 0
         };
       }
-      function retainCache(cache4) {
-        cache4.controller.signal.aborted && console.warn(
+      function retainCache(cache5) {
+        cache5.controller.signal.aborted && console.warn(
           "A cache instance was retained after it was already freed. This likely indicates a bug in React."
         );
-        cache4.refCount++;
+        cache5.refCount++;
       }
-      function releaseCache(cache4) {
-        cache4.refCount--;
-        0 > cache4.refCount && console.warn(
+      function releaseCache(cache5) {
+        cache5.refCount--;
+        0 > cache5.refCount && console.warn(
           "A cache instance was released after it was already freed. This likely indicates a bug in React."
         );
-        0 === cache4.refCount && scheduleCallback$2(NormalPriority, function() {
-          cache4.controller.abort();
+        0 === cache5.refCount && scheduleCallback$2(NormalPriority, function() {
+          cache5.controller.abort();
         });
       }
       function startUpdateTimerByLane(lane, method, fiber) {
@@ -12874,8 +12874,8 @@ var require_react_reconciler_development = __commonJS({
           currentEntangledActionThenable = {
             status: "pending",
             value: void 0,
-            then: function(resolve2) {
-              entangledListeners.push(resolve2);
+            then: function(resolve3) {
+              entangledListeners.push(resolve3);
             }
           };
         }
@@ -12898,8 +12898,8 @@ var require_react_reconciler_development = __commonJS({
           status: "pending",
           value: null,
           reason: null,
-          then: function(resolve2) {
-            listeners.push(resolve2);
+          then: function(resolve3) {
+            listeners.push(resolve3);
           }
         };
         thenable.then(
@@ -23714,8 +23714,8 @@ var require_react_reconciler_development = __commonJS({
       didWarnAboutUndefinedSnapshotBeforeUpdate = /* @__PURE__ */ new Set();
       var offscreenSubtreeIsHidden = false, offscreenSubtreeWasHidden = false, needsFormReset = false, PossiblyWeakSet = "function" === typeof WeakSet ? WeakSet : Set, nextEffect = null, inProgressLanes = null, inProgressRoot = null, hostParent = null, hostParentIsContainer = false, currentHoistableRoot = null, inHydratedSubtree = false, suspenseyCommitFlag = 8192, DefaultAsyncDispatcher = {
         getCacheForType: function(resourceType) {
-          var cache4 = readContext(CacheContext), cacheForType = cache4.data.get(resourceType);
-          void 0 === cacheForType && (cacheForType = resourceType(), cache4.data.set(resourceType, cacheForType));
+          var cache5 = readContext(CacheContext), cacheForType = cache5.data.get(resourceType);
+          void 0 === cacheForType && (cacheForType = resourceType(), cache5.data.set(resourceType, cacheForType));
           return cacheForType;
         },
         cacheSignal: function() {
@@ -23747,29 +23747,29 @@ var require_react_reconciler_development = __commonJS({
       var didWarnAboutNestedUpdates = false;
       var didWarnAboutFindNodeInStrictMode = {};
       var overrideHookState = null, overrideHookStateDeletePath = null, overrideHookStateRenamePath = null, overrideProps = null, overridePropsDeletePath = null, overridePropsRenamePath = null, scheduleUpdate = null, scheduleRetry = null, setErrorHandler = null, setSuspenseHandler = null;
-      overrideHookState = function(fiber, id, path9, value) {
+      overrideHookState = function(fiber, id, path11, value) {
         id = findHook(fiber, id);
-        null !== id && (path9 = copyWithSetImpl(id.memoizedState, path9, 0, value), id.memoizedState = path9, id.baseState = path9, fiber.memoizedProps = assign({}, fiber.memoizedProps), path9 = enqueueConcurrentRenderForLane(fiber, 2), null !== path9 && scheduleUpdateOnFiber(path9, fiber, 2));
+        null !== id && (path11 = copyWithSetImpl(id.memoizedState, path11, 0, value), id.memoizedState = path11, id.baseState = path11, fiber.memoizedProps = assign({}, fiber.memoizedProps), path11 = enqueueConcurrentRenderForLane(fiber, 2), null !== path11 && scheduleUpdateOnFiber(path11, fiber, 2));
       };
-      overrideHookStateDeletePath = function(fiber, id, path9) {
+      overrideHookStateDeletePath = function(fiber, id, path11) {
         id = findHook(fiber, id);
-        null !== id && (path9 = copyWithDeleteImpl(id.memoizedState, path9, 0), id.memoizedState = path9, id.baseState = path9, fiber.memoizedProps = assign({}, fiber.memoizedProps), path9 = enqueueConcurrentRenderForLane(fiber, 2), null !== path9 && scheduleUpdateOnFiber(path9, fiber, 2));
+        null !== id && (path11 = copyWithDeleteImpl(id.memoizedState, path11, 0), id.memoizedState = path11, id.baseState = path11, fiber.memoizedProps = assign({}, fiber.memoizedProps), path11 = enqueueConcurrentRenderForLane(fiber, 2), null !== path11 && scheduleUpdateOnFiber(path11, fiber, 2));
       };
       overrideHookStateRenamePath = function(fiber, id, oldPath, newPath) {
         id = findHook(fiber, id);
         null !== id && (oldPath = copyWithRename(id.memoizedState, oldPath, newPath), id.memoizedState = oldPath, id.baseState = oldPath, fiber.memoizedProps = assign({}, fiber.memoizedProps), oldPath = enqueueConcurrentRenderForLane(fiber, 2), null !== oldPath && scheduleUpdateOnFiber(oldPath, fiber, 2));
       };
-      overrideProps = function(fiber, path9, value) {
-        fiber.pendingProps = copyWithSetImpl(fiber.memoizedProps, path9, 0, value);
+      overrideProps = function(fiber, path11, value) {
+        fiber.pendingProps = copyWithSetImpl(fiber.memoizedProps, path11, 0, value);
         fiber.alternate && (fiber.alternate.pendingProps = fiber.pendingProps);
-        path9 = enqueueConcurrentRenderForLane(fiber, 2);
-        null !== path9 && scheduleUpdateOnFiber(path9, fiber, 2);
+        path11 = enqueueConcurrentRenderForLane(fiber, 2);
+        null !== path11 && scheduleUpdateOnFiber(path11, fiber, 2);
       };
-      overridePropsDeletePath = function(fiber, path9) {
-        fiber.pendingProps = copyWithDeleteImpl(fiber.memoizedProps, path9, 0);
+      overridePropsDeletePath = function(fiber, path11) {
+        fiber.pendingProps = copyWithDeleteImpl(fiber.memoizedProps, path11, 0);
         fiber.alternate && (fiber.alternate.pendingProps = fiber.pendingProps);
-        path9 = enqueueConcurrentRenderForLane(fiber, 2);
-        null !== path9 && scheduleUpdateOnFiber(path9, fiber, 2);
+        path11 = enqueueConcurrentRenderForLane(fiber, 2);
+        null !== path11 && scheduleUpdateOnFiber(path11, fiber, 2);
       };
       overridePropsRenamePath = function(fiber, oldPath, newPath) {
         fiber.pendingProps = copyWithRename(
@@ -27399,7 +27399,7 @@ var require_stream = __commonJS({
       };
       duplex._final = function(callback) {
         if (ws.readyState === ws.CONNECTING) {
-          ws.once("open", function open() {
+          ws.once("open", function open3() {
             duplex._final(callback);
           });
           return;
@@ -27420,7 +27420,7 @@ var require_stream = __commonJS({
       };
       duplex._write = function(chunk, encoding, callback) {
         if (ws.readyState === ws.CONNECTING) {
-          ws.once("open", function open() {
+          ws.once("open", function open3() {
             duplex._write(chunk, encoding, callback);
           });
           return;
@@ -27977,22 +27977,22 @@ var init_devtools = __esm({
     init_devtools_window_polyfill();
     init_wrapper();
     init_rdc_stub();
-    isDevToolsReachable = async () => new Promise((resolve2) => {
+    isDevToolsReachable = async () => new Promise((resolve3) => {
       const socket = new wrapper_default("ws://localhost:8097");
       const timeout = setTimeout(() => {
         socket.terminate();
-        resolve2(false);
+        resolve3(false);
       }, 2e3);
       timeout.unref();
       socket.on("open", () => {
         clearTimeout(timeout);
         socket.terminate();
-        resolve2(true);
+        resolve3(true);
       });
       socket.on("error", () => {
         clearTimeout(timeout);
         socket.terminate();
-        resolve2(false);
+        resolve3(false);
       });
     });
     if (await isDevToolsReachable()) {
@@ -31181,25 +31181,25 @@ var removeModifierStylesByClose = (activeStyles, closeCode) => {
   }
 };
 var getColorStyle = (sgrToken) => {
-  const { code, open, hasArguments } = sgrToken;
+  const { code, open: open3, hasArguments } = sgrToken;
   if (code >= 30 && code <= 37 || code >= 90 && code <= 97 || code === ANSI_SGR_FOREGROUND_EXTENDED && hasArguments) {
     return {
       family: "foreground",
-      open,
+      open: open3,
       close: ANSI_SGR_RESET_FOREGROUND
     };
   }
   if (code >= 40 && code <= 47 || code >= 100 && code <= 107 || code === ANSI_SGR_BACKGROUND_EXTENDED && hasArguments) {
     return {
       family: "background",
-      open,
+      open: open3,
       close: ANSI_SGR_RESET_BACKGROUND
     };
   }
   if (code === ANSI_SGR_UNDERLINE_COLOR_EXTENDED && hasArguments) {
     return {
       family: "underlineColor",
-      open,
+      open: open3,
       close: ANSI_SGR_RESET_UNDERLINE_COLOR
     };
   }
@@ -33449,8 +33449,8 @@ var cleanupYogaNode = (node) => {
 var currentUpdatePriority = import_constants.NoEventPriority;
 var currentRootNode;
 async function loadPackageJson() {
-  const fs9 = await import("node:fs");
-  const content = fs9.readFileSync(new URL("../package.json", import.meta.url), "utf8");
+  const fs10 = await import("node:fs");
+  const content = fs10.readFileSync(new URL("../package.json", import.meta.url), "utf8");
   const parsedContent = JSON.parse(content);
   return {
     name: parsedContent?.name,
@@ -34260,18 +34260,18 @@ var proto = Object.defineProperties(() => {
     }
   }
 });
-var createStyler = (open, close, parent) => {
+var createStyler = (open3, close, parent) => {
   let openAll;
   let closeAll;
   if (parent === void 0) {
-    openAll = open;
+    openAll = open3;
     closeAll = close;
   } else {
-    openAll = parent.openAll + open;
+    openAll = parent.openAll + open3;
     closeAll = close + parent.closeAll;
   }
   return {
-    open,
+    open: open3,
     close,
     openAll,
     closeAll,
@@ -35846,8 +35846,8 @@ function Text({ color, backgroundColor, dimColor = false, bold = false, italic =
 }
 
 // node_modules/ink/build/components/ErrorOverview.js
-var cleanupPath = (path9) => {
-  return path9?.replace(`file://${cwd()}/`, "");
+var cleanupPath = (path11) => {
+  return path11?.replace(`file://${cwd()}/`, "");
 };
 var stackUtils = new import_stack_utils.default({
   cwd: cwd(),
@@ -36520,8 +36520,8 @@ var kittyModifiers = {
 var noop = () => {
 };
 var textEncoder = new TextEncoder();
-var yieldImmediate = async () => new Promise((resolve2) => {
-  setImmediate(resolve2);
+var yieldImmediate = async () => new Promise((resolve3) => {
+  setImmediate(resolve3);
 });
 var kittyQueryEscapeByte = 27;
 var kittyQueryOpenBracketByte = 91;
@@ -36738,8 +36738,8 @@ var Ink = class {
       };
     }
     this.initKittyKeyboard();
-    this.exitPromise = new Promise((resolve2, reject) => {
-      this.resolveExitPromise = resolve2;
+    this.exitPromise = new Promise((resolve3, reject) => {
+      this.resolveExitPromise = resolve3;
       this.rejectExitPromise = reject;
     });
     void this.exitPromise.catch(noop);
@@ -37050,9 +37050,9 @@ var Ink = class {
     settleThrottle(this.throttledOnRender, canWriteToStdout);
     settleThrottle(this.throttledLog, canWriteToStdout);
     if (canWriteToStdout && hasWritableState) {
-      await new Promise((resolve2) => {
+      await new Promise((resolve3) => {
         this.options.stdout.write("", () => {
-          resolve2();
+          resolve3();
         });
       });
       return;
@@ -37138,8 +37138,8 @@ var Ink = class {
   async awaitNextRender() {
     if (!this.nextRenderCommit) {
       let resolveRender;
-      const promise = new Promise((resolve2) => {
-        resolveRender = resolve2;
+      const promise = new Promise((resolve3) => {
+        resolveRender = resolve3;
       });
       this.nextRenderCommit = { promise, resolve: resolveRender };
     }
@@ -37998,16 +37998,37 @@ function numEnv(name, def) {
 
 // src/transcript.ts
 import * as fs3 from "node:fs";
+import * as fsp from "node:fs/promises";
 import * as os4 from "node:os";
 import * as path2 from "node:path";
 var TAIL_BYTES = 256 * 1024;
 var MAX_TITLE_LINE = 4096;
 var HEAD_BYTES = 256 * 1024;
 var MAX_SCAN_LINE = 64 * 1024;
+var SESSION_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+var TRIVIAL_COMMANDS = /* @__PURE__ */ new Set([
+  "clear",
+  "reload-plugins",
+  "model",
+  "effort",
+  "compact",
+  "resume",
+  "exit",
+  "config",
+  "help",
+  "status",
+  "cost",
+  "login",
+  "logout"
+]);
 var SAFE_ID_PATTERN2 = /^[A-Za-z0-9._-]{1,128}$/;
 var MAX_PATH = 4096;
 var MARKER = '"type":"custom-title"';
 var NEWLINE = 10;
+var META_MARKERS = ['"type":"custom-title"', '"type":"ai-title"', '"type":"last-prompt"'];
+var CARRIER_MARKER = '"entrypoint":"';
+var ASSISTANT_MARKER = '"type":"assistant"';
+var USER_MARKER = '"type":"user"';
 function windowLines(buf, atBoundary) {
   let first = 0;
   if (!atBoundary) {
@@ -38038,6 +38059,89 @@ function scanCustomTitle(buf, atBoundary, sessionId) {
     found = o.customTitle;
   }
   return found;
+}
+function scanTailFacts(buf, atBoundary, sessionId) {
+  const f = { hasAssistant: false };
+  for (const line of windowLines(buf, atBoundary)) {
+    if (line.length === 0 || line.length > MAX_SCAN_LINE) continue;
+    const isMeta = META_MARKERS.some((m) => line.includes(m));
+    const isCarrier = line.includes(CARRIER_MARKER);
+    const isAssistant = line.includes(ASSISTANT_MARKER);
+    if (!isMeta && !isCarrier && !isAssistant) continue;
+    const metaOk = line.length <= MAX_TITLE_LINE;
+    if (isMeta && !metaOk && !isCarrier && !isAssistant) continue;
+    let parsed;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (parsed === null || typeof parsed !== "object") continue;
+    const o = parsed;
+    if (o.sessionId !== void 0 && o.sessionId !== sessionId) continue;
+    if (metaOk) {
+      if (o.type === "custom-title" && typeof o.customTitle === "string") f.customTitle = o.customTitle;
+      else if (o.type === "ai-title" && typeof o.aiTitle === "string") f.aiTitle = o.aiTitle;
+      else if (o.type === "last-prompt" && typeof o.lastPrompt === "string") f.lastPrompt = o.lastPrompt;
+    }
+    if (o.type === "assistant") f.hasAssistant = true;
+    if (typeof o.entrypoint === "string") f.entrypoint = o.entrypoint;
+    if (typeof o.cwd === "string") f.cwd = o.cwd;
+  }
+  return f;
+}
+var NOISE = /^<(local-command-(stdout|stderr)|command-caveat|system-reminder|bash-(input|stdout|stderr))>/;
+var COMMAND_NAME = /<command-name>\/?([^<]{1,80})<\/command-name>/;
+var COMMAND_ARGS = /<command-args>([^<]{0,200})<\/command-args>/;
+function promptLabel(o) {
+  if (o === null || typeof o !== "object") return void 0;
+  const line = o;
+  if (line.type !== "user" || line.isMeta === true) return void 0;
+  const message = line.message;
+  if (message === null || typeof message !== "object") return void 0;
+  const content = message.content;
+  let text;
+  if (typeof content === "string") {
+    text = content;
+  } else if (Array.isArray(content)) {
+    for (const part of content) {
+      if (part === null || typeof part !== "object") continue;
+      const pt = part;
+      if (pt.type === "text" && typeof pt.text === "string") {
+        text = pt.text;
+        break;
+      }
+    }
+  }
+  if (text === void 0) return void 0;
+  const t = text.trim();
+  if (t.length === 0 || NOISE.test(t)) return void 0;
+  if (t.includes("<command-name>")) {
+    const name = COMMAND_NAME.exec(t)?.[1]?.trim();
+    if (name === void 0 || name.length === 0) return void 0;
+    if (TRIVIAL_COMMANDS.has(name)) return void 0;
+    const args = COMMAND_ARGS.exec(t)?.[1]?.trim();
+    return args !== void 0 && args.length > 0 ? `/${name} ${args}` : `/${name}`;
+  }
+  return t;
+}
+function scanFirstPrompt(buf, sessionId) {
+  for (const line of windowLines(buf, true)) {
+    if (line.length === 0 || line.length > MAX_SCAN_LINE) continue;
+    if (!line.includes(USER_MARKER)) continue;
+    let parsed;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (parsed === null || typeof parsed !== "object") continue;
+    const sid = parsed.sessionId;
+    if (sid !== void 0 && sid !== sessionId) continue;
+    const label2 = promptLabel(parsed);
+    if (label2 !== void 0) return label2;
+  }
+  return void 0;
 }
 function openFlags() {
   return fs3.constants.O_RDONLY | fs3.constants.O_NONBLOCK | (fs3.constants.O_NOFOLLOW ?? 0);
@@ -38075,6 +38179,58 @@ function readWindowSync(realPath, from, budget) {
     return void 0;
   }
 }
+async function readWindowAsync(realPath, from, budget) {
+  let fh;
+  try {
+    fh = await fsp.open(realPath, openFlags());
+    const st = await fh.stat();
+    if (!st.isFile()) return void 0;
+    const { start, want } = windowRange(st.size, from, budget);
+    const out = Buffer.alloc(want);
+    let filled = 0;
+    while (filled < want) {
+      const { bytesRead } = await fh.read(out, filled, want - filled, start + filled);
+      if (bytesRead <= 0) break;
+      filled += bytesRead;
+    }
+    return {
+      buf: out.subarray(0, filled),
+      atBoundary: start === 0,
+      reachedEof: start + filled >= st.size,
+      size: st.size,
+      mtimeMs: st.mtimeMs
+    };
+  } catch {
+    return void 0;
+  } finally {
+    if (fh !== void 0) {
+      try {
+        await fh.close();
+      } catch {
+      }
+    }
+  }
+}
+async function readTailFactsAsync(realPath, sessionId, budget = TAIL_BYTES) {
+  try {
+    const w = await readWindowAsync(realPath, "tail", budget);
+    if (w === void 0) return void 0;
+    return { ...scanTailFacts(w.buf, w.atBoundary, sessionId), size: w.size, mtimeMs: w.mtimeMs };
+  } catch {
+    return void 0;
+  }
+}
+async function readFirstPromptAsync(realPath, sessionId, budget = HEAD_BYTES) {
+  try {
+    const w = await readWindowAsync(realPath, "head", budget);
+    if (w === void 0) return void 0;
+    const prompt = scanFirstPrompt(w.buf, sessionId);
+    const final = prompt !== void 0 || w.size > Math.max(0, budget);
+    return prompt === void 0 ? { final } : { prompt, final };
+  } catch {
+    return void 0;
+  }
+}
 function safeSessionId(sessionId) {
   return typeof sessionId === "string" && SAFE_ID_PATTERN2.test(sessionId) && sessionId !== "." && sessionId !== "..";
 }
@@ -38093,6 +38249,9 @@ function allowedRoots() {
   const cfg = process.env.CLAUDE_CONFIG_DIR;
   if (typeof cfg === "string" && cfg.length > 0) candidates.push(path2.join(cfg, "projects"));
   return realRoots(candidates);
+}
+function projectRoots() {
+  return [...new Set(allowedRoots())];
 }
 function isInside(root, real) {
   const rel = path2.relative(root, real);
@@ -38969,6 +39128,245 @@ function cycleIndex(i, n, dir) {
   return n === 0 ? 0 : (i + dir + n) % n;
 }
 
+// src/sessions.ts
+import * as fsp2 from "node:fs/promises";
+import { constants as FS } from "node:fs";
+import * as os6 from "node:os";
+import * as path6 from "node:path";
+var RESUME_LIST_N = 50;
+var RESUME_VISIBLE_ROWS = 10;
+var FOLDER_CAP = 16;
+var LAST_PROMPT_CAP = 48;
+var MAX_REGISTRY_BYTES = 65536;
+var REGISTRY_NAME = /^(\d+)\.json$/;
+function fmtAge(thenMs, now) {
+  const s = Math.max(0, Math.floor((now - thenMs) / 1e3));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  return `${Math.floor(h / 24)}d`;
+}
+function resumeScanMs() {
+  return numEnv("CSM_RESUME_SCAN_MS", 1e4);
+}
+function resumeLabel(src) {
+  const custom = cleanTitle(src.customTitle);
+  if (custom.length > 0) return { label: truncateLabel(custom, NAME_CAP), labelKind: "name" };
+  const ai = cleanTitle(src.aiTitle);
+  if (ai.length > 0) return { label: truncateLabel(ai, NAME_CAP), labelKind: "derived" };
+  const prompt = cleanTitle(src.firstPrompt);
+  if (prompt.length > 0) return { label: truncateLabel(prompt, NAME_CAP), labelKind: "derived" };
+  return { label: UNNAMED, labelKind: "unnamed" };
+}
+function registryDirs() {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  const add = (p) => {
+    const r = path6.resolve(p);
+    if (seen.has(r)) return;
+    seen.add(r);
+    out.push(r);
+  };
+  add(path6.join(os6.homedir(), ".claude", "sessions"));
+  const cfg = process.env.CLAUDE_CONFIG_DIR;
+  if (typeof cfg === "string" && cfg.length > 0) add(path6.join(cfg, "sessions"));
+  return out;
+}
+function defaultAliveProbe(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e?.code === "EPERM";
+  }
+}
+function openFlags2() {
+  return FS.O_RDONLY | FS.O_NONBLOCK | (FS.O_NOFOLLOW ?? 0);
+}
+async function readRegistryEntry(file, stemPid, probe) {
+  let fh;
+  try {
+    fh = await fsp2.open(file, openFlags2());
+    const st = await fh.stat();
+    if (!st.isFile() || st.size > MAX_REGISTRY_BYTES) return void 0;
+    const text = await fh.readFile({ encoding: "utf8" });
+    if (text.length > MAX_REGISTRY_BYTES) return void 0;
+    const o = JSON.parse(text);
+    if (o === null || typeof o !== "object") return void 0;
+    const { pid, sessionId } = o;
+    if (typeof pid !== "number" || !Number.isInteger(pid) || pid <= 1 || pid !== stemPid) return void 0;
+    if (typeof sessionId !== "string" || !SESSION_UUID_PATTERN.test(sessionId)) return void 0;
+    return probe(pid) ? sessionId : void 0;
+  } catch {
+    return void 0;
+  } finally {
+    await fh?.close().catch(() => void 0);
+  }
+}
+async function readLiveRegistry(dirs, probe = defaultAliveProbe) {
+  const live = /* @__PURE__ */ new Set();
+  for (const dir of dirs) {
+    let names;
+    try {
+      names = await fsp2.readdir(dir);
+    } catch {
+      continue;
+    }
+    for (const name of names) {
+      const m = REGISTRY_NAME.exec(name);
+      if (m === null) continue;
+      const sid = await readRegistryEntry(path6.join(dir, name), Number(m[1]), probe);
+      if (sid !== void 0) live.add(sid);
+    }
+  }
+  return live;
+}
+async function listCandidates(root) {
+  const out = [];
+  let slugs;
+  try {
+    slugs = await fsp2.readdir(root, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const slug of slugs) {
+    if (!slug.isDirectory()) continue;
+    const dir = path6.join(root, slug.name);
+    let entries;
+    try {
+      entries = await fsp2.readdir(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      if (!e.isFile() || !e.name.endsWith(".jsonl")) continue;
+      const id = e.name.slice(0, -".jsonl".length);
+      if (!SESSION_UUID_PATTERN.test(id)) continue;
+      const p = path6.join(dir, e.name);
+      try {
+        const st = await fsp2.lstat(p);
+        if (!st.isFile()) continue;
+        out.push({ id, path: p, slug: slug.name, size: st.size, mtimeMs: st.mtimeMs });
+      } catch {
+      }
+    }
+  }
+  return out;
+}
+var cache4 = /* @__PURE__ */ new Map();
+function folderOf(cwd2, slug) {
+  if (typeof cwd2 === "string" && cwd2.length > 0) {
+    const base = cleanTitle(path6.basename(cwd2));
+    if (base.length > 0) return truncateLabel(base, FOLDER_CAP);
+  }
+  return truncateLabel(cleanTitle(slug), FOLDER_CAP);
+}
+async function rowFor(c, roots, live) {
+  let entry = cache4.get(c.path);
+  if (entry?.sdk === true) return void 0;
+  if (entry === void 0 || entry.facts === void 0 || entry.size !== c.size || entry.mtimeMs !== c.mtimeMs) {
+    const realPath = isAllowedTranscriptPath(c.id, c.path, roots);
+    if (realPath === void 0) return void 0;
+    const read = await readTailFactsAsync(realPath, c.id);
+    if (read === void 0) return void 0;
+    const { size, mtimeMs, ...facts2 } = read;
+    const shrank = entry !== void 0 && size < entry.size;
+    const next = {
+      size,
+      mtimeMs,
+      realPath,
+      sdk: false,
+      facts: facts2,
+      prompt: shrank ? void 0 : entry?.prompt,
+      promptFinal: shrank ? false : entry?.promptFinal ?? false
+    };
+    if (typeof facts2.entrypoint === "string" && facts2.entrypoint.startsWith("sdk-")) {
+      next.sdk = true;
+      delete next.facts;
+      cache4.set(c.path, next);
+      return void 0;
+    }
+    entry = next;
+    cache4.set(c.path, entry);
+  }
+  const facts = entry.facts;
+  if (facts === void 0) return void 0;
+  const custom = cleanTitle(facts.customTitle);
+  if (!facts.hasAssistant && custom.length === 0) return void 0;
+  if (custom.length === 0 && cleanTitle(facts.aiTitle).length === 0 && !entry.promptFinal) {
+    const head = await readFirstPromptAsync(entry.realPath, c.id);
+    if (head !== void 0) {
+      entry.prompt = head.prompt;
+      entry.promptFinal = head.final;
+    }
+  }
+  const { label: label2, labelKind } = resumeLabel({
+    customTitle: facts.customTitle,
+    aiTitle: facts.aiTitle,
+    firstPrompt: entry.prompt
+  });
+  const lp = cleanTitle(facts.lastPrompt);
+  return {
+    id: c.id,
+    label: label2,
+    labelKind,
+    folder: folderOf(facts.cwd, c.slug),
+    cwd: facts.cwd,
+    mtimeMs: c.mtimeMs,
+    live: live.has(c.id),
+    lastPrompt: lp.length > 0 ? truncateLabel(lp, LAST_PROMPT_CAP) : void 0
+  };
+}
+async function discoverSessions(opts = {}) {
+  const rows = [];
+  try {
+    const roots = opts.roots ?? projectRoots();
+    const n = opts.n ?? RESUME_LIST_N;
+    if (!(n > 0)) return rows;
+    const all = [];
+    for (const root of roots) all.push(...await listCandidates(root));
+    const seenPaths = new Set(all.map((c) => c.path));
+    for (const key of [...cache4.keys()]) if (!seenPaths.has(key)) cache4.delete(key);
+    const byId = /* @__PURE__ */ new Map();
+    for (const c of all) {
+      const prev = byId.get(c.id);
+      if (prev === void 0 || c.mtimeMs > prev.mtimeMs) byId.set(c.id, c);
+    }
+    const candidates = [...byId.values()].sort(
+      (a, b) => b.mtimeMs - a.mtimeMs || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+    );
+    const live = await readLiveRegistry(opts.registryDirs ?? registryDirs(), opts.probe);
+    for (const id of opts.liveIds ?? []) live.add(id);
+    for (const c of candidates) {
+      if (rows.length >= n) break;
+      try {
+        const row = await rowFor(c, roots, live);
+        if (row !== void 0) rows.push(row);
+      } catch {
+      }
+    }
+  } catch {
+  }
+  return rows;
+}
+function reconcileSelection(rows, selId, prevIdx) {
+  if (rows.length === 0) return { selId: null, idx: -1 };
+  if (selId !== null) {
+    const i = rows.findIndex((r) => r.id === selId);
+    if (i >= 0) return { selId, idx: i };
+  }
+  const idx = Math.min(rows.length - 1, Math.max(0, Number.isFinite(prevIdx) ? Math.trunc(prevIdx) : 0));
+  return { selId: rows[idx].id, idx };
+}
+function followOffset(idx, offset, total, visible) {
+  let next = offset;
+  if (idx < next) next = idx;
+  else if (idx >= next + visible) next = idx - visible + 1;
+  return clampOffset(next, total, visible);
+}
+
 // src/panel/Card.tsx
 var import_jsx_runtime = __toESM(require_jsx_runtime(), 1);
 var ESC3 = String.fromCharCode(27);
@@ -39110,7 +39508,7 @@ function CompactRow({ s }) {
 var WARN = "\u26A0";
 var JOIN = " \u2194 ";
 var CONFLICT_CAP = 5;
-function basename2(rp) {
+function basename3(rp) {
   const parts = String(rp).split("/");
   return parts[parts.length - 1] || String(rp);
 }
@@ -39124,7 +39522,7 @@ function ConflictBand({ conflicts }) {
   const shown = conflicts.slice(0, CONFLICT_CAP);
   const more = conflicts.length - shown.length;
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Box_default, { flexDirection: "column", marginBottom: 1, children: [
-    shown.map((c) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "red", children: `${WARN} ${sanitize(basename2(c.realpath))}  ${c.sessions.map(label).join(JOIN)}` }, c.realpath)),
+    shown.map((c) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "red", children: `${WARN} ${sanitize(basename3(c.realpath))}  ${c.sessions.map(label).join(JOIN)}` }, c.realpath)),
     more > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "red", dimColor: true, children: `  +${more} more` }) : null
   ] });
 }
@@ -39322,32 +39720,358 @@ function PhasesPane({
     hasMore ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: sanitize(indicator) }) : null
   ] });
 }
+var SESSIONS_HEADING = "OTURUMLAR";
+var SESSIONS_TOGGLE_HINT = "[r: fazlar]";
+var FAZLAR_TOGGLE_HINT = "[r: oturumlar]";
+var LIVE_MARK = "\xB7 live";
+function SessionRowLine({ row, selected, now }) {
+  const label2 = sanitize(row.label);
+  let labelNode;
+  if (row.labelKind === "name") labelNode = /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { bold: true, children: label2 });
+  else if (row.labelKind === "derived") labelNode = /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: "\u201C" + label2 + "\u201D" });
+  else labelNode = /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: label2 });
+  const middle = " \xB7 " + sanitize(row.folder) + " \xB7 " + sanitize(fmtAge(row.mtimeMs, now)) + " \xB7 ";
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Text, { wrap: "truncate-end", children: [
+    selected ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { bold: true, children: CURRENT_GLYPH + " " }) : "  ",
+    labelNode,
+    middle,
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: shortId(row.id) }),
+    row.live ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: " " + LIVE_MARK }) : null
+  ] });
+}
+function SessionsPane({
+  rows,
+  cursorId,
+  scrollOffset,
+  status = null,
+  now
+}) {
+  const heading = /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Text, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { bold: true, children: SESSIONS_HEADING }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: "  " + sanitize(SESSIONS_TOGGLE_HINT) })
+  ] });
+  const statusLine = status ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: sanitize(status) }) : null;
+  if (rows === null || rows.length === 0) {
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Box_default, { flexDirection: "column", children: [
+      heading,
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: rows === null ? "scanning\u2026" : "no resumable sessions" }),
+      statusLine
+    ] });
+  }
+  const total = rows.length;
+  const start = Math.min(Math.max(0, scrollOffset), Math.max(0, total - RESUME_VISIBLE_ROWS));
+  const windowRows = rows.slice(start, start + RESUME_VISIBLE_ROWS);
+  const above = start;
+  const below = total - (start + windowRows.length);
+  const hasMore = total > RESUME_VISIBLE_ROWS;
+  const indicator = `  ${above > 0 ? "\u25B2" + above + " " : ""}${below > 0 ? "\u25BC" + below + " " : ""}${start + 1}\u2013${start + windowRows.length}/${total}`;
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Box_default, { flexDirection: "column", children: [
+    heading,
+    windowRows.map((r) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SessionRowLine, { row: r, selected: r.id === cursorId, now }, r.id)),
+    hasMore ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: sanitize(indicator) }) : null,
+    statusLine
+  ] });
+}
+
+// src/panel/launch.ts
+import { spawn } from "node:child_process";
+import fs6 from "node:fs";
+import os7 from "node:os";
+import path7 from "node:path";
+var RESUME_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+var PBCOPY_BIN = "/usr/bin/pbcopy";
+var OSASCRIPT_BIN = "/usr/bin/osascript";
+var OPEN_BIN = "/usr/bin/open";
+var PBCOPY_TIMEOUT_MS = 1500;
+var OSASCRIPT_TIMEOUT_MS = 2e4;
+var OPEN_TIMEOUT_MS = 5e3;
+var MAX_CWD_LEN = 4096;
+var REMOVE_READ_BYTES = 4096;
+var WARP_TAB_CONFIG_NAME = "csm-resume";
+var WARP_TAB_CONFIG_MARKER = "# csm-resume: written by the CSM panel (rewritten on each use, removed when the panel exits)";
+var WARP_UNSAFE_CWD = /[`$;|&<>"'\\]/;
+var MSG_COPIED = "copied \u2713";
+var MSG_COPIED_LIVE = "copied \u2713 \xB7 session still open";
+var MSG_INVALID_ID = "refused: not a resumable session id";
+var OUT_LIVE = "session still open, no new tab opened";
+var OUT_TERMINAL = "opened a new Terminal window";
+var OUT_ITERM = "opened a new iTerm2 window";
+var OUT_WARP = "opening in Warp\u2026";
+var OUT_WARP_FOLDER = "opened a Warp tab in the folder, paste the command";
+var OUT_UNSUPPORTED = "no new tab for this terminal, paste the command";
+var OUT_NO_FOLDER = "session folder not found, paste the command";
+var OUT_LAUNCH_FAILED = "could not open a new tab, paste the command";
+var TERMINAL_SCRIPT = [
+  "on run argv",
+  'set cmd to "cd " & quoted form of (item 1 of argv) & " && claude --resume " & quoted form of (item 2 of argv)',
+  'tell application "Terminal"',
+  "activate",
+  "do script cmd",
+  "end tell",
+  "end run"
+];
+var ITERM_SCRIPT = [
+  "on run argv",
+  'set cmd to "cd " & quoted form of (item 1 of argv) & " && claude --resume " & quoted form of (item 2 of argv)',
+  'tell application "iTerm2"',
+  "activate",
+  "set w to (create window with default profile)",
+  "tell current session of w to write text cmd",
+  "end tell",
+  "end run"
+];
+var ROUTE_ENTRIES = [
+  ["Apple_Terminal", "terminal"],
+  ["iTerm.app", "iterm"],
+  ["WarpTerminal", "warp"]
+];
+var LAUNCH_ROUTE_BY_TERM = new Map(ROUTE_ENTRIES);
+function isResumableId(id) {
+  return typeof id === "string" && RESUME_ID_PATTERN.test(id);
+}
+function resumeCommand(id) {
+  return "claude --resume " + id;
+}
+var FORMAT_CP = new RegExp("\\p{Cf}", "u");
+function validLaunchCwd(cwd2, isDir) {
+  try {
+    if (typeof cwd2 !== "string" || cwd2.length < 1 || cwd2.length > MAX_CWD_LEN) return void 0;
+    if (!path7.isAbsolute(cwd2) || path7.normalize(cwd2) !== cwd2) return void 0;
+    for (const ch of cwd2) {
+      const cp = ch.codePointAt(0) ?? 0;
+      if (cp <= 31 || cp === 127) return void 0;
+      if (cp >= 128 && cp <= 159) return void 0;
+      if (cp >= 55296 && cp <= 57343) return void 0;
+      if (FORMAT_CP.test(ch)) return void 0;
+    }
+    return isDir(cwd2) ? cwd2 : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function osascriptArgs(lines, cwd2, id) {
+  return [...lines.flatMap((l) => ["-e", l]), "--", cwd2, id];
+}
+function tomlBasicString(s) {
+  return '"' + s.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
+}
+function warpTabConfigToml(cwd2, id) {
+  return [
+    WARP_TAB_CONFIG_MARKER,
+    'name = "CSM resume"',
+    "",
+    "[[panes]]",
+    'id = "main"',
+    'type = "terminal"',
+    "directory = " + tomlBasicString(cwd2),
+    "commands = [" + tomlBasicString(resumeCommand(id)) + "]"
+  ].join("\n") + "\n";
+}
+function statIsDir(p) {
+  try {
+    return fs6.statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+}
+function warpTabConfigDir(home) {
+  return path7.join(home, ".warp", "tab_configs");
+}
+function warpTabConfigFile(home) {
+  return path7.join(warpTabConfigDir(home), WARP_TAB_CONFIG_NAME + ".toml");
+}
+var lastWrittenHome = null;
+function writeWarpTabConfig(home, cwd2, id) {
+  let tmp;
+  try {
+    if (!isResumableId(id)) return false;
+    if (typeof cwd2 !== "string" || WARP_UNSAFE_CWD.test(cwd2)) return false;
+    if (validLaunchCwd(cwd2, statIsDir) === void 0) return false;
+    const dir = warpTabConfigDir(home);
+    fs6.mkdirSync(dir, { recursive: true, mode: 448 });
+    tmp = path7.join(dir, `.${WARP_TAB_CONFIG_NAME}.tmp-${process.pid}-${Math.random().toString(36).slice(2, 10)}`);
+    fs6.writeFileSync(tmp, warpTabConfigToml(cwd2, id), { flag: "wx", mode: 384 });
+    fs6.renameSync(tmp, warpTabConfigFile(home));
+    tmp = void 0;
+    lastWrittenHome = home;
+    return true;
+  } catch {
+    if (tmp !== void 0) {
+      try {
+        fs6.unlinkSync(tmp);
+      } catch {
+      }
+    }
+    return false;
+  }
+}
+function removeWarpTabConfig(home = os7.homedir()) {
+  try {
+    const file = warpTabConfigFile(home);
+    let head;
+    const fd = fs6.openSync(file, fs6.constants.O_RDONLY | fs6.constants.O_NOFOLLOW | fs6.constants.O_NONBLOCK);
+    try {
+      if (!fs6.fstatSync(fd).isFile()) return false;
+      const buf = Buffer.alloc(REMOVE_READ_BYTES);
+      const n = fs6.readSync(fd, buf, 0, REMOVE_READ_BYTES, 0);
+      head = buf.subarray(0, n).toString("utf8");
+    } finally {
+      fs6.closeSync(fd);
+    }
+    if (head.split("\n")[0] !== WARP_TAB_CONFIG_MARKER) return false;
+    fs6.unlinkSync(file);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function cleanupWarpTabConfig() {
+  try {
+    if (lastWrittenHome === null) return false;
+    const home = lastWrittenHome;
+    lastWrittenHome = null;
+    return removeWarpTabConfig(home);
+  } catch {
+    return false;
+  }
+}
+function defaultRun(cmd, args, opts) {
+  return new Promise((resolve3) => {
+    let done = false;
+    let timer;
+    const finish = (ok) => {
+      if (done) return;
+      done = true;
+      if (timer !== void 0) clearTimeout(timer);
+      resolve3({ ok });
+    };
+    try {
+      const child = spawn(cmd, [...args], {
+        stdio: [opts.input !== void 0 ? "pipe" : "ignore", "ignore", "ignore"]
+      });
+      timer = setTimeout(() => {
+        try {
+          child.kill("SIGKILL");
+        } catch {
+        }
+        finish(false);
+      }, opts.timeoutMs);
+      child.on("error", () => finish(false));
+      child.on("close", (code) => finish(code === 0));
+      if (opts.input !== void 0 && child.stdin) {
+        child.stdin.on("error", () => {
+        });
+        child.stdin.end(opts.input);
+      }
+    } catch {
+      finish(false);
+    }
+  });
+}
+function defaultLaunchDeps() {
+  return {
+    run: defaultRun,
+    isDir: statIsDir,
+    homedir: () => os7.homedir(),
+    platform: process.platform,
+    termProgram: process.env.TERM_PROGRAM
+  };
+}
+async function copyCommand(id, deps) {
+  try {
+    const r = await deps.run(PBCOPY_BIN, [], { input: resumeCommand(id), timeoutMs: PBCOPY_TIMEOUT_MS });
+    return r?.ok === true;
+  } catch {
+    return false;
+  }
+}
+async function runOk(deps, cmd, args, timeoutMs) {
+  try {
+    const r = await deps.run(cmd, args, { timeoutMs });
+    return r?.ok === true;
+  } catch {
+    return false;
+  }
+}
+async function copyResume(target, deps = defaultLaunchDeps()) {
+  try {
+    const id = target?.id;
+    if (!isResumableId(id)) return { ok: false, copied: false, message: MSG_INVALID_ID };
+    const live = target.live === true;
+    const copied = await copyCommand(id, deps);
+    if (copied) return { ok: true, copied: true, message: live ? MSG_COPIED_LIVE : MSG_COPIED };
+    const msg = "copy failed \xB7 run: " + resumeCommand(id) + (live ? " \xB7 session still open" : "");
+    return { ok: false, copied: false, message: msg };
+  } catch {
+    return { ok: false, copied: false, message: MSG_INVALID_ID };
+  }
+}
+async function openResume(target, deps = defaultLaunchDeps()) {
+  let copied = false;
+  let suffix = "";
+  try {
+    const id = target?.id;
+    if (!isResumableId(id)) return { ok: false, copied: false, message: MSG_INVALID_ID };
+    copied = await copyCommand(id, deps);
+    suffix = copied ? " \xB7 command copied" : " \xB7 copy failed, run: " + resumeCommand(id);
+    const done = (ok, outcome) => ({ ok, copied, message: outcome + suffix });
+    if (target.live === true) return done(false, OUT_LIVE);
+    const cwd2 = validLaunchCwd(target.cwd, (p) => deps.isDir(p));
+    if (cwd2 === void 0) return done(false, OUT_NO_FOLDER);
+    if (deps.platform !== "darwin") return done(false, OUT_UNSUPPORTED);
+    const term = deps.termProgram;
+    const route = typeof term === "string" ? LAUNCH_ROUTE_BY_TERM.get(term) : void 0;
+    if (route === "terminal" || route === "iterm") {
+      const script = route === "terminal" ? TERMINAL_SCRIPT : ITERM_SCRIPT;
+      const ok = await runOk(deps, OSASCRIPT_BIN, osascriptArgs(script, cwd2, id), OSASCRIPT_TIMEOUT_MS);
+      if (!ok) return done(false, OUT_LAUNCH_FAILED);
+      return done(true, route === "terminal" ? OUT_TERMINAL : OUT_ITERM);
+    }
+    if (route === "warp") {
+      if (WARP_UNSAFE_CWD.test(cwd2)) return done(false, OUT_UNSUPPORTED);
+      if (writeWarpTabConfig(deps.homedir(), cwd2, id)) {
+        const ok2 = await runOk(
+          deps,
+          OPEN_BIN,
+          [`warp://tab_config/${WARP_TAB_CONFIG_NAME}?new_window=true`],
+          OPEN_TIMEOUT_MS
+        );
+        return ok2 ? done(true, OUT_WARP) : done(false, OUT_LAUNCH_FAILED);
+      }
+      const ok = await runOk(deps, OPEN_BIN, ["warp://action/new_tab?path=" + encodeURIComponent(cwd2)], OPEN_TIMEOUT_MS);
+      return ok ? done(true, OUT_WARP_FOLDER) : done(false, OUT_LAUNCH_FAILED);
+    }
+    return done(false, OUT_UNSUPPORTED);
+  } catch {
+    return { ok: false, copied, message: OUT_LAUNCH_FAILED + suffix };
+  }
+}
 
 // src/conflicts.ts
-import * as fs6 from "node:fs";
-import * as path6 from "node:path";
-function resolveRealpath(file_path, cwd2, cache4) {
+import * as fs7 from "node:fs";
+import * as path8 from "node:path";
+function resolveRealpath(file_path, cwd2, cache5) {
   const key = `${cwd2 ?? ""} ${file_path}`;
-  const memo = cache4?.get(key);
+  const memo = cache5?.get(key);
   if (memo !== void 0) return memo;
-  const lexical = path6.isAbsolute(file_path) ? file_path : path6.resolve(cwd2 ?? process.cwd(), file_path);
+  const lexical = path8.isAbsolute(file_path) ? file_path : path8.resolve(cwd2 ?? process.cwd(), file_path);
   let resolved;
   try {
-    resolved = fs6.realpathSync(lexical);
+    resolved = fs7.realpathSync(lexical);
   } catch {
     resolved = lexical;
   }
-  cache4?.set(key, resolved);
+  cache5?.set(key, resolved);
   return resolved;
 }
 function detectConflicts(rows, now = Date.now()) {
   void now;
-  const cache4 = /* @__PURE__ */ new Map();
+  const cache5 = /* @__PURE__ */ new Map();
   const groups = /* @__PURE__ */ new Map();
   for (const r of rows) {
     if (!r.alive || r.readyToPrune) continue;
     for (const f of r.files) {
-      const rp = resolveRealpath(f.file_path, r.cwd, cache4);
+      const rp = resolveRealpath(f.file_path, r.cwd, cache5);
       const touch = Date.parse(f.ts) || 0;
       let g = groups.get(rp);
       if (!g) {
@@ -39416,6 +40140,7 @@ function liveBranch(row, branches) {
 // src/panel/App.tsx
 var import_jsx_runtime2 = __toESM(require_jsx_runtime(), 1);
 var POLL_MS = 750;
+var RESUME_FLASH_MS = 3e3;
 var CARD_LINES = 4;
 var HEADER_LINES = 3;
 var PORTS_LINES = 10;
@@ -39464,16 +40189,22 @@ function fmtClock(now) {
   const p = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
-function FazlarKeyboard({
+function PanelKeyboard({
   onCycle,
-  onScroll
+  onScroll,
+  onToggle,
+  onEnter,
+  onOpen
 }) {
-  use_input_default((_input, key) => {
+  use_input_default((input, key) => {
     if (key.tab) onCycle(key.shift ? -1 : 1);
-    else if (key.upArrow) onScroll(-1);
-    else if (key.downArrow) onScroll(1);
-    else if (key.pageUp) onScroll(-FAZLAR_VISIBLE_ROWS);
-    else if (key.pageDown) onScroll(FAZLAR_VISIBLE_ROWS);
+    else if (key.upArrow) onScroll(-1, false);
+    else if (key.downArrow) onScroll(1, false);
+    else if (key.pageUp) onScroll(-1, true);
+    else if (key.pageDown) onScroll(1, true);
+    else if (key.return) onEnter();
+    else if (!key.ctrl && !key.meta && input === "r") onToggle();
+    else if (!key.ctrl && !key.meta && input === "o") onOpen();
   });
   return null;
 }
@@ -39567,9 +40298,9 @@ function App2() {
       resolvePlanningRoots(liveRowsRef.current).then((roots) => {
         if (!mounted.current) return void 0;
         setPlanningRoots(roots);
-        const fs9 = buildFocusSet(liveRowsRef.current, roots);
-        const i = fs9.length ? focusedIndexRef.current % fs9.length : 0;
-        const root = fs9.length ? fs9[i].root : null;
+        const fs10 = buildFocusSet(liveRowsRef.current, roots);
+        const i = fs10.length ? focusedIndexRef.current % fs10.length : 0;
+        const root = fs10.length ? fs10[i].root : null;
         const shim = shimRef.current;
         if (shim && root) {
           return scanProgress(root, shim).then((p) => {
@@ -39592,9 +40323,136 @@ function App2() {
   import_react35.default.useEffect(() => {
     setScrollOffset(0);
   }, [idx]);
+  const [rightPane, setRightPane] = import_react35.default.useState("fazlar");
+  const [resumeRows, setResumeRows] = import_react35.default.useState(null);
+  const [selId, setSelId] = import_react35.default.useState(null);
+  const [resumeOffset, setResumeOffset] = import_react35.default.useState(0);
+  const [resumeStatus, setResumeStatus] = import_react35.default.useState(null);
+  const scanningResume = import_react35.default.useRef(false);
+  const rightPaneRef = import_react35.default.useRef(rightPane);
+  rightPaneRef.current = rightPane;
+  const resumeRowsRef = import_react35.default.useRef(resumeRows);
+  resumeRowsRef.current = resumeRows;
+  const selIdRef = import_react35.default.useRef(selId);
+  selIdRef.current = selId;
+  const selIdxRef = import_react35.default.useRef(0);
+  if (resumeRows !== null && selId !== null) {
+    const i = resumeRows.findIndex((r) => r.id === selId);
+    if (i >= 0) selIdxRef.current = i;
+  }
+  const resumeOffsetRef = import_react35.default.useRef(resumeOffset);
+  resumeOffsetRef.current = resumeOffset;
+  const flashTimer = import_react35.default.useRef(null);
+  import_react35.default.useEffect(
+    () => () => {
+      if (flashTimer.current) clearTimeout(flashTimer.current);
+      flashTimer.current = null;
+    },
+    []
+  );
+  import_react35.default.useEffect(() => {
+    if (rightPane !== "oturumlar") return void 0;
+    const tick = () => {
+      if (scanningResume.current) return;
+      scanningResume.current = true;
+      discoverSessions({
+        n: RESUME_LIST_N,
+        liveIds: new Set(liveRowsRef.current.map((r) => r.session_id))
+      }).then((rows) => {
+        if (mounted.current) setResumeRows(rows);
+      }).catch(() => {
+      }).finally(() => {
+        scanningResume.current = false;
+      });
+    };
+    tick();
+    const t = setInterval(tick, resumeScanMs());
+    return () => {
+      scanningResume.current = false;
+      clearInterval(t);
+    };
+  }, [rightPane]);
+  import_react35.default.useEffect(() => {
+    if (resumeRows === null) return;
+    const r = reconcileSelection(resumeRows, selIdRef.current, selIdxRef.current);
+    selIdRef.current = r.selId;
+    if (r.idx >= 0) selIdxRef.current = r.idx;
+    const off = followOffset(Math.max(0, r.idx), resumeOffsetRef.current, resumeRows.length, RESUME_VISIBLE_ROWS);
+    resumeOffsetRef.current = off;
+    setSelId(r.selId);
+    setResumeOffset(off);
+  }, [resumeRows]);
   const { isRawModeSupported } = use_stdin_default();
-  const onCycle = (dir) => setFocusedIndex((i) => cycleIndex(i, focusSet.length, dir));
-  const onScroll = (delta) => setScrollOffset((o) => clampOffset(o + delta, totalPhases, FAZLAR_VISIBLE_ROWS));
+  const clearResumeStatus = () => {
+    if (flashTimer.current) clearTimeout(flashTimer.current);
+    flashTimer.current = null;
+    setResumeStatus(null);
+  };
+  const showResult = (r) => {
+    if (!mounted.current) return;
+    if (flashTimer.current) clearTimeout(flashTimer.current);
+    flashTimer.current = null;
+    setResumeStatus(r.message);
+    if (r.ok) {
+      flashTimer.current = setTimeout(() => {
+        flashTimer.current = null;
+        if (mounted.current) setResumeStatus(null);
+      }, RESUME_FLASH_MS);
+    }
+  };
+  const selectedRow = () => {
+    if (rightPaneRef.current !== "oturumlar") return null;
+    const rows = resumeRowsRef.current;
+    const id = selIdRef.current;
+    if (rows === null || id === null) return null;
+    return rows.find((r) => r.id === id) ?? null;
+  };
+  const onToggle = () => {
+    const next = rightPaneRef.current === "fazlar" ? "oturumlar" : "fazlar";
+    rightPaneRef.current = next;
+    setRightPane(next);
+    clearResumeStatus();
+  };
+  const onCycle = (dir) => {
+    if (rightPaneRef.current !== "fazlar") return;
+    setFocusedIndex((i) => cycleIndex(i, focusSet.length, dir));
+  };
+  const onScroll = (dir, page) => {
+    if (rightPaneRef.current === "fazlar") {
+      const delta = dir * (page ? FAZLAR_VISIBLE_ROWS : 1);
+      setScrollOffset((o) => clampOffset(o + delta, totalPhases, FAZLAR_VISIBLE_ROWS));
+      return;
+    }
+    const rows = resumeRowsRef.current;
+    if (rows === null || rows.length === 0) return;
+    const found = rows.findIndex((r) => r.id === selIdRef.current);
+    const cur = found >= 0 ? found : Math.min(rows.length - 1, Math.max(0, selIdxRef.current));
+    const step = page ? RESUME_VISIBLE_ROWS : 1;
+    const next = Math.min(rows.length - 1, Math.max(0, cur + dir * step));
+    const id = rows[next].id;
+    const off = followOffset(next, resumeOffsetRef.current, rows.length, RESUME_VISIBLE_ROWS);
+    selIdRef.current = id;
+    selIdxRef.current = next;
+    resumeOffsetRef.current = off;
+    setSelId(id);
+    setResumeOffset(off);
+    clearResumeStatus();
+  };
+  const onEnter = () => {
+    const row = selectedRow();
+    if (row === null) return;
+    copyResume({ id: row.id, live: row.live }).then(showResult, () => {
+    });
+  };
+  const onOpen = () => {
+    const row = selectedRow();
+    if (row === null) return;
+    if (flashTimer.current) clearTimeout(flashTimer.current);
+    flashTimer.current = null;
+    setResumeStatus("opening\u2026");
+    openResume({ id: row.id, cwd: row.cwd, live: row.live }).then(showResult, () => {
+    });
+  };
   const nConf = state.conflicts.length;
   const summaryLead = sanitize(`${state.live} live \xB7 ${state.idle} idle \xB7 `);
   const conflictLabel = sanitize(`${nConf} conflicts`);
@@ -39612,7 +40470,16 @@ function App2() {
     return b === row.branch ? row : { ...row, branch: b };
   };
   return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Box_default, { flexDirection: "column", children: [
-    isRawModeSupported ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(FazlarKeyboard, { onCycle, onScroll }) : null,
+    isRawModeSupported ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+      PanelKeyboard,
+      {
+        onCycle,
+        onScroll,
+        onToggle,
+        onEnter,
+        onOpen
+      }
+    ) : null,
     /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
       Box_default,
       {
@@ -39644,7 +40511,16 @@ function App2() {
     ),
     /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Box_default, { flexDirection: "row", width: termCols, marginTop: 1, children: [
       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Box_default, { flexDirection: "column", flexBasis: "50%", flexGrow: 1, flexShrink: 1, paddingX: 1, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(PortsPane, { ports, rows: liveRows }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Box_default, { flexDirection: "column", flexBasis: "50%", flexGrow: 1, flexShrink: 1, paddingX: 1, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Box_default, { flexDirection: "column", flexBasis: "50%", flexGrow: 1, flexShrink: 1, paddingX: 1, children: rightPane === "oturumlar" ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+        SessionsPane,
+        {
+          rows: resumeRows,
+          cursorId: selId,
+          scrollOffset: resumeOffset,
+          status: resumeStatus,
+          now: Date.now()
+        }
+      ) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
         PhasesPane,
         {
           focus: focusSet.length ? focusSet[idx] : null,
@@ -39652,7 +40528,8 @@ function App2() {
           count: focusSet.length,
           progress: focusProgress,
           scrollOffset,
-          interactive: isRawModeSupported
+          interactive: isRawModeSupported,
+          paneHint: isRawModeSupported ? FAZLAR_TOGGLE_HINT : null
         }
       ) })
     ] })
@@ -39712,24 +40589,24 @@ function run() {
 }
 
 // src/panel/registration.ts
-import * as fs8 from "node:fs";
-import * as path8 from "node:path";
+import * as fs9 from "node:fs";
+import * as path10 from "node:path";
 import { execFileSync as execFileSync3 } from "node:child_process";
 
 // src/store.ts
-import * as fs7 from "node:fs";
-import * as path7 from "node:path";
+import * as fs8 from "node:fs";
+import * as path9 from "node:path";
 var DIR_MODE = 448;
 var FILE_MODE = 384;
 function writeSnapshot(dir, name, data) {
-  fs7.mkdirSync(dir, { recursive: true, mode: DIR_MODE });
-  const target = path7.join(dir, name);
-  const tmp = path7.join(
+  fs8.mkdirSync(dir, { recursive: true, mode: DIR_MODE });
+  const target = path9.join(dir, name);
+  const tmp = path9.join(
     dir,
     `.${name}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`
   );
-  fs7.writeFileSync(tmp, JSON.stringify(data), { mode: FILE_MODE });
-  fs7.renameSync(tmp, target);
+  fs8.writeFileSync(tmp, JSON.stringify(data), { mode: FILE_MODE });
+  fs8.renameSync(tmp, target);
 }
 
 // src/panel/registration.ts
@@ -39792,10 +40669,10 @@ function registerPanel(overrides = {}) {
 }
 function unregisterPanel(pid = process.pid) {
   try {
-    const file = path8.join(storeRoot(), PANEL_FILE);
-    const parsed = JSON.parse(fs8.readFileSync(file, "utf8"));
+    const file = path10.join(storeRoot(), PANEL_FILE);
+    const parsed = JSON.parse(fs9.readFileSync(file, "utf8"));
     if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) && parsed.pid === pid) {
-      fs8.unlinkSync(file);
+      fs9.unlinkSync(file);
       return true;
     }
     return false;
@@ -39821,11 +40698,13 @@ process.on("SIGTERM", shutdown);
 process.on("SIGHUP", shutdown);
 process.on("exit", () => {
   unregisterPanel();
+  cleanupWarpTabConfig();
 });
 instance = run();
 registerPanel();
 await instance.waitUntilExit();
 unregisterPanel();
+cleanupWarpTabConfig();
 /*! Bundled license information:
 
 react/cjs/react.production.js:
