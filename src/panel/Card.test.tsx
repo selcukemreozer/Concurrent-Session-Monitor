@@ -35,9 +35,16 @@ import {
   visiblePorts,
   movePortCursor,
   confirmPrompt,
+  SessionsPane,
+  SESSIONS_HEADING,
+  SESSIONS_TOGGLE_HINT,
+  FAZLAR_TOGGLE_HINT,
+  LIVE_MARK,
 } from "./Card.js";
 import { renderToString } from "ink";
 import chalk from "chalk";
+import type { ReactElement } from "react";
+import type { ResumeRow } from "../sessions.js";
 import type { SessionRow } from "../aggregate.js";
 import type { Conflict } from "../conflicts.js";
 import type { ScannedPort } from "../ports.js";
@@ -1461,6 +1468,68 @@ describe("PhasesPane (PANEL-07 FAZLAR phase table)", () => {
     expect(outB).toContain("…"); // U+2026
     expect(outB).not.toContain("a".repeat(37)); // never the full 37-char name
   });
+
+  // ---- Phase 8 (D-14): the `[r: oturumlar]` toggle hint, TTY only ----
+
+  it("H1: appends the [r: oturumlar] hint to the interactive Tab line and both empty states (D-14)", () => {
+    const populated = stripAnsi(
+      renderToString(
+        <PhasesPane
+          focus={makeFocus()}
+          index={0}
+          count={2}
+          progress={makeProgress()}
+          scrollOffset={0}
+          interactive={true}
+          paneHint={FAZLAR_TOGGLE_HINT}
+        />,
+      ),
+    );
+    const tabLine = populated.split("\n").find((l) => l.includes("Tab: switch")) ?? "";
+    expect(tabLine).toContain("[r: oturumlar]");
+
+    const noProjects = stripAnsi(
+      renderToString(
+        <PhasesPane focus={null} index={0} count={0} progress={null} scrollOffset={0} interactive={true} paneHint={FAZLAR_TOGGLE_HINT} />,
+      ),
+    );
+    const npLine = noProjects.split("\n").find((l) => l.includes("no GSD projects")) ?? "";
+    expect(npLine).toContain("[r: oturumlar]");
+
+    const noRoadmap = stripAnsi(
+      renderToString(
+        <PhasesPane focus={makeFocus()} index={0} count={1} progress={null} scrollOffset={0} interactive={true} paneHint={FAZLAR_TOGGLE_HINT} />,
+      ),
+    );
+    const nrLine = noRoadmap.split("\n").find((l) => l.includes("no roadmap")) ?? "";
+    expect(nrLine).toContain("[r: oturumlar]");
+  });
+
+  it("H2: the non-TTY render is byte-identical with or without paneHint (D-14 / Pitfall 3)", () => {
+    const cases: Array<{ focus: FocusEntry | null; progress: Progress | null; count: number }> = [
+      { focus: makeFocus(), progress: makeProgress(), count: 2 },
+      { focus: null, progress: null, count: 0 },
+      { focus: makeFocus(), progress: null, count: 1 },
+    ];
+    for (const c of cases) {
+      const without = renderToString(
+        <PhasesPane focus={c.focus} index={0} count={c.count} progress={c.progress} scrollOffset={0} interactive={false} />,
+      );
+      const withHint = renderToString(
+        <PhasesPane
+          focus={c.focus}
+          index={0}
+          count={c.count}
+          progress={c.progress}
+          scrollOffset={0}
+          interactive={false}
+          paneHint={FAZLAR_TOGGLE_HINT}
+        />,
+      );
+      expect(withHint).toBe(without);
+      expect(withHint).not.toContain("[r:");
+    }
+  });
 });
 
 describe("port grouping helpers (260927-8ge)", () => {
@@ -1653,5 +1722,221 @@ describe("session label — ConflictBand + PortsPane (NAME-02, D-07/D-08)", () =
     const owned = makePort({ pid: 111, ancestryPids: [111], port: 3000 });
     const g = groupPorts([owned], [row]);
     expect(g[0].heading).toBe("proj-a · main · abcdef01 » serve");
+  });
+});
+
+// ---- Phase 8 (RESUME-04): the OTURUMLAR resume pane ----
+
+/** Fixed clock for SessionsPane renders so the D-13 age column is deterministic. */
+const NOW = 1_800_000_000_000;
+
+/** Minimal ResumeRow fixture: a named, non-live session last touched 3 minutes ago. */
+function makeResume(over: Partial<ResumeRow> = {}): ResumeRow {
+  return {
+    id: "0e3c13a4-4f09-4e33-a9fb-2ab2d0415e58",
+    label: "Alpha",
+    labelKind: "name",
+    folder: "proj",
+    mtimeMs: NOW - 180000,
+    live: false,
+    ...over,
+  };
+}
+
+/** Render with chalk forced to `level` (restored in finally; never depends on FORCE_COLOR). */
+function renderAtLevel(node: ReactElement, level: 0 | 1 | 2 | 3, opts?: { columns?: number }): string {
+  const prev = chalk.level;
+  chalk.level = level;
+  try {
+    return renderToString(node, opts);
+  } finally {
+    chalk.level = prev;
+  }
+}
+
+/** Distinct row ids so every fixture row has a unique key and shortid. */
+function rid(i: number): string {
+  return `${String(i).padStart(8, "0")}-0000-4000-8000-000000000000`;
+}
+
+describe("SessionsPane (OTURUMLAR, Phase 8)", () => {
+  it("exports the heading, toggle hints and live marker constants", () => {
+    expect(SESSIONS_HEADING).toBe("OTURUMLAR");
+    expect(SESSIONS_TOGGLE_HINT).toBe("[r: fazlar]");
+    expect(FAZLAR_TOGGLE_HINT).toBe("[r: oturumlar]");
+    expect(LIVE_MARK).toBe("· live");
+  });
+
+  it("P1: an empty list renders the heading, the [r: fazlar] hint and 'no resumable sessions'", () => {
+    const out = stripAnsi(renderAtLevel(<SessionsPane rows={[]} cursorId={null} scrollOffset={0} now={NOW} />, 0));
+    expect(out).toContain("OTURUMLAR");
+    expect(out).toContain("[r: fazlar]");
+    expect(out).toContain("no resumable sessions");
+  });
+
+  it("P2: rows === null renders the heading and a 'scanning…' line (D-19 brief empty moment)", () => {
+    const out = stripAnsi(renderAtLevel(<SessionsPane rows={null} cursorId={null} scrollOffset={0} now={NOW} />, 0));
+    expect(out).toContain("OTURUMLAR");
+    expect(out).toContain("scanning…");
+  });
+
+  it("P3: one row reads `<label> · <folder> · <age> · <shortid>` plus ` · live` when live (D-18 / D-13 / D-11)", () => {
+    const lines = (rows: ResumeRow[]) =>
+      stripAnsi(renderAtLevel(<SessionsPane rows={rows} cursorId={null} scrollOffset={0} now={NOW} />, 0))
+        .split("\n")
+        .map((l) => l.trimEnd());
+    expect(lines([makeResume()])).toContain("  Alpha · proj · 3m · 0e3c13a4");
+    expect(lines([makeResume({ live: true })])).toContain("  Alpha · proj · 3m · 0e3c13a4 · live");
+    const nonLive = lines([makeResume()]).join("\n");
+    expect(nonLive).not.toContain("live");
+  });
+
+  it("P4: a name is bold, a derived label dim and quoted, (unnamed) dim, the shortid dim (D-08 / D-18)", () => {
+    const named = renderAtLevel(<SessionsPane rows={[makeResume()]} cursorId={null} scrollOffset={0} now={NOW} />, 1);
+    expect(named).toContain(ESC + "[1mAlpha");
+    expect(named).toContain(ESC + "[2m0e3c13a4");
+
+    const derived = renderAtLevel(
+      <SessionsPane
+        rows={[makeResume({ label: "GEO servisi", labelKind: "derived" })]}
+        cursorId={null}
+        scrollOffset={0}
+        now={NOW}
+      />,
+      1,
+    );
+    expect(derived).toContain(ESC + "[2m“GEO servisi”");
+    expect(derived).not.toContain(ESC + "[1mGEO servisi");
+
+    const unnamed = renderAtLevel(
+      <SessionsPane
+        rows={[makeResume({ label: "(unnamed)", labelKind: "unnamed" })]}
+        cursorId={null}
+        scrollOffset={0}
+        now={NOW}
+      />,
+      1,
+    );
+    expect(unnamed).toContain(ESC + "[2m(unnamed)");
+  });
+
+  it("P5: the pane sets no foreground colour at all, at any chalk level (D-08 reserved palette)", () => {
+    const rows = [
+      makeResume({ id: rid(1) }),
+      makeResume({ id: rid(2), label: "derived one", labelKind: "derived" }),
+      makeResume({ id: rid(3), label: "(unnamed)", labelKind: "unnamed" }),
+      makeResume({ id: rid(4), live: true }),
+    ];
+    const raw = renderAtLevel(
+      <SessionsPane rows={rows} cursorId={rid(2)} scrollOffset={0} status="copied ✓" now={NOW} />,
+      3,
+    );
+    expect(raw).toContain(ESC + "["); // sanity: styling is actually emitted at level 3
+    expect(raw).not.toMatch(new RegExp(ESC + "\\[(?:3[0-8]|9[0-7])(?:;|m)"));
+  });
+
+  it("P6: the cursor row starts with `▸ `, every other row with two spaces; no cursor → no ▸ (D-15)", () => {
+    const rows = [
+      makeResume({ id: rid(1), label: "first" }),
+      makeResume({ id: rid(2), label: "second" }),
+      makeResume({ id: rid(3), label: "third" }),
+    ];
+    const lines = stripAnsi(renderAtLevel(<SessionsPane rows={rows} cursorId={rid(2)} scrollOffset={0} now={NOW} />, 0)).split("\n");
+    const line = (label: string) => lines.find((l) => l.includes(label + " · ")) ?? "";
+    expect(line("second").startsWith("▸ ")).toBe(true);
+    expect(line("first").startsWith("  ")).toBe(true);
+    expect(line("third").startsWith("  ")).toBe(true);
+
+    const none = stripAnsi(renderAtLevel(<SessionsPane rows={rows} cursorId={null} scrollOffset={0} now={NOW} />, 0));
+    expect(none).not.toContain("▸");
+  });
+
+  it("P7: renders a RESUME_VISIBLE_ROWS window from the clamped offset with a ▲/▼ i–j/total indicator", () => {
+    const rows = Array.from({ length: 25 }, (_, i) => makeResume({ id: rid(i), label: `r${i}`, mtimeMs: NOW - (i + 1) * 60000 }));
+    const render = (offset: number) =>
+      stripAnsi(renderAtLevel(<SessionsPane rows={rows} cursorId={null} scrollOffset={offset} now={NOW} />, 0));
+    const has = (out: string, label: string) => out.includes(`  ${label} · `);
+
+    const head = render(0);
+    for (let i = 0; i <= 9; i++) expect(has(head, `r${i}`)).toBe(true);
+    expect(has(head, "r10")).toBe(false);
+    expect(head).toContain("▼15");
+    expect(head).toContain("1–10/25");
+    expect(head).not.toContain("▲");
+
+    const tail = render(15);
+    for (let i = 15; i <= 24; i++) expect(has(tail, `r${i}`)).toBe(true);
+    expect(has(tail, "r14")).toBe(false);
+    expect(tail).toContain("▲15");
+    expect(tail).toContain("16–25/25");
+    expect(tail).not.toContain("▼");
+
+    expect(render(99)).toBe(tail); // an overlarge offset clamps to the tail window
+  });
+
+  it("P8: a wide label never wraps — each row stays one line at 40 columns (T-08-18 / Pitfall 4)", () => {
+    const wide = "漢".repeat(16) + "…"; // 32 cells of CJK + the cap glyph
+    const rows = [
+      makeResume({ id: rid(1), label: wide, labelKind: "derived", folder: "mvp-dashboard-be…" }),
+      makeResume({ id: rid(2), label: wide, labelKind: "derived", folder: "mvp-dashboard-be…" }),
+    ];
+    const out = stripAnsi(
+      renderAtLevel(<SessionsPane rows={rows} cursorId={rid(1)} scrollOffset={0} now={NOW} />, 0, { columns: 40 }),
+    );
+    const lines = out.split("\n").filter((l) => l.trim().length > 0);
+    expect(lines.filter((l) => l.includes(" · ")).length).toBe(2);
+    expect(lines.length).toBe(3); // heading + 2 rows, no wrapped continuation lines
+  });
+
+  it("P9: control bytes in label and folder never reach the terminal (T-08-01)", () => {
+    const raw = renderAtLevel(
+      <SessionsPane
+        rows={[makeResume({ label: "ev" + ESC + "[2J" + String.fromCharCode(0x9b) + "il", folder: "fo" + ESC + "ld" })]}
+        cursorId={null}
+        scrollOffset={0}
+        status={"st" + ESC + "]0;x" + String.fromCharCode(7) + "atus"}
+        now={NOW}
+      />,
+      0,
+    );
+    for (const ch of raw) {
+      const cp = ch.codePointAt(0) ?? 0;
+      if (ch === "\n") continue;
+      expect(cp < 0x20 || (cp >= 0x80 && cp <= 0x9f)).toBe(false);
+    }
+    expect(raw).toContain("ev[2Jil");
+    expect(raw).toContain("fold");
+  });
+
+  it("P10: a status renders as the last line; a null status adds no line", () => {
+    const withStatus = stripAnsi(
+      renderAtLevel(<SessionsPane rows={[makeResume()]} cursorId={null} scrollOffset={0} status="copied ✓" now={NOW} />, 0),
+    )
+      .split("\n")
+      .filter((l) => l.trim().length > 0);
+    expect(withStatus[withStatus.length - 1].trim()).toBe("copied ✓");
+
+    const without = stripAnsi(
+      renderAtLevel(<SessionsPane rows={[makeResume()]} cursorId={null} scrollOffset={0} status={null} now={NOW} />, 0),
+    );
+    expect(without).not.toContain("copied");
+    expect(without.split("\n").filter((l) => l.trim().length > 0).length).toBe(2); // heading + 1 row
+  });
+
+  it("P11: no last-prompt text and no (you) marker in the pane (D-05 / D-07)", () => {
+    const out = stripAnsi(
+      renderAtLevel(
+        <SessionsPane
+          rows={[makeResume({ lastPrompt: "where did I leave off", live: true })]}
+          cursorId={null}
+          scrollOffset={0}
+          now={NOW}
+        />,
+        0,
+      ),
+    );
+    expect(out).not.toContain("where did I leave off");
+    expect(out).not.toContain("last:");
+    expect(out).not.toContain("(you)");
   });
 });
