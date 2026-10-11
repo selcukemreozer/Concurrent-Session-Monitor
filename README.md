@@ -88,6 +88,30 @@ This opens a live, full-screen panel that redraws as sessions come and go. Press
 Keep the panel running in its own terminal while you work in one or more Claude
 Code sessions elsewhere.
 
+## Panel keys
+
+The panel reads the keyboard only when it runs in a real terminal (a TTY).
+Otherwise it shows `⌨ keys off` and stays on FAZLAR.
+
+- `Tab` / `Shift+Tab`: switch the project shown in the FAZLAR (GSD phases) pane.
+- `↑` / `↓`, `PgUp` / `PgDn`: scroll FAZLAR, or move the `▸` cursor in
+  OTURUMLAR.
+- `r`: swap the right-hand pane between FAZLAR and OTURUMLAR (the
+  recent-sessions list that `/csm-resume` prints). The panel always starts on
+  FAZLAR, and the OTURUMLAR scan runs only while that pane is visible, every
+  `CSM_RESUME_SCAN_MS`.
+- `Enter` (OTURUMLAR): copy `claude --resume <id>` for the selected session to
+  the clipboard. If the copy fails, the panel shows the command instead.
+- `o` (OTURUMLAR): open a new terminal window in the session's folder that runs
+  `claude --resume <id>`. The command is always copied first. Terminal and
+  iTerm2 are driven through AppleScript (macOS asks once for permission to
+  control them). Warp is driven through a tab config the panel writes to
+  `~/.warp/tab_configs/csm-resume.toml`. That file is rewritten on each use,
+  removed when the panel exits, and shows up in Warp's new-tab menu meanwhile.
+  In any other terminal, or on any failure, `o` just copies. On a `live` row
+  `o` never opens a window: it copies and warns that the session is still open.
+- `Ctrl+C`: quit and restore the terminal.
+
 ## Slash commands
 
 Use these from inside any Claude Code session:
@@ -112,6 +136,18 @@ Use these from inside any Claude Code session:
   running it tells you to start one with `csm`. With more than one panel open,
   the most recently started one wins. It only focuses; nothing is typed or sent
   anywhere.
+- `/csm-resume`: list recent Claude Code sessions from every project, newest
+  first, including ones that crashed or froze. Each row shows the session's name
+  (or a quoted hint taken from its transcript), its project folder, how long ago
+  it was last active, and a copy-paste `claude --resume <id>` line. It only
+  reads the transcripts under `~/.claude/projects` (no hook; nothing is
+  changed), and it skips headless SDK sessions and sessions that never got a
+  reply. The session you run it from is marked `(you)`. A session that is still
+  open is marked `live`; resuming it in a second terminal would make two
+  processes write one transcript. Run the resume line from the session's own
+  folder: Claude Code 2.1.223 or newer finds the session from any folder, but
+  resumes it in the folder you run it from. Only you can run it; Claude does
+  not invoke it on its own.
 
 ## Configuration
 
@@ -134,6 +170,7 @@ back to the default. Times are in milliseconds.
 | `CSM_PORT_SCAN_MS` | `2500` (2.5 s) | Cadence of the listening-port scan feeding the PORTS pane. |
 | `CSM_PHASE_SCAN_MS` | `4000` (4 s) | Cadence of the GSD phase-progress scan feeding the FAZLAR pane. |
 | `CSM_BRANCH_SCAN_MS` | `1500` (1.5 s) | Cadence of the live current-branch scan that derives each session's checked-out branch from its working directory. |
+| `CSM_RESUME_SCAN_MS` | `10000` (10 s) | Cadence of the recent-sessions scan feeding the OTURUMLAR pane. It runs only while OTURUMLAR is visible (press `r`). |
 | `CSM_GSD_TOOLS` | auto-detected | Absolute path to the `gsd-tools` binary used by the phases pane. Set it to override auto-detection. |
 
 ### Reserved (not yet wired)
