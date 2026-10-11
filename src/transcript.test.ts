@@ -4,14 +4,24 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
+  HEAD_BYTES,
+  MAX_SCAN_LINE,
   MAX_TITLE_LINE,
+  SESSION_UUID_PATTERN,
   TAIL_BYTES,
+  TRIVIAL_COMMANDS,
   isAllowedTranscriptPath,
+  projectRoots,
+  promptLabel,
   pruneTranscriptTitleCache,
+  readFirstPromptAsync,
   readTailCustomTitle,
+  readTailFactsAsync,
   readTranscriptTitle,
   resetTranscriptTitleCache,
   scanCustomTitle,
+  scanFirstPrompt,
+  scanTailFacts,
 } from "./transcript.js";
 
 // 07-03 (D-04): bounded, change-gated, path-guarded transcript-tail reader for
@@ -23,6 +33,7 @@ const ID = "11111111-2222-3333-4444-555555555555";
 
 let raw: string;
 const extraDirs: string[] = [];
+const ORIG_HOME = process.env.HOME;
 
 beforeEach(() => {
   raw = fs.mkdtempSync(path.join(os.tmpdir(), "csm-tr-"));
@@ -32,6 +43,8 @@ beforeEach(() => {
 afterEach(() => {
   resetTranscriptTitleCache();
   delete process.env.CLAUDE_CONFIG_DIR;
+  if (ORIG_HOME === undefined) delete process.env.HOME;
+  else process.env.HOME = ORIG_HOME;
   fs.rmSync(raw, { recursive: true, force: true });
   while (extraDirs.length > 0) {
     const d = extraDirs.pop();
@@ -334,5 +347,325 @@ describe("cache pruning", () => {
     const p = primeStale();
     pruneTranscriptTitleCache(new Set([ID]));
     expect(readTranscriptTitle(ID, p)?.title).toBe("Aaaa");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 08-01 (RESUME-01/02 inputs): tail facts, prompt label, first prompt, and the
+// bounded + guarded async window readers.
+// ---------------------------------------------------------------------------
+
+/** One padding line: an attachment line with no entrypoint, under 4096 chars. */
+const PAD_LINE = JSON.stringify({ type: "attachment", sessionId: ID, attachment: { x: "x".repeat(1000) } });
+
+function padding(kib: number): string[] {
+  const out: string[] = [];
+  let bytes = 0;
+  while (bytes < kib * 1024) {
+    out.push(PAD_LINE);
+    bytes += PAD_LINE.length + 1;
+  }
+  return out;
+}
+
+/** A carrier line (user/assistant/attachment/system) with entrypoint + cwd. */
+function carrier(type: string, entrypoint: string, cwd: string, extra: Record<string, unknown> = {}): string {
+  return JSON.stringify({ type, entrypoint, cwd, sessionId: ID, ...extra });
+}
+
+/** A metadata line such as ai-title / last-prompt / custom-title. */
+function meta(type: string, field: string, value: unknown, sid: string = ID): string {
+  return JSON.stringify({ type, [field]: value, sessionId: sid });
+}
+
+/** A user prompt line with string content. */
+function userText(text: string, extra: Record<string, unknown> = {}): string {
+  return JSON.stringify({ type: "user", message: { content: text }, sessionId: ID, ...extra });
+}
+
+/** Write raw/projects/<slug>/<ID>.jsonl from lines plus optional padding. */
+function file(
+  lines: unknown[],
+  opts: { slug?: string; padKiB?: number; padAt?: "head" | "tail"; trailingNewline?: boolean } = {},
+): string {
+  const strs = lines.map((l) => (typeof l === "string" ? l : JSON.stringify(l)));
+  const pad = opts.padKiB ? padding(opts.padKiB) : [];
+  const all = opts.padAt === "tail" ? [...strs, ...pad] : [...pad, ...strs];
+  const p = transcriptPath(ID, opts.slug ?? "p");
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, all.join(NL) + (opts.trailingNewline === false ? "" : NL));
+  return p;
+}
+
+function wrapper(parts: Array<"name" | "message" | "args">, name: string, args?: string, trailing = ""): string {
+  const tag: Record<string, string> = {
+    name: `<command-name>${name}</command-name>`,
+    message: `<command-message>${name.replace(/^\//, "")}</command-message>`,
+    args: `<command-args>${args ?? ""}</command-args>`,
+  };
+  return parts.map((p) => tag[p]).join(NL) + trailing;
+}
+
+describe("phase 8 constants", () => {
+  it("pins the head budget and the scan line cap", () => {
+    expect(HEAD_BYTES).toBe(262144);
+    expect(MAX_SCAN_LINE).toBe(65536);
+  });
+});
+
+describe("scanTailFacts", () => {
+  it("F1: extracts every fact from one tail window", () => {
+    const b = buf(
+      body([
+        carrier("user", "cli", "/a/proj"),
+        carrier("assistant", "cli", "/a/proj"),
+        meta("custom-title", "customTitle", "Name"),
+        meta("ai-title", "aiTitle", "AI"),
+        meta("last-prompt", "lastPrompt", "lp1"),
+        JSON.stringify({ type: "last-prompt", leafUuid: "abc", sessionId: ID }),
+      ]),
+    );
+    expect(scanTailFacts(b, true, ID)).toEqual({
+      entrypoint: "cli",
+      cwd: "/a/proj",
+      hasAssistant: true,
+      customTitle: "Name",
+      aiTitle: "AI",
+      lastPrompt: "lp1",
+    });
+  });
+
+  it("F2: entrypoint and cwd are last-wins", () => {
+    const b = buf(body([carrier("user", "cli", "/a"), carrier("attachment", "sdk-cli", "/b")]));
+    const f = scanTailFacts(b, true, ID);
+    expect(f.entrypoint).toBe("sdk-cli");
+    expect(f.cwd).toBe("/b");
+  });
+
+  it("F3: hasAssistant needs a top-level assistant type, not an escaped mention", () => {
+    expect(scanTailFacts(buf(body([carrier("user", "cli", "/a")])), true, ID).hasAssistant).toBe(false);
+    const escaped = userText(carrier("assistant", "cli", "/a"));
+    expect(scanTailFacts(buf(body([carrier("user", "cli", "/a"), escaped])), true, ID).hasAssistant).toBe(false);
+  });
+
+  it("F4: last ai-title wins, foreign sessionId ignored, missing sessionId accepted", () => {
+    const b1 = buf(body([meta("ai-title", "aiTitle", "One"), meta("ai-title", "aiTitle", "Two")]));
+    expect(scanTailFacts(b1, true, ID).aiTitle).toBe("Two");
+    const b2 = buf(body([meta("ai-title", "aiTitle", "Mine"), meta("ai-title", "aiTitle", "Theirs", "other-id")]));
+    expect(scanTailFacts(b2, true, ID).aiTitle).toBe("Mine");
+    const noSid = JSON.stringify({ type: "ai-title", aiTitle: "NoSid" });
+    expect(scanTailFacts(buf(body([noSid])), true, ID).aiTitle).toBe("NoSid");
+  });
+
+  it("F5: skips an over-long metadata line and an over-long carrier line", () => {
+    const longMeta = meta("ai-title", "aiTitle", "a".repeat(5000));
+    expect(longMeta.length).toBeGreaterThan(MAX_TITLE_LINE);
+    expect(scanTailFacts(buf(body([longMeta])), true, ID).aiTitle).toBeUndefined();
+    const longCarrier = carrier("user", "sdk-cli", "/x", { message: { content: "y".repeat(70000) } });
+    expect(longCarrier.length).toBeGreaterThan(MAX_SCAN_LINE);
+    const f = scanTailFacts(buf(body([carrier("user", "cli", "/a"), longCarrier])), true, ID);
+    expect(f.entrypoint).toBe("cli");
+    expect(f.cwd).toBe("/a");
+  });
+
+  it("F6: torn lines and junk are ignored", () => {
+    const frag = "xx" + carrier("user", "frag", "/frag");
+    const b = buf(frag + NL + carrier("user", "cli", "/a") + NL + carrier("user", "torn", "/t"));
+    const f = scanTailFacts(b, false, ID);
+    expect(f.entrypoint).toBe("cli");
+    expect(f.cwd).toBe("/a");
+    const junk = buf(
+      body([meta("ai-title", "aiTitle", 5), "null", '{"type":"ai-title","aiTitle":"Broken"', carrier("user", "cli", "/a")]),
+    );
+    const j = scanTailFacts(junk, true, ID);
+    expect(j.aiTitle).toBeUndefined();
+    expect(j.entrypoint).toBe("cli");
+  });
+});
+
+describe("promptLabel", () => {
+  it("L1: string content, first text part, and the non-prompt cases", () => {
+    expect(promptLabel({ type: "user", message: { content: "fix the bug" } })).toBe("fix the bug");
+    expect(
+      promptLabel({ type: "user", message: { content: [{ type: "image" }, { type: "text", text: "look" }] } }),
+    ).toBe("look");
+    expect(
+      promptLabel({ type: "user", message: { content: [{ type: "tool_result", content: "x" }] } }),
+    ).toBeUndefined();
+    expect(promptLabel({ type: "user", isMeta: true, message: { content: "meta" } })).toBeUndefined();
+    expect(promptLabel({ type: "assistant", message: { content: "hi" } })).toBeUndefined();
+    expect(promptLabel("user")).toBeUndefined();
+    expect(promptLabel(null)).toBeUndefined();
+  });
+
+  it("L2: noise prefixes yield no label", () => {
+    const prefixes = [
+      "<local-command-stdout>",
+      "<local-command-stderr>",
+      "<command-caveat>",
+      "<system-reminder>",
+      "<bash-input>",
+      "<bash-stdout>",
+      "<bash-stderr>",
+    ];
+    for (const pre of prefixes) {
+      expect(promptLabel({ type: "user", message: { content: `${pre}x` } })).toBeUndefined();
+      expect(promptLabel({ type: "user", message: { content: `  ${NL}${pre}x` } })).toBeUndefined();
+    }
+  });
+
+  it("L3: a slash-command wrapper renders as /name args in every tag order", () => {
+    const u = (text: string) => ({ type: "user", message: { content: text } });
+    expect(promptLabel(u(wrapper(["name", "message", "args"], "/gsd-discuss-phase", "8")))).toBe("/gsd-discuss-phase 8");
+    expect(promptLabel(u(wrapper(["message", "name", "args"], "/gsd-discuss-phase", "8")))).toBe("/gsd-discuss-phase 8");
+    expect(
+      promptLabel(u(wrapper(["message", "name", "args"], "/gsd-discuss-phase", "8", `${NL}more text`))),
+    ).toBe("/gsd-discuss-phase 8");
+    expect(promptLabel(u(wrapper(["message", "name"], "/gsd-discuss-phase")))).toBe("/gsd-discuss-phase");
+    expect(promptLabel(u(wrapper(["name", "message"], "gsd-discuss-phase")))).toBe("/gsd-discuss-phase");
+  });
+
+  it("L4: trivial built-in commands yield no label", () => {
+    const u = (text: string) => ({ type: "user", message: { content: text } });
+    for (const name of ["clear", "reload-plugins", "model"]) {
+      expect(promptLabel(u(wrapper(["name", "message", "args"], `/${name}`, "")))).toBeUndefined();
+    }
+    expect([...TRIVIAL_COMMANDS].sort()).toEqual(
+      [
+        "clear",
+        "reload-plugins",
+        "model",
+        "effort",
+        "compact",
+        "resume",
+        "exit",
+        "config",
+        "help",
+        "status",
+        "cost",
+        "login",
+        "logout",
+      ].sort(),
+    );
+  });
+});
+
+describe("scanFirstPrompt", () => {
+  it("H1: returns the first real prompt after attachments, meta and noise", () => {
+    const b = buf(
+      body([
+        PAD_LINE,
+        PAD_LINE,
+        userText("caveat", { isMeta: true }),
+        userText(wrapper(["name", "message", "args"], "/clear", "")),
+        userText("<local-command-stdout>ok</local-command-stdout>"),
+        userText("real prompt"),
+        userText("second"),
+      ]),
+    );
+    expect(scanFirstPrompt(b, ID)).toBe("real prompt");
+  });
+
+  it("H2: foreign sessionId, over-long lines and a torn last line are skipped", () => {
+    const foreign = JSON.stringify({ type: "user", message: { content: "theirs" }, sessionId: "other-id" });
+    expect(scanFirstPrompt(buf(body([foreign, userText("mine")])), ID)).toBe("mine");
+    const long = userText("z".repeat(70000));
+    expect(long.length).toBeGreaterThan(MAX_SCAN_LINE);
+    expect(scanFirstPrompt(buf(body([long, userText("after")])), ID)).toBe("after");
+    expect(scanFirstPrompt(buf(userText("torn")), ID)).toBeUndefined();
+  });
+});
+
+describe("async window readers", () => {
+  it("A1: readTailFactsAsync classifies from the tail and reports size and mtime", async () => {
+    const p = file([carrier("user", "sdk-cli", "/sdk")], { padKiB: 300, padAt: "head" });
+    const real = fs.realpathSync(p);
+    const st = fs.statSync(real);
+    expect(st.size).toBeGreaterThan(300 * 1024);
+    const r = await readTailFactsAsync(real, ID);
+    expect(r?.entrypoint).toBe("sdk-cli");
+    expect(r?.cwd).toBe("/sdk");
+    expect(r?.size).toBe(st.size);
+    expect(r?.mtimeMs).toBe(st.mtimeMs);
+  });
+
+  it("A2: bounded: a fact outside the tail window is never seen", async () => {
+    const p = file([meta("ai-title", "aiTitle", "Head")], { padKiB: 310, padAt: "tail" });
+    const r = await readTailFactsAsync(fs.realpathSync(p), ID);
+    expect(r).toBeDefined();
+    expect(r?.aiTitle).toBeUndefined();
+
+    const q = file([meta("ai-title", "aiTitle", "Near")], { padKiB: 2, padAt: "tail" });
+    const real = fs.realpathSync(q);
+    expect((await readTailFactsAsync(real, ID))?.aiTitle).toBe("Near");
+    const small = await readTailFactsAsync(real, ID, 1024);
+    expect(small).toBeDefined();
+    expect(small?.aiTitle).toBeUndefined();
+  });
+
+  it("A3: readFirstPromptAsync reads one bounded head window", async () => {
+    const p1 = file([userText("hello there")], { padKiB: 100, padAt: "head" });
+    expect(await readFirstPromptAsync(fs.realpathSync(p1), ID)).toEqual({ prompt: "hello there", final: true });
+
+    const p2 = file([userText("too late")], { padKiB: 300, padAt: "head" });
+    expect(await readFirstPromptAsync(fs.realpathSync(p2), ID)).toEqual({ prompt: undefined, final: true });
+
+    const p3 = file([userText("meta only", { isMeta: true })]);
+    expect(await readFirstPromptAsync(fs.realpathSync(p3), ID)).toEqual({ prompt: undefined, final: false });
+  });
+
+  it("A4: a FIFO never blocks either async reader", { timeout: 3000 }, async () => {
+    const p = transcriptPath(ID);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    execFileSync("mkfifo", [p]);
+    const real = fs.realpathSync(p);
+    expect(await readTailFactsAsync(real, ID)).toBeUndefined();
+    expect(await readFirstPromptAsync(real, ID)).toBeUndefined();
+  });
+
+  it("A5: symlink, directory and missing paths resolve undefined without rejecting", async () => {
+    const target = file([userText("hi"), carrier("user", "cli", "/a")]);
+    const link = path.join(raw, "projects", "p", "link.jsonl");
+    fs.symlinkSync(target, link);
+    await expect(readTailFactsAsync(link, ID)).resolves.toBeUndefined();
+    await expect(readFirstPromptAsync(link, ID)).resolves.toBeUndefined();
+
+    const dir = path.join(raw, "projects", "dir");
+    fs.mkdirSync(dir, { recursive: true });
+    await expect(readTailFactsAsync(dir, ID)).resolves.toBeUndefined();
+    await expect(readFirstPromptAsync(dir, ID)).resolves.toBeUndefined();
+
+    const missing = path.join(raw, "projects", "p", "missing.jsonl");
+    await expect(readTailFactsAsync(missing, ID)).resolves.toBeUndefined();
+    await expect(readFirstPromptAsync(missing, ID)).resolves.toBeUndefined();
+  });
+
+  it("A6: explicit roots replace the default allowed roots", () => {
+    const other = fs.mkdtempSync(path.join(os.tmpdir(), "csm-tr-roots-"));
+    extraDirs.push(other);
+    const otherRoot = path.join(other, "projects");
+    const inOther = path.join(otherRoot, "p", `${ID}.jsonl`);
+    fs.mkdirSync(path.dirname(inOther), { recursive: true });
+    fs.writeFileSync(inOther, body([userText("x")]));
+    expect(isAllowedTranscriptPath(ID, inOther, [otherRoot])).toBe(fs.realpathSync(inOther));
+
+    const inDefault = file([userText("y")]);
+    expect(isAllowedTranscriptPath(ID, inDefault)).toBe(fs.realpathSync(inDefault));
+    expect(isAllowedTranscriptPath(ID, inDefault, [otherRoot])).toBeUndefined();
+  });
+
+  it("A7: projectRoots deduplicates the realpath'd roots", () => {
+    process.env.HOME = raw;
+    process.env.CLAUDE_CONFIG_DIR = path.join(raw, ".claude");
+    fs.mkdirSync(path.join(raw, ".claude", "projects"), { recursive: true });
+    expect(projectRoots()).toEqual([fs.realpathSync(path.join(raw, ".claude", "projects"))]);
+  });
+
+  it("A8: SESSION_UUID_PATTERN accepts only a lowercase UUID", () => {
+    expect(SESSION_UUID_PATTERN.test(ID)).toBe(true);
+    expect(SESSION_UUID_PATTERN.test("-1111111-2222-3333-4444-555555555555")).toBe(false);
+    expect(SESSION_UUID_PATTERN.test(ID.toUpperCase().replace(/1/g, "A"))).toBe(false);
+    expect(SESSION_UUID_PATTERN.test("notes")).toBe(false);
+    expect(SESSION_UUID_PATTERN.test(ID + NL)).toBe(false);
   });
 });
