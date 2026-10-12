@@ -5,6 +5,7 @@ import * as path from "node:path";
 import {
   FOLDER_CAP,
   LAST_PROMPT_CAP,
+  MIN_RESUME_SCAN_MS,
   RESUME_LIST_N,
   RESUME_VISIBLE_ROWS,
   discoverSessions,
@@ -110,6 +111,42 @@ function writeSession(slug: string, sessionId: string, spec: Spec = {}): string 
   const p = path.join(dir, `${sessionId}.jsonl`);
   fs.writeFileSync(p, lines.join(NL) + NL);
   if (spec.mtimeSec !== undefined) fs.utimesSync(p, spec.mtimeSec, spec.mtimeSec);
+  return p;
+}
+
+type Segment = { cwd: string; padBefore?: number };
+
+/**
+ * 08-09 (WR-04): a transcript whose cwd drifts. Each segment writes
+ * `padBefore` bytes of cwd-less attachment lines, then one user line (a real
+ * prompt) and one assistant line carrying that cwd (entrypoint "cli").
+ */
+function writeDrift(
+  slug: string,
+  sessionId: string,
+  segments: Segment[],
+  extra: { aiTitle?: string; mtimeSec?: number } = {},
+): string {
+  const dir = path.join(root, slug);
+  fs.mkdirSync(dir, { recursive: true });
+  const lines: string[] = [];
+  segments.forEach((seg, i) => {
+    const chunk = "x".repeat(1000);
+    for (let b = 0; b < (seg.padBefore ?? 0); b += 1000) {
+      lines.push(JSON.stringify({ type: "attachment", sessionId, attachment: { content: chunk } }));
+    }
+    const base = { sessionId, entrypoint: "cli", cwd: seg.cwd };
+    lines.push(JSON.stringify({ ...base, type: "user", message: { role: "user", content: `step ${i + 1}` } }));
+    lines.push(
+      JSON.stringify({ ...base, type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "ok" }] } }),
+    );
+  });
+  if (extra.aiTitle !== undefined) {
+    lines.push(JSON.stringify({ type: "ai-title", aiTitle: extra.aiTitle, sessionId }));
+  }
+  const p = path.join(dir, `${sessionId}.jsonl`);
+  fs.writeFileSync(p, lines.join(NL) + NL);
+  if (extra.mtimeSec !== undefined) fs.utimesSync(p, extra.mtimeSec, extra.mtimeSec);
   return p;
 }
 
@@ -318,6 +355,61 @@ describe("discoverSessions", () => {
     expect(rows[0]).toMatchObject({ id: id(1), mtimeMs: 500_000, folder: "new", cwd: "/work/new" });
   });
 
+  it("D18 (WR-04) a drifting session keeps the slug-matched head cwd as folder and cwd", async () => {
+    writeDrift("-work-alpha", id(1), [{ cwd: "/work/alpha" }, { cwd: "/work/alpha/frontend" }, { cwd: "/work/other-repo" }], {
+      mtimeSec: 100,
+    });
+    const rows = await scan();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: id(1), cwd: "/work/alpha", folder: "alpha", label: "step 1" });
+  });
+
+  it("D19 (WR-04) a slug-matching cwd seen only beyond the head window comes from the tail", async () => {
+    writeDrift("-work-real", id(1), [{ cwd: "/scratch/ws-1" }, { cwd: "/work/real", padBefore: 300 * 1024 }], {
+      mtimeSec: 200,
+    });
+    // The tail's first slug match wins over a later drift inside the tail.
+    writeDrift(
+      "-work-real",
+      id(2),
+      [{ cwd: "/scratch/ws-1" }, { cwd: "/work/real", padBefore: 300 * 1024 }, { cwd: "/work/real/docs" }],
+      { mtimeSec: 100 },
+    );
+    const rows = await scan();
+    expect(rows[0]).toMatchObject({ id: id(1), cwd: "/work/real", folder: "real" });
+    expect(rows[1]).toMatchObject({ id: id(2), cwd: "/work/real", folder: "real" });
+  });
+
+  it("D20 (WR-04) with no slug match anywhere the first head cwd is used", async () => {
+    writeDrift("proj", id(1), [{ cwd: "/elsewhere/a" }, { cwd: "/elsewhere/b" }], { mtimeSec: 100 });
+    const rows = await scan();
+    expect(rows[0]).toMatchObject({ cwd: "/elsewhere/a", folder: "a" });
+  });
+
+  it("D21 (WR-04) among several slug-matching cwds the head-first occurrence wins", async () => {
+    writeDrift("-work-a-b", id(1), [{ cwd: "/work/a/b" }, { cwd: "/work/a-b" }], { mtimeSec: 100 });
+    const rows = await scan();
+    expect(rows[0]).toMatchObject({ cwd: "/work/a/b", folder: "b" });
+  });
+
+  it("D22 (WR-04) a later drift appended after a final head scan keeps the cached head cwd", async () => {
+    const p = writeDrift("-work-alpha", id(1), [{ cwd: "/work/alpha" }, { cwd: "/work/alpha/frontend" }], {
+      mtimeSec: 100,
+    });
+    expect((await scan())[0]).toMatchObject({ cwd: "/work/alpha", folder: "alpha" });
+    const base = { sessionId: id(1), entrypoint: "cli", cwd: "/work/other-repo" };
+    fs.appendFileSync(
+      p,
+      JSON.stringify({ ...base, type: "user", message: { role: "user", content: "later" } }) +
+        NL +
+        JSON.stringify({ ...base, type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "ok" }] } }) +
+        NL,
+    );
+    fs.utimesSync(p, 200, 200);
+    const rows = await scan();
+    expect(rows[0]).toMatchObject({ cwd: "/work/alpha", folder: "alpha", mtimeMs: 200_000, label: "step 1" });
+  });
+
   it("D17 missing or non-directory roots resolve [] without rejecting", async () => {
     const file = path.join(tmp, "plain.txt");
     fs.writeFileSync(file, "x");
@@ -364,6 +456,32 @@ describe("resumeScanMs (D-19)", () => {
     expect(resumeScanMs()).toBe(10000);
     process.env.CSM_RESUME_SCAN_MS = "2500";
     expect(resumeScanMs()).toBe(2500);
+  });
+});
+
+describe("resumeScanMs floor (WR-05)", () => {
+  const ORIG = process.env.CSM_RESUME_SCAN_MS;
+  afterEach(() => {
+    if (ORIG === undefined) delete process.env.CSM_RESUME_SCAN_MS;
+    else process.env.CSM_RESUME_SCAN_MS = ORIG;
+  });
+
+  it("F3 never returns less than MIN_RESUME_SCAN_MS", () => {
+    expect(MIN_RESUME_SCAN_MS).toBe(1000);
+    const cases: Array<[string | undefined, number]> = [
+      ["0", 1000],
+      ["500", 1000],
+      ["999", 1000],
+      ["1000", 1000],
+      ["2500", 2500],
+      [undefined, 10000],
+      ["abc", 10000],
+    ];
+    for (const [value, want] of cases) {
+      if (value === undefined) delete process.env.CSM_RESUME_SCAN_MS;
+      else process.env.CSM_RESUME_SCAN_MS = value;
+      expect(resumeScanMs()).toBe(want);
+    }
   });
 });
 
