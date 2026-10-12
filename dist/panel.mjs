@@ -26450,7 +26450,7 @@ var require_websocket = __commonJS({
     var http = __require("http");
     var net = __require("net");
     var tls = __require("tls");
-    var { randomBytes, createHash } = __require("crypto");
+    var { randomBytes: randomBytes2, createHash } = __require("crypto");
     var { Duplex, Readable } = __require("stream");
     var { URL: URL2 } = __require("url");
     var PerMessageDeflate2 = require_permessage_deflate();
@@ -26988,7 +26988,7 @@ var require_websocket = __commonJS({
         }
       }
       const defaultPort = isSecure ? 443 : 80;
-      const key = randomBytes(16).toString("base64");
+      const key = randomBytes2(16).toString("base64");
       const request = isSecure ? https.request : http.request;
       const protocolSet = /* @__PURE__ */ new Set();
       let perMessageDeflate;
@@ -38029,6 +38029,10 @@ var META_MARKERS = ['"type":"custom-title"', '"type":"ai-title"', '"type":"last-
 var CARRIER_MARKER = '"entrypoint":"';
 var ASSISTANT_MARKER = '"type":"assistant"';
 var USER_MARKER = '"type":"user"';
+var CWD_MARKER = '"cwd":"';
+function projectSlug(cwd2) {
+  return cwd2.replace(/[^a-zA-Z0-9]/g, "-");
+}
 function windowLines(buf, atBoundary) {
   let first = 0;
   if (!atBoundary) {
@@ -38060,7 +38064,7 @@ function scanCustomTitle(buf, atBoundary, sessionId) {
   }
   return found;
 }
-function scanTailFacts(buf, atBoundary, sessionId) {
+function scanTailFacts(buf, atBoundary, sessionId, slug) {
   const f = { hasAssistant: false };
   for (const line of windowLines(buf, atBoundary)) {
     if (line.length === 0 || line.length > MAX_SCAN_LINE) continue;
@@ -38086,7 +38090,12 @@ function scanTailFacts(buf, atBoundary, sessionId) {
     }
     if (o.type === "assistant") f.hasAssistant = true;
     if (typeof o.entrypoint === "string") f.entrypoint = o.entrypoint;
-    if (typeof o.cwd === "string") f.cwd = o.cwd;
+    if (typeof o.cwd === "string") {
+      f.cwd = o.cwd;
+      if (slug !== void 0 && f.slugCwd === void 0 && o.cwd.length > 0 && projectSlug(o.cwd) === slug) {
+        f.slugCwd = o.cwd;
+      }
+    }
   }
   return f;
 }
@@ -38125,10 +38134,12 @@ function promptLabel(o) {
   }
   return t;
 }
-function scanFirstPrompt(buf, sessionId) {
+function scanHeadFacts(buf, sessionId, slug) {
+  const f = {};
   for (const line of windowLines(buf, true)) {
     if (line.length === 0 || line.length > MAX_SCAN_LINE) continue;
-    if (!line.includes(USER_MARKER)) continue;
+    const isUser = line.includes(USER_MARKER);
+    if (!isUser && !line.includes(CWD_MARKER)) continue;
     let parsed;
     try {
       parsed = JSON.parse(line);
@@ -38136,12 +38147,19 @@ function scanFirstPrompt(buf, sessionId) {
       continue;
     }
     if (parsed === null || typeof parsed !== "object") continue;
-    const sid = parsed.sessionId;
-    if (sid !== void 0 && sid !== sessionId) continue;
-    const label2 = promptLabel(parsed);
-    if (label2 !== void 0) return label2;
+    const o = parsed;
+    if (o.sessionId !== void 0 && o.sessionId !== sessionId) continue;
+    if (f.prompt === void 0 && isUser) {
+      const label2 = promptLabel(parsed);
+      if (label2 !== void 0) f.prompt = label2;
+    }
+    if (typeof o.cwd === "string" && o.cwd.length > 0) {
+      if (f.firstCwd === void 0) f.firstCwd = o.cwd;
+      if (f.slugCwd === void 0 && projectSlug(o.cwd) === slug) f.slugCwd = o.cwd;
+    }
+    if (f.prompt !== void 0 && f.slugCwd !== void 0) break;
   }
-  return void 0;
+  return f;
 }
 function openFlags() {
   return fs3.constants.O_RDONLY | fs3.constants.O_NONBLOCK | (fs3.constants.O_NOFOLLOW ?? 0);
@@ -38211,22 +38229,26 @@ async function readWindowAsync(realPath, from, budget) {
     }
   }
 }
-async function readTailFactsAsync(realPath, sessionId, budget = TAIL_BYTES) {
+async function readTailFactsAsync(realPath, sessionId, budget = TAIL_BYTES, slug) {
   try {
     const w = await readWindowAsync(realPath, "tail", budget);
     if (w === void 0) return void 0;
-    return { ...scanTailFacts(w.buf, w.atBoundary, sessionId), size: w.size, mtimeMs: w.mtimeMs };
+    return { ...scanTailFacts(w.buf, w.atBoundary, sessionId, slug), size: w.size, mtimeMs: w.mtimeMs };
   } catch {
     return void 0;
   }
 }
-async function readFirstPromptAsync(realPath, sessionId, budget = HEAD_BYTES) {
+async function readHeadFactsAsync(realPath, sessionId, slug, budget = HEAD_BYTES) {
   try {
     const w = await readWindowAsync(realPath, "head", budget);
     if (w === void 0) return void 0;
-    const prompt = scanFirstPrompt(w.buf, sessionId);
-    const final = prompt !== void 0 || w.size > Math.max(0, budget);
-    return prompt === void 0 ? { final } : { prompt, final };
+    const h = scanHeadFacts(w.buf, sessionId, slug);
+    const final = w.size > Math.max(0, budget) || h.prompt !== void 0 && h.slugCwd !== void 0;
+    const out = { final };
+    if (h.prompt !== void 0) out.prompt = h.prompt;
+    if (h.firstCwd !== void 0) out.firstCwd = h.firstCwd;
+    if (h.slugCwd !== void 0) out.slugCwd = h.slugCwd;
+    return out;
   } catch {
     return void 0;
   }
@@ -39148,8 +39170,12 @@ function fmtAge(thenMs, now) {
   if (h < 24) return `${h}h`;
   return `${Math.floor(h / 24)}d`;
 }
+var MIN_RESUME_SCAN_MS = 1e3;
 function resumeScanMs() {
-  return numEnv("CSM_RESUME_SCAN_MS", 1e4);
+  return Math.max(MIN_RESUME_SCAN_MS, numEnv("CSM_RESUME_SCAN_MS", 1e4));
+}
+function sessionCwd(head, tailSlugCwd) {
+  return head?.slugCwd ?? tailSlugCwd ?? head?.firstCwd;
 }
 function resumeLabel(src) {
   const custom = cleanTitle(src.customTitle);
@@ -39269,7 +39295,7 @@ async function rowFor(c, roots, live) {
   if (entry === void 0 || entry.facts === void 0 || entry.size !== c.size || entry.mtimeMs !== c.mtimeMs) {
     const realPath = isAllowedTranscriptPath(c.id, c.path, roots);
     if (realPath === void 0) return void 0;
-    const read = await readTailFactsAsync(realPath, c.id);
+    const read = await readTailFactsAsync(realPath, c.id, TAIL_BYTES, c.slug);
     if (read === void 0) return void 0;
     const { size, mtimeMs, ...facts2 } = read;
     const shrank = entry !== void 0 && size < entry.size;
@@ -39279,8 +39305,9 @@ async function rowFor(c, roots, live) {
       realPath,
       sdk: false,
       facts: facts2,
-      prompt: shrank ? void 0 : entry?.prompt,
-      promptFinal: shrank ? false : entry?.promptFinal ?? false
+      head: shrank ? void 0 : entry?.head,
+      headFinal: shrank ? false : entry?.headFinal ?? false,
+      headSize: shrank ? void 0 : entry?.headSize
     };
     if (typeof facts2.entrypoint === "string" && facts2.entrypoint.startsWith("sdk-")) {
       next.sdk = true;
@@ -39295,25 +39322,28 @@ async function rowFor(c, roots, live) {
   if (facts === void 0) return void 0;
   const custom = cleanTitle(facts.customTitle);
   if (!facts.hasAssistant && custom.length === 0) return void 0;
-  if (custom.length === 0 && cleanTitle(facts.aiTitle).length === 0 && !entry.promptFinal) {
-    const head = await readFirstPromptAsync(entry.realPath, c.id);
+  if (!entry.headFinal && entry.headSize !== entry.size) {
+    const head = await readHeadFactsAsync(entry.realPath, c.id, c.slug);
     if (head !== void 0) {
-      entry.prompt = head.prompt;
-      entry.promptFinal = head.final;
+      const { final, ...headFacts } = head;
+      entry.head = headFacts;
+      entry.headFinal = final;
+      entry.headSize = entry.size;
     }
   }
   const { label: label2, labelKind } = resumeLabel({
     customTitle: facts.customTitle,
     aiTitle: facts.aiTitle,
-    firstPrompt: entry.prompt
+    firstPrompt: entry.head?.prompt
   });
   const lp = cleanTitle(facts.lastPrompt);
+  const cwd2 = sessionCwd(entry.head, facts.slugCwd);
   return {
     id: c.id,
     label: label2,
     labelKind,
-    folder: folderOf(facts.cwd, c.slug),
-    cwd: facts.cwd,
+    folder: folderOf(cwd2, c.slug),
+    cwd: cwd2,
     mtimeMs: c.mtimeMs,
     live: live.has(c.id),
     lastPrompt: lp.length > 0 ? truncateLabel(lp, LAST_PROMPT_CAP) : void 0
@@ -39775,6 +39805,7 @@ function SessionsPane({
 
 // src/panel/launch.ts
 import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import fs6 from "node:fs";
 import os7 from "node:os";
 import path7 from "node:path";
@@ -39788,11 +39819,13 @@ var OPEN_TIMEOUT_MS = 5e3;
 var MAX_CWD_LEN = 4096;
 var REMOVE_READ_BYTES = 4096;
 var WARP_TAB_CONFIG_NAME = "csm-resume";
-var WARP_TAB_CONFIG_MARKER = "# csm-resume: written by the CSM panel (rewritten on each use, removed when the panel exits)";
+var WARP_TAB_CONFIG_MARKER_PREFIX = "# csm-resume: written by the CSM panel";
+var WARP_TAB_CONFIG_TTL_MS = 3e4;
 var WARP_UNSAFE_CWD = /[`$;|&<>"'\\]/;
 var MSG_COPIED = "copied \u2713";
 var MSG_COPIED_LIVE = "copied \u2713 \xB7 session still open";
 var MSG_INVALID_ID = "refused: not a resumable session id";
+var MSG_COPY_FAILED_PREFIX = "copy failed \xB7 run: ";
 var OUT_LIVE = "session still open, no new tab opened";
 var OUT_TERMINAL = "opened a new Terminal window";
 var OUT_ITERM = "opened a new iTerm2 window";
@@ -39829,10 +39862,34 @@ var LAUNCH_ROUTE_BY_TERM = new Map(ROUTE_ENTRIES);
 function isResumableId(id) {
   return typeof id === "string" && RESUME_ID_PATTERN.test(id);
 }
-function resumeCommand(id) {
-  return "claude --resume " + id;
-}
 var FORMAT_CP = new RegExp("\\p{Cf}", "u");
+var COMMAND_CWD_FORBIDDEN = /[\\`]/;
+function commandCwd(cwd2) {
+  try {
+    if (typeof cwd2 !== "string" || cwd2.length < 1 || cwd2.length > MAX_CWD_LEN) return void 0;
+    if (!path7.isAbsolute(cwd2) || path7.normalize(cwd2) !== cwd2) return void 0;
+    if (cwd2.length > 1 && cwd2.endsWith(path7.sep)) return void 0;
+    for (const ch of cwd2) {
+      const cp = ch.codePointAt(0) ?? 0;
+      if (cp <= 31 || cp === 127) return void 0;
+      if (cp >= 128 && cp <= 159) return void 0;
+      if (cp >= 55296 && cp <= 57343) return void 0;
+      if (FORMAT_CP.test(ch)) return void 0;
+    }
+    if (COMMAND_CWD_FORBIDDEN.test(cwd2)) return void 0;
+    return cwd2;
+  } catch {
+    return void 0;
+  }
+}
+function shellSingleQuote(s) {
+  return "'" + s.replace(/'/g, "'\\''") + "'";
+}
+function resumeCommand(id, cwd2) {
+  const c = commandCwd(cwd2);
+  if (c === void 0) return "claude --resume " + id;
+  return "cd " + shellSingleQuote(c) + " && claude --resume " + id;
+}
 function validLaunchCwd(cwd2, isDir) {
   try {
     if (typeof cwd2 !== "string" || cwd2.length < 1 || cwd2.length > MAX_CWD_LEN) return void 0;
@@ -39855,10 +39912,16 @@ function osascriptArgs(lines, cwd2, id) {
 function tomlBasicString(s) {
   return '"' + s.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
 }
-function warpTabConfigToml(cwd2, id) {
+function warpTabConfigMarker(pid, nonce) {
+  return `${WARP_TAB_CONFIG_MARKER_PREFIX} pid=${pid} nonce=${nonce} (deleted shortly after use and when the panel exits)`;
+}
+function warpTabConfigStem(id, pid, nonce) {
+  return `${WARP_TAB_CONFIG_NAME}-${id.slice(0, 8)}-${pid}-${nonce}`;
+}
+function warpTabConfigToml(cwd2, id, marker) {
   return [
-    WARP_TAB_CONFIG_MARKER,
-    'name = "CSM resume"',
+    marker,
+    "name = " + tomlBasicString("CSM resume " + id.slice(0, 8)),
     "",
     "[[panes]]",
     'id = "main"',
@@ -39877,24 +39940,25 @@ function statIsDir(p) {
 function warpTabConfigDir(home) {
   return path7.join(home, ".warp", "tab_configs");
 }
-function warpTabConfigFile(home) {
-  return path7.join(warpTabConfigDir(home), WARP_TAB_CONFIG_NAME + ".toml");
-}
-var lastWrittenHome = null;
+var writtenWarpConfigs = /* @__PURE__ */ new Map();
 function writeWarpTabConfig(home, cwd2, id) {
   let tmp;
   try {
-    if (!isResumableId(id)) return false;
-    if (typeof cwd2 !== "string" || WARP_UNSAFE_CWD.test(cwd2)) return false;
-    if (validLaunchCwd(cwd2, statIsDir) === void 0) return false;
+    if (!isResumableId(id)) return void 0;
+    if (typeof cwd2 !== "string" || WARP_UNSAFE_CWD.test(cwd2)) return void 0;
+    if (validLaunchCwd(cwd2, statIsDir) === void 0) return void 0;
     const dir = warpTabConfigDir(home);
     fs6.mkdirSync(dir, { recursive: true, mode: 448 });
-    tmp = path7.join(dir, `.${WARP_TAB_CONFIG_NAME}.tmp-${process.pid}-${Math.random().toString(36).slice(2, 10)}`);
-    fs6.writeFileSync(tmp, warpTabConfigToml(cwd2, id), { flag: "wx", mode: 384 });
-    fs6.renameSync(tmp, warpTabConfigFile(home));
+    const nonce = randomBytes(4).toString("hex");
+    const stem = warpTabConfigStem(id, process.pid, nonce);
+    const marker = warpTabConfigMarker(process.pid, nonce);
+    const file = path7.join(dir, stem + ".toml");
+    tmp = path7.join(dir, `.${stem}.tmp`);
+    fs6.writeFileSync(tmp, warpTabConfigToml(cwd2, id, marker), { flag: "wx", mode: 384 });
+    fs6.renameSync(tmp, file);
     tmp = void 0;
-    lastWrittenHome = home;
-    return true;
+    writtenWarpConfigs.set(file, marker);
+    return { stem, file, marker };
   } catch {
     if (tmp !== void 0) {
       try {
@@ -39902,12 +39966,11 @@ function writeWarpTabConfig(home, cwd2, id) {
       } catch {
       }
     }
-    return false;
+    return void 0;
   }
 }
-function removeWarpTabConfig(home = os7.homedir()) {
+function removeWarpTabConfig(file, marker) {
   try {
-    const file = warpTabConfigFile(home);
     let head;
     const fd = fs6.openSync(file, fs6.constants.O_RDONLY | fs6.constants.O_NOFOLLOW | fs6.constants.O_NONBLOCK);
     try {
@@ -39918,21 +39981,46 @@ function removeWarpTabConfig(home = os7.homedir()) {
     } finally {
       fs6.closeSync(fd);
     }
-    if (head.split("\n")[0] !== WARP_TAB_CONFIG_MARKER) return false;
+    if (head.split("\n")[0] !== marker) return false;
     fs6.unlinkSync(file);
     return true;
   } catch {
     return false;
   }
 }
-function cleanupWarpTabConfig() {
+function releaseWarpTabConfig(file) {
   try {
-    if (lastWrittenHome === null) return false;
-    const home = lastWrittenHome;
-    lastWrittenHome = null;
-    return removeWarpTabConfig(home);
+    const marker = writtenWarpConfigs.get(file);
+    if (marker === void 0) return false;
+    try {
+      return removeWarpTabConfig(file, marker);
+    } finally {
+      writtenWarpConfigs.delete(file);
+    }
   } catch {
     return false;
+  }
+}
+function cleanupWarpTabConfig() {
+  let removed = false;
+  try {
+    for (const file of [...writtenWarpConfigs.keys()]) {
+      if (releaseWarpTabConfig(file)) removed = true;
+    }
+  } catch {
+  }
+  return removed;
+}
+function defaultLater(fn, ms) {
+  try {
+    const t = setTimeout(() => {
+      try {
+        fn();
+      } catch {
+      }
+    }, ms);
+    t.unref();
+  } catch {
   }
 }
 function defaultRun(cmd, args, opts) {
@@ -39974,12 +40062,13 @@ function defaultLaunchDeps() {
     isDir: statIsDir,
     homedir: () => os7.homedir(),
     platform: process.platform,
-    termProgram: process.env.TERM_PROGRAM
+    termProgram: process.env.TERM_PROGRAM,
+    later: defaultLater
   };
 }
-async function copyCommand(id, deps) {
+async function copyCommand(id, cwd2, deps) {
   try {
-    const r = await deps.run(PBCOPY_BIN, [], { input: resumeCommand(id), timeoutMs: PBCOPY_TIMEOUT_MS });
+    const r = await deps.run(PBCOPY_BIN, [], { input: resumeCommand(id, cwd2), timeoutMs: PBCOPY_TIMEOUT_MS });
     return r?.ok === true;
   } catch {
     return false;
@@ -39994,15 +40083,19 @@ async function runOk(deps, cmd, args, timeoutMs) {
   }
 }
 async function copyResume(target, deps = defaultLaunchDeps()) {
+  let id;
+  let cwd2;
   try {
-    const id = target?.id;
+    id = target?.id;
+    cwd2 = target?.cwd;
     if (!isResumableId(id)) return { ok: false, copied: false, message: MSG_INVALID_ID };
     const live = target.live === true;
-    const copied = await copyCommand(id, deps);
+    const copied = await copyCommand(id, cwd2, deps);
     if (copied) return { ok: true, copied: true, message: live ? MSG_COPIED_LIVE : MSG_COPIED };
-    const msg = "copy failed \xB7 run: " + resumeCommand(id) + (live ? " \xB7 session still open" : "");
+    const msg = MSG_COPY_FAILED_PREFIX + resumeCommand(id, cwd2) + (live ? " \xB7 session still open" : "");
     return { ok: false, copied: false, message: msg };
   } catch {
+    if (isResumableId(id)) return { ok: false, copied: false, message: MSG_COPY_FAILED_PREFIX + resumeCommand(id, cwd2) };
     return { ok: false, copied: false, message: MSG_INVALID_ID };
   }
 }
@@ -40012,8 +40105,8 @@ async function openResume(target, deps = defaultLaunchDeps()) {
   try {
     const id = target?.id;
     if (!isResumableId(id)) return { ok: false, copied: false, message: MSG_INVALID_ID };
-    copied = await copyCommand(id, deps);
-    suffix = copied ? " \xB7 command copied" : " \xB7 copy failed, run: " + resumeCommand(id);
+    copied = await copyCommand(id, target.cwd, deps);
+    suffix = copied ? " \xB7 command copied" : " \xB7 copy failed, run: " + resumeCommand(id, target.cwd);
     const done = (ok, outcome) => ({ ok, copied, message: outcome + suffix });
     if (target.live === true) return done(false, OUT_LIVE);
     const cwd2 = validLaunchCwd(target.cwd, (p) => deps.isDir(p));
@@ -40029,14 +40122,15 @@ async function openResume(target, deps = defaultLaunchDeps()) {
     }
     if (route === "warp") {
       if (WARP_UNSAFE_CWD.test(cwd2)) return done(false, OUT_UNSUPPORTED);
-      if (writeWarpTabConfig(deps.homedir(), cwd2, id)) {
-        const ok2 = await runOk(
-          deps,
-          OPEN_BIN,
-          [`warp://tab_config/${WARP_TAB_CONFIG_NAME}?new_window=true`],
-          OPEN_TIMEOUT_MS
-        );
-        return ok2 ? done(true, OUT_WARP) : done(false, OUT_LAUNCH_FAILED);
+      const cfg = writeWarpTabConfig(deps.homedir(), cwd2, id);
+      if (cfg !== void 0) {
+        const ok2 = await runOk(deps, OPEN_BIN, [`warp://tab_config/${cfg.stem}?new_window=true`], OPEN_TIMEOUT_MS);
+        if (!ok2) {
+          releaseWarpTabConfig(cfg.file);
+          return done(false, OUT_LAUNCH_FAILED);
+        }
+        (deps.later ?? defaultLater)(() => releaseWarpTabConfig(cfg.file), WARP_TAB_CONFIG_TTL_MS);
+        return done(true, OUT_WARP);
       }
       const ok = await runOk(deps, OPEN_BIN, ["warp://action/new_tab?path=" + encodeURIComponent(cwd2)], OPEN_TIMEOUT_MS);
       return ok ? done(true, OUT_WARP_FOLDER) : done(false, OUT_LAUNCH_FAILED);
@@ -40045,6 +40139,49 @@ async function openResume(target, deps = defaultLaunchDeps()) {
   } catch {
     return { ok: false, copied, message: OUT_LAUNCH_FAILED + suffix };
   }
+}
+
+// src/panel/launch-hold.ts
+var LAUNCH_HOLD_MS = 6e4;
+function claimLaunch(holds, id, now, token) {
+  if (holds.has(id)) return false;
+  holds.set(id, { at: now, token, inFlight: true });
+  return true;
+}
+function settleLaunch(holds, id, token, ok) {
+  const hold = holds.get(id);
+  if (hold === void 0 || hold.token !== token) return false;
+  if (ok) holds.set(id, { ...hold, inFlight: false });
+  else holds.delete(id);
+  return true;
+}
+function settleHolds(holds, rows, scanStartedAt) {
+  if (holds.size === 0) return false;
+  const liveById = /* @__PURE__ */ new Map();
+  for (const r of rows) liveById.set(r.id, r.live);
+  let dropped = false;
+  for (const [id, hold] of holds) {
+    if (hold.inFlight) continue;
+    const confirmed = liveById.get(id) === true;
+    const expired = scanStartedAt - hold.at >= LAUNCH_HOLD_MS;
+    if (confirmed || expired) {
+      holds.delete(id);
+      dropped = true;
+    }
+  }
+  return dropped;
+}
+function applyHolds(rows, holds) {
+  if (rows === null) return null;
+  if (holds.size === 0) return rows;
+  let out = null;
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if (r.live || !holds.has(r.id)) continue;
+    if (out === null) out = rows.slice();
+    out[i] = { ...r, live: true };
+  }
+  return out ?? rows;
 }
 
 // src/conflicts.ts
@@ -40329,6 +40466,8 @@ function App2() {
   const [resumeOffset, setResumeOffset] = import_react35.default.useState(0);
   const [resumeStatus, setResumeStatus] = import_react35.default.useState(null);
   const scanningResume = import_react35.default.useRef(false);
+  const resumeScanGen = import_react35.default.useRef(0);
+  const resumeTickRef = import_react35.default.useRef(null);
   const rightPaneRef = import_react35.default.useRef(rightPane);
   rightPaneRef.current = rightPane;
   const resumeRowsRef = import_react35.default.useRef(resumeRows);
@@ -40342,6 +40481,12 @@ function App2() {
   }
   const resumeOffsetRef = import_react35.default.useRef(resumeOffset);
   resumeOffsetRef.current = resumeOffset;
+  const launchHolds = import_react35.default.useRef(/* @__PURE__ */ new Map());
+  const holdToken = import_react35.default.useRef(0);
+  const [, setHoldVersion] = import_react35.default.useState(0);
+  const bumpHolds = () => {
+    if (mounted.current) setHoldVersion((v) => v + 1);
+  };
   const flashTimer = import_react35.default.useRef(null);
   import_react35.default.useEffect(
     () => () => {
@@ -40352,24 +40497,31 @@ function App2() {
   );
   import_react35.default.useEffect(() => {
     if (rightPane !== "oturumlar") return void 0;
+    const gen = ++resumeScanGen.current;
     const tick = () => {
       if (scanningResume.current) return;
       scanningResume.current = true;
+      const startedAt = Date.now();
       discoverSessions({
         n: RESUME_LIST_N,
         liveIds: new Set(liveRowsRef.current.map((r) => r.session_id))
       }).then((rows) => {
-        if (mounted.current) setResumeRows(rows);
+        if (!mounted.current || gen !== resumeScanGen.current) return;
+        if (settleHolds(launchHolds.current, rows, startedAt)) bumpHolds();
+        setResumeRows(rows);
       }).catch(() => {
       }).finally(() => {
         scanningResume.current = false;
+        if (gen !== resumeScanGen.current && mounted.current) resumeTickRef.current?.();
       });
     };
+    resumeTickRef.current = tick;
     tick();
     const t = setInterval(tick, resumeScanMs());
     return () => {
-      scanningResume.current = false;
       clearInterval(t);
+      resumeScanGen.current += 1;
+      if (resumeTickRef.current === tick) resumeTickRef.current = null;
     };
   }, [rightPane]);
   import_react35.default.useEffect(() => {
@@ -40407,6 +40559,7 @@ function App2() {
     if (rows === null || id === null) return null;
     return rows.find((r) => r.id === id) ?? null;
   };
+  const isLive = (row) => row.live || launchHolds.current.has(row.id);
   const onToggle = () => {
     const next = rightPaneRef.current === "fazlar" ? "oturumlar" : "fazlar";
     rightPaneRef.current = next;
@@ -40441,17 +40594,39 @@ function App2() {
   const onEnter = () => {
     const row = selectedRow();
     if (row === null) return;
-    copyResume({ id: row.id, live: row.live }).then(showResult, () => {
+    copyResume({ id: row.id, cwd: row.cwd, live: isLive(row) }).then(showResult, () => {
     });
   };
   const onOpen = () => {
     const row = selectedRow();
     if (row === null) return;
+    const id = row.id;
     if (flashTimer.current) clearTimeout(flashTimer.current);
     flashTimer.current = null;
     setResumeStatus("opening\u2026");
-    openResume({ id: row.id, cwd: row.cwd, live: row.live }).then(showResult, () => {
-    });
+    if (isLive(row)) {
+      openResume({ id, cwd: row.cwd, live: true }).then(showResult, () => {
+      });
+      return;
+    }
+    const token = ++holdToken.current;
+    claimLaunch(launchHolds.current, id, Date.now(), token);
+    bumpHolds();
+    readLiveRegistry(registryDirs()).catch(() => /* @__PURE__ */ new Set()).then((registry) => {
+      const fresh = new Set(registry);
+      for (const r of liveRowsRef.current) fresh.add(r.session_id);
+      return openResume({ id, cwd: row.cwd, live: fresh.has(id) });
+    }).then(
+      (r) => {
+        settleLaunch(launchHolds.current, id, token, r.ok);
+        bumpHolds();
+        showResult(r);
+      },
+      () => {
+        settleLaunch(launchHolds.current, id, token, false);
+        bumpHolds();
+      }
+    );
   };
   const nConf = state.conflicts.length;
   const summaryLead = sanitize(`${state.live} live \xB7 ${state.idle} idle \xB7 `);
@@ -40465,6 +40640,7 @@ function App2() {
   const nSubagent = state.display.filter((d) => !d.ended && d.row.subagent).length;
   const subagentLabel = sanitize(`${nSubagent} subagent`);
   const clock = sanitize(fmtClock(Date.now()));
+  const shownRows = applyHolds(resumeRows, launchHolds.current);
   const withLiveBranch = (row) => {
     const b = liveBranch(row, branches);
     return b === row.branch ? row : { ...row, branch: b };
@@ -40514,7 +40690,7 @@ function App2() {
       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Box_default, { flexDirection: "column", flexBasis: "50%", flexGrow: 1, flexShrink: 1, paddingX: 1, children: rightPane === "oturumlar" ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
         SessionsPane,
         {
-          rows: resumeRows,
+          rows: shownRows,
           cursorId: selId,
           scrollOffset: resumeOffset,
           status: resumeStatus,

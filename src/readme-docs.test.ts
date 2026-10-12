@@ -244,13 +244,13 @@ describe("README documents CSM_IDLE_WAIT_MS (260927-4tv)", () => {
   });
 });
 
-// Phase 8 (08-04): the README documents /csm-resume with the D-10 caveat, the
-// panel keys (incl. the OTURUMLAR pane and the Warp tab config lifecycle) and
-// the CSM_RESUME_SCAN_MS knob.
+// Phase 8 (08-04, 08-10): the README documents /csm-resume with the D-10
+// REVISED cd-prefixed line, the panel keys (incl. the OTURUMLAR pane and the
+// per-launch Warp tab config lifecycle) and the CSM_RESUME_SCAN_MS knob.
 describe("README resume picker (Phase 8)", () => {
   const lines = README.split("\n");
 
-  it("the /csm-resume bullet names the resume line, markers, crashed sessions and the D-10 caveat", () => {
+  it("the /csm-resume bullet names the cd-prefixed resume line, markers, crashed sessions and the plain fallback", () => {
     const idx = lines.findIndex((l) => l.startsWith("- `/csm-resume`:"));
     expect(idx).toBeGreaterThanOrEqual(0);
     const parts = [lines[idx]];
@@ -258,12 +258,13 @@ describe("README resume picker (Phase 8)", () => {
       parts.push(lines[i]);
     }
     const block = parts.join(" ").replace(/\s+/g, " ");
-    expect(block).toMatch(/claude --resume/);
+    expect(block).toMatch(/cd '/);
+    expect(block).toMatch(/&& claude --resume/);
     expect(block).toMatch(/\(you\)/);
     expect(block).toMatch(/live/);
-    expect(block).toMatch(/2\.1\.223/);
-    expect(block).toMatch(/folder you run it from/);
     expect(block).toMatch(/crashed/);
+    expect(block).toMatch(/2\.1\.223/);
+    expect(block).not.toMatch(/folder you run it from/);
   });
 
   it("has a Panel keys section covering OTURUMLAR, FAZLAR and every key", () => {
@@ -277,7 +278,7 @@ describe("README resume picker (Phase 8)", () => {
       }
     }
     const section = lines.slice(start, end).join("\n");
-    for (const needle of ["OTURUMLAR", "FAZLAR", "`r`", "`Enter`", "`o`", "tab_configs/csm-resume.toml", "Ctrl+C"]) {
+    for (const needle of ["OTURUMLAR", "FAZLAR", "`r`", "`Enter`", "`o`", "tab_configs/csm-resume-", "30 seconds", "Ctrl+C"]) {
       expect(section).toContain(needle);
     }
   });
@@ -287,5 +288,6 @@ describe("README resume picker (Phase 8)", () => {
     expect(row).toBeDefined();
     expect(row).toContain("`10000`");
     expect(row).toContain("OTURUMLAR");
+    expect(row).toContain("below `1000`");
   });
 });
