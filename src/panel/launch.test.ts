@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -6,6 +7,9 @@ import {
   RESUME_ID_PATTERN,
   isResumableId,
   resumeCommand,
+  commandCwd,
+  shellSingleQuote,
+  MSG_COPY_FAILED_PREFIX,
   validLaunchCwd,
   osascriptArgs,
   TERMINAL_SCRIPT,
@@ -101,7 +105,9 @@ function fakeDeps(over: FakeOver = {}): { deps: LaunchDeps; calls: Call[]; later
   return { deps, calls, laters };
 }
 
-const PBCOPY_CALL = () => ({ cmd: "/usr/bin/pbcopy", args: [], opts: { input: CMD, timeoutMs: 1500 } });
+/** D-10 REVISED line for a folder with no single quote in it. */
+const cdLine = (dir: string) => "cd '" + dir + "' && " + CMD;
+const PBCOPY_CALL = (input: string) => ({ cmd: "/usr/bin/pbcopy", args: [], opts: { input, timeoutMs: 1500 } });
 const tabConfigDir = () => path.join(home, ".warp", "tab_configs");
 /** Every per-launch tab config file (by stem) currently in the temp home. */
 function tabConfigStems(): string[] {
@@ -137,8 +143,47 @@ describe("id gate and command (U1-U2)", () => {
     }
   });
 
-  it("U2 resumeCommand has no cd prefix (D-10)", () => {
+  it("U2 resumeCommand prefixes a usable session cwd and falls back to the plain line (D-10 REVISED)", () => {
     expect(resumeCommand(ID)).toBe("claude --resume " + ID);
+    expect(resumeCommand(ID, "/Users/x/Concurrent Session Monitor")).toBe(
+      "cd '/Users/x/Concurrent Session Monitor' && claude --resume " + ID,
+    );
+    expect(resumeCommand(ID, "/w/it's")).toBe("cd '/w/it'\\''s' && claude --resume " + ID);
+    const noCwd: unknown[] = [
+      undefined,
+      42,
+      "",
+      "rel/path",
+      "/a/../b",
+      "/a/",
+      "/a\nb",
+      "/a\u001bb",
+      "/a\u007fb",
+      "/a\u0085b",
+      "/a\u202eb",
+      "/a\u200bb",
+      "/a\ud800b",
+      "/a\\b",
+      "/a`b",
+      "/" + "a".repeat(4096),
+    ];
+    for (const c of noCwd) {
+      expect(commandCwd(c)).toBeUndefined();
+      expect(resumeCommand(ID, c)).toBe("claude --resume " + ID);
+    }
+    expect(commandCwd("/" + "a".repeat(4095))).toBe("/" + "a".repeat(4095));
+    expect(commandCwd("/")).toBe("/");
+  });
+
+  it("Q1 shellSingleQuote round-trips hostile strings through /bin/sh unchanged", () => {
+    const hostile = ["a b", "it's", "''", "$(touch pwned)", "`touch pwned`", "a;b|c&d", "~/x", "!x", "*?[a]", '"q"'];
+    for (const h of hostile) {
+      const r = spawnSync("/bin/sh", ["-c", "printf '%s' " + shellSingleQuote(h)], { cwd: home, encoding: "utf8" });
+      expect(r.status).toBe(0);
+      expect(r.stdout).toBe(h);
+    }
+    expect(shellSingleQuote("it's")).toBe("'it'\\''s'");
+    expect(fs.existsSync(path.join(home, "pwned"))).toBe(false);
   });
 });
 
@@ -172,33 +217,38 @@ describe("validLaunchCwd (V1)", () => {
 });
 
 describe("copyResume (C1-C4)", () => {
-  it("C1 copies the command to pbcopy on stdin with no args", async () => {
+  it("C1 copies the cd-prefixed command to pbcopy on stdin with no args", async () => {
     const { deps, calls } = fakeDeps();
-    const r = await copyResume({ id: ID, live: false }, deps);
-    expect(calls).toEqual([PBCOPY_CALL()]);
+    const r = await copyResume({ id: ID, cwd, live: false }, deps);
+    expect(calls).toEqual([PBCOPY_CALL(cdLine(cwd))]);
     expect(r).toEqual({ ok: true, copied: true, message: "copied ✓" });
     expect(MSG_COPIED).toBe("copied ✓");
+
+    const plain = fakeDeps();
+    await copyResume({ id: ID, live: false }, plain.deps);
+    expect(plain.calls).toEqual([PBCOPY_CALL(CMD)]);
   });
 
   it("C2 live row still copies (D-16)", async () => {
     const { deps, calls } = fakeDeps();
     const r = await copyResume({ id: ID, live: true }, deps);
-    expect(calls).toEqual([PBCOPY_CALL()]);
+    expect(calls).toEqual([PBCOPY_CALL(CMD)]);
     expect(r).toEqual({ ok: true, copied: true, message: "copied ✓ · session still open" });
     expect(MSG_COPIED_LIVE).toBe("copied ✓ · session still open");
   });
 
   it("C3 copy failure shows the full command", async () => {
     const { deps } = fakeDeps({ results: { "/usr/bin/pbcopy": false } });
-    expect(await copyResume({ id: ID, live: false }, deps)).toEqual({
+    expect(MSG_COPY_FAILED_PREFIX).toBe("copy failed · run: ");
+    expect(await copyResume({ id: ID, cwd, live: false }, deps)).toEqual({
       ok: false,
       copied: false,
-      message: "copy failed · run: " + CMD,
+      message: "copy failed · run: " + cdLine(cwd),
     });
-    expect(await copyResume({ id: ID, live: true }, deps)).toEqual({
+    expect(await copyResume({ id: ID, cwd, live: true }, deps)).toEqual({
       ok: false,
       copied: false,
-      message: "copy failed · run: " + CMD + " · session still open",
+      message: "copy failed · run: " + cdLine(cwd) + " · session still open",
     });
   });
 
@@ -209,13 +259,30 @@ describe("copyResume (C1-C4)", () => {
     expect(MSG_INVALID_ID).toBe("refused: not a resumable session id");
     expect(calls).toEqual([]);
   });
+
+  it("C5 an unexpected throw for a resumable id reports the copy-failed line, not an invalid id (IN-05)", async () => {
+    const { deps } = fakeDeps();
+    const target = {
+      id: ID,
+      cwd,
+      get live(): boolean {
+        throw new Error("boom");
+      },
+    };
+    const r = await copyResume(target, deps);
+    expect(r.ok).toBe(false);
+    expect(r.copied).toBe(false);
+    expect(r.message.startsWith(MSG_COPY_FAILED_PREFIX)).toBe(true);
+    expect(r.message).toContain(cdLine(cwd));
+    expect(r.message).not.toBe(MSG_INVALID_ID);
+  });
 });
 
 describe("openResume (O1-O13)", () => {
   it("O1 live row copies and opens nothing (D-16)", async () => {
     const { deps, calls } = fakeDeps({ termProgram: "Apple_Terminal" });
     const r = await openResume({ id: ID, cwd, live: true }, deps);
-    expect(calls).toEqual([PBCOPY_CALL()]);
+    expect(calls).toEqual([PBCOPY_CALL(cdLine(cwd))]);
     expect(r).toEqual({
       ok: false,
       copied: true,
@@ -228,7 +295,7 @@ describe("openResume (O1-O13)", () => {
     const { deps, calls } = fakeDeps({ termProgram: "Apple_Terminal" });
     const r = await openResume({ id: ID, cwd, live: false }, deps);
     expect(calls).toHaveLength(2);
-    expect(calls[0]).toEqual(PBCOPY_CALL());
+    expect(calls[0]).toEqual(PBCOPY_CALL(cdLine(cwd)));
     expect(calls[1]!.cmd).toBe("/usr/bin/osascript");
     expect(calls[1]!.args).toEqual(osascriptArgs(TERMINAL_SCRIPT, cwd, ID));
     expect(osascriptArgs(TERMINAL_SCRIPT, cwd, ID)).toEqual([
@@ -296,7 +363,7 @@ describe("openResume (O1-O13)", () => {
     const { deps, calls, laters } = fakeDeps({ termProgram: "WarpTerminal" });
     const r = await openResume({ id: ID, cwd, live: false }, deps);
     expect(calls).toHaveLength(2);
-    expect(calls[0]).toEqual(PBCOPY_CALL());
+    expect(calls[0]).toEqual(PBCOPY_CALL(cdLine(cwd)));
     expect(calls[1]!.cmd).toBe("/usr/bin/open");
     const uri = calls[1]!.args[0]!;
     expect(calls[1]!.args).toHaveLength(1);
@@ -346,7 +413,7 @@ describe("openResume (O1-O13)", () => {
     const { deps, calls } = fakeDeps({ termProgram: "WarpTerminal" });
     const r = await openResume({ id: ID, cwd: unsafe, live: false }, deps);
     expect(tabConfigStems()).toEqual([]);
-    expect(calls).toEqual([PBCOPY_CALL()]);
+    expect(calls).toEqual([PBCOPY_CALL(cdLine(unsafe))]);
     expect(r).toEqual({
       ok: false,
       copied: true,
@@ -359,7 +426,7 @@ describe("openResume (O1-O13)", () => {
     const { deps, calls } = fakeDeps({ termProgram: "WarpTerminal" });
     const r = await openResume({ id: ID, cwd, live: false }, deps);
     expect(calls).toHaveLength(2);
-    expect(calls[0]).toEqual(PBCOPY_CALL());
+    expect(calls[0]).toEqual(PBCOPY_CALL(cdLine(cwd)));
     expect(calls[1]!.cmd).toBe("/usr/bin/open");
     expect(calls[1]!.args).toEqual(["warp://action/new_tab?path=" + encodeURIComponent(cwd)]);
     expect(r.message).toBe("opened a Warp tab in the folder, paste the command · command copied");
@@ -384,7 +451,7 @@ describe("openResume (O1-O13)", () => {
     for (const termProgram of ["ghostty", undefined, "__proto__"]) {
       const { deps, calls } = fakeDeps({ termProgram });
       const r = await openResume({ id: ID, cwd, live: false }, deps);
-      expect(calls).toEqual([PBCOPY_CALL()]);
+      expect(calls).toEqual([PBCOPY_CALL(cdLine(cwd))]);
       expect(r).toEqual({
         ok: false,
         copied: true,
@@ -393,14 +460,14 @@ describe("openResume (O1-O13)", () => {
     }
     const { deps, calls } = fakeDeps({ termProgram: "Apple_Terminal", platform: "linux" });
     const r = await openResume({ id: ID, cwd, live: false }, deps);
-    expect(calls).toEqual([PBCOPY_CALL()]);
+    expect(calls).toEqual([PBCOPY_CALL(cdLine(cwd))]);
     expect(r.message).toBe("no new tab for this terminal, paste the command · command copied");
   });
 
   it("O11 a missing folder only copies", async () => {
     const { deps, calls } = fakeDeps({ termProgram: "Apple_Terminal" });
     const r = await openResume({ id: ID, cwd: path.join(home, "gone"), live: false }, deps);
-    expect(calls).toEqual([PBCOPY_CALL()]);
+    expect(calls).toEqual([PBCOPY_CALL(cdLine(path.join(home, "gone")))]);
     expect(r).toEqual({
       ok: false,
       copied: true,
@@ -413,7 +480,7 @@ describe("openResume (O1-O13)", () => {
     expect(await openResume({ id: ID, cwd, live: false }, deps)).toEqual({
       ok: true,
       copied: false,
-      message: "opened a new Terminal window · copy failed, run: " + CMD,
+      message: "opened a new Terminal window · copy failed, run: " + cdLine(cwd),
     });
   });
 
