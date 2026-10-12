@@ -8,9 +8,12 @@ import path from "node:path";
  * Resume launcher (Phase 8, CONTEXT D-15/D-16, RESEARCH Patterns 7 and 8).
  *
  * The panel's only side-effect module for the OTURUMLAR resume picker:
- *   - Enter → copyResume: put `claude --resume <id>` on the clipboard.
- *   - `o`   → openResume: copy first, then best-effort open a new Terminal /
- *             iTerm2 / Warp window in the session's folder that runs it.
+ *   - Enter → copyResume: put `cd '<session cwd>' && claude --resume <id>`
+ *             on the clipboard (D-10 REVISED), or the plain
+ *             `claude --resume <id>` when the session has no usable cwd.
+ *   - `o`   → openResume: copy the same line first, then best-effort open a
+ *             new Terminal / iTerm2 / Warp window in the session's folder
+ *             that runs the resume command there.
  *
  * Contract:
  *   - User-initiated only (D-15/D-16). Nothing here runs on a timer or a poll.
@@ -73,6 +76,7 @@ export const WARP_UNSAFE_CWD = /[`$;|&<>"'\\]/;
 export const MSG_COPIED = "copied ✓";
 export const MSG_COPIED_LIVE = "copied ✓ · session still open";
 export const MSG_INVALID_ID = "refused: not a resumable session id";
+export const MSG_COPY_FAILED_PREFIX = "copy failed · run: ";
 
 const OUT_LIVE = "session still open, no new tab opened";
 const OUT_TERMINAL = "opened a new Terminal window";
@@ -151,12 +155,62 @@ export function isResumableId(id: unknown): id is string {
   return typeof id === "string" && RESUME_ID_PATTERN.test(id);
 }
 
-/** D-10: the plain resume command, no `cd` prefix. */
-export function resumeCommand(id: string): string {
-  return "claude --resume " + id;
+const FORMAT_CP = /\p{Cf}/u;
+
+/**
+ * Characters that make a cwd unusable in the copied line: a backslash (fish
+ * treats `\'` as an escape even inside single quotes, so a crafted path could
+ * break out of the quoting) and a backtick (keeps the /csm-resume code fence
+ * intact, IN-06).
+ */
+export const COMMAND_CWD_FORBIDDEN = /[\\`]/;
+
+/**
+ * D-10 REVISED: the cwd a copied resume line may `cd` into. Returns `cwd` only
+ * when it is a 1..4096-char absolute, normalized path (no trailing separator
+ * except the root itself) with no C0 / DEL / C1 /
+ * lone surrogate / format (Cf) code point and no backslash or backtick. No
+ * existence check: `cd` itself fails on a deleted folder and `&&` stops the
+ * resume. LOCKSTEP: scripts/csm-resume.mjs mirrors this. Never throws.
+ */
+export function commandCwd(cwd: unknown): string | undefined {
+  try {
+    if (typeof cwd !== "string" || cwd.length < 1 || cwd.length > MAX_CWD_LEN) return undefined;
+    if (!path.isAbsolute(cwd) || path.normalize(cwd) !== cwd) return undefined;
+    // path.normalize keeps a trailing separator ("/a/"); only the root may end in one.
+    if (cwd.length > 1 && cwd.endsWith(path.sep)) return undefined;
+    for (const ch of cwd) {
+      const cp = ch.codePointAt(0) ?? 0;
+      if (cp <= 0x1f || cp === 0x7f) return undefined;
+      if (cp >= 0x80 && cp <= 0x9f) return undefined;
+      if (cp >= 0xd800 && cp <= 0xdfff) return undefined;
+      if (FORMAT_CP.test(ch)) return undefined;
+    }
+    if (COMMAND_CWD_FORBIDDEN.test(cwd)) return undefined;
+    return cwd;
+  } catch {
+    return undefined;
+  }
 }
 
-const FORMAT_CP = /\p{Cf}/u;
+/** POSIX single-quoting: wrap in `'…'`, writing each `'` as `'\''`. LOCKSTEP with scripts/csm-resume.mjs. */
+export function shellSingleQuote(s: string): string {
+  return "'" + s.replace(/'/g, "'\\''") + "'";
+}
+
+/**
+ * D-10 REVISED: `cd '<session cwd>' && claude --resume <id>`, with the cwd
+ * POSIX single-quoted. When the cwd is not usable (commandCwd returns
+ * undefined: missing, not a string, empty, too long, relative, unnormalized,
+ * control/format code point, backslash or backtick) the line is the plain
+ * `claude --resume <id>`. `id` must already be isResumableId-gated.
+ * LOCKSTEP: scripts/csm-resume.mjs mirrors this byte-for-byte.
+ */
+export function resumeCommand(id: string, cwd?: unknown): string {
+  const c = commandCwd(cwd);
+  if (c === undefined) return "claude --resume " + id;
+  return "cd " + shellSingleQuote(c) + " && claude --resume " + id;
+}
 
 /**
  * T-08-03: the folder a launch may `cd` into. Returns `cwd` only when it is a
@@ -403,9 +457,9 @@ export function defaultLaunchDeps(): LaunchDeps {
   };
 }
 
-async function copyCommand(id: string, deps: LaunchDeps): Promise<boolean> {
+async function copyCommand(id: string, cwd: unknown, deps: LaunchDeps): Promise<boolean> {
   try {
-    const r = await deps.run(PBCOPY_BIN, [], { input: resumeCommand(id), timeoutMs: PBCOPY_TIMEOUT_MS });
+    const r = await deps.run(PBCOPY_BIN, [], { input: resumeCommand(id, cwd), timeoutMs: PBCOPY_TIMEOUT_MS });
     return r?.ok === true;
   } catch {
     return false;
@@ -423,15 +477,20 @@ async function runOk(deps: LaunchDeps, cmd: string, args: string[], timeoutMs: n
 
 /** D-15 Enter: copy the resume command. ok === copied. Never throws. */
 export async function copyResume(target: ResumeTarget, deps: LaunchDeps = defaultLaunchDeps()): Promise<LaunchResult> {
+  let id: unknown;
+  let cwd: unknown;
   try {
-    const id = target?.id;
+    id = target?.id;
+    cwd = target?.cwd;
     if (!isResumableId(id)) return { ok: false, copied: false, message: MSG_INVALID_ID };
     const live = target.live === true;
-    const copied = await copyCommand(id, deps);
+    const copied = await copyCommand(id, cwd, deps);
     if (copied) return { ok: true, copied: true, message: live ? MSG_COPIED_LIVE : MSG_COPIED };
-    const msg = "copy failed · run: " + resumeCommand(id) + (live ? " · session still open" : "");
+    const msg = MSG_COPY_FAILED_PREFIX + resumeCommand(id, cwd) + (live ? " · session still open" : "");
     return { ok: false, copied: false, message: msg };
   } catch {
+    // IN-05: an unexpected throw for a resumable id still shows the command.
+    if (isResumableId(id)) return { ok: false, copied: false, message: MSG_COPY_FAILED_PREFIX + resumeCommand(id, cwd) };
     return { ok: false, copied: false, message: MSG_INVALID_ID };
   }
 }
@@ -447,8 +506,8 @@ export async function openResume(target: ResumeTarget, deps: LaunchDeps = defaul
   try {
     const id = target?.id;
     if (!isResumableId(id)) return { ok: false, copied: false, message: MSG_INVALID_ID };
-    copied = await copyCommand(id, deps);
-    suffix = copied ? " · command copied" : " · copy failed, run: " + resumeCommand(id);
+    copied = await copyCommand(id, target.cwd, deps);
+    suffix = copied ? " · command copied" : " · copy failed, run: " + resumeCommand(id, target.cwd);
     const done = (ok: boolean, outcome: string): LaunchResult => ({ ok, copied, message: outcome + suffix });
 
     if (target.live === true) return done(false, OUT_LIVE);
