@@ -10,7 +10,11 @@ import {
   osascriptArgs,
   TERMINAL_SCRIPT,
   ITERM_SCRIPT,
-  WARP_TAB_CONFIG_MARKER,
+  WARP_TAB_CONFIG_MARKER_PREFIX,
+  WARP_TAB_CONFIG_TTL_MS,
+  WARP_STEM_PATTERN,
+  warpTabConfigMarker,
+  warpTabConfigStem,
   tomlBasicString,
   warpTabConfigToml,
   writeWarpTabConfig,
@@ -42,6 +46,7 @@ let home: string;
 let cwd: string;
 
 beforeEach(() => {
+  cleanupWarpTabConfig(); // module ownership state never leaks between cases
   home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "csm-launch-")));
   cwd = path.join(home, "proj");
   fs.mkdirSync(cwd);
@@ -63,6 +68,11 @@ interface FakeOver {
   results?: Record<string, boolean>;
 }
 
+interface Later {
+  fn: () => void;
+  ms: number;
+}
+
 function realIsDir(p: string): boolean {
   try {
     return fs.statSync(p).isDirectory();
@@ -71,8 +81,9 @@ function realIsDir(p: string): boolean {
   }
 }
 
-function fakeDeps(over: FakeOver = {}): { deps: LaunchDeps; calls: Call[] } {
+function fakeDeps(over: FakeOver = {}): { deps: LaunchDeps; calls: Call[]; laters: Later[] } {
   const calls: Call[] = [];
+  const laters: Later[] = [];
   const deps: LaunchDeps = {
     async run(cmd, args, opts) {
       calls.push({ cmd, args: [...args], opts });
@@ -83,12 +94,29 @@ function fakeDeps(over: FakeOver = {}): { deps: LaunchDeps; calls: Call[] } {
     homedir: () => home,
     platform: over.platform ?? "darwin",
     termProgram: over.termProgram,
+    later: (fn, ms) => {
+      laters.push({ fn, ms });
+    },
   };
-  return { deps, calls };
+  return { deps, calls, laters };
 }
 
 const PBCOPY_CALL = () => ({ cmd: "/usr/bin/pbcopy", args: [], opts: { input: CMD, timeoutMs: 1500 } });
-const tabConfigPath = () => path.join(home, ".warp", "tab_configs", "csm-resume.toml");
+const tabConfigDir = () => path.join(home, ".warp", "tab_configs");
+/** Every per-launch tab config file (by stem) currently in the temp home. */
+function tabConfigStems(): string[] {
+  let names: string[];
+  try {
+    names = fs.readdirSync(tabConfigDir());
+  } catch {
+    return [];
+  }
+  return names
+    .filter((n) => n.endsWith(".toml"))
+    .map((n) => n.slice(0, -".toml".length))
+    .filter((stem) => WARP_STEM_PATTERN.test(stem));
+}
+const tabConfigFile = (stem: string) => path.join(tabConfigDir(), stem + ".toml");
 
 describe("id gate and command (U1-U2)", () => {
   it("U1 isResumableId accepts only a lowercase UUID", () => {
@@ -264,23 +292,52 @@ describe("openResume (O1-O13)", () => {
     });
   });
 
-  it("O6 WarpTerminal writes a 0600 marked tab config atomically and opens it", async () => {
-    const { deps, calls } = fakeDeps({ termProgram: "WarpTerminal" });
+  it("O6 WarpTerminal writes its own 0600 marked tab config, opens it by stem and deletes it after the TTL", async () => {
+    const { deps, calls, laters } = fakeDeps({ termProgram: "WarpTerminal" });
     const r = await openResume({ id: ID, cwd, live: false }, deps);
-    const file = tabConfigPath();
-    expect(fs.existsSync(file)).toBe(true);
-    expect(fs.statSync(file).mode & 0o777).toBe(0o600);
-    const text = fs.readFileSync(file, "utf8");
-    expect(text.split("\n")[0]).toBe(WARP_TAB_CONFIG_MARKER);
-    expect(text).toContain('directory = "' + cwd + '"');
-    expect(text).toContain('commands = ["claude --resume ' + ID + '"]');
-    expect(text).not.toContain("[params]");
-    expect(fs.readdirSync(path.dirname(file))).toEqual(["csm-resume.toml"]);
     expect(calls).toHaveLength(2);
     expect(calls[0]).toEqual(PBCOPY_CALL());
     expect(calls[1]!.cmd).toBe("/usr/bin/open");
-    expect(calls[1]!.args).toEqual(["warp://tab_config/csm-resume?new_window=true"]);
+    const uri = calls[1]!.args[0]!;
+    expect(calls[1]!.args).toHaveLength(1);
+    const m = /^warp:\/\/tab_config\/(.+)\?new_window=true$/.exec(uri);
+    expect(m).not.toBeNull();
+    const stem = m![1]!;
+    expect(WARP_STEM_PATTERN.test(stem)).toBe(true);
+    expect(stem.startsWith("csm-resume-" + ID.slice(0, 8) + "-" + process.pid + "-")).toBe(true);
+
+    const file = tabConfigFile(stem);
+    expect(fs.existsSync(file)).toBe(true);
+    expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+    const text = fs.readFileSync(file, "utf8");
+    expect(text.split("\n")[0]!.startsWith(WARP_TAB_CONFIG_MARKER_PREFIX)).toBe(true);
+    expect(text).toContain('directory = "' + cwd + '"');
+    expect(text).toContain('commands = ["claude --resume ' + ID + '"]');
+    expect(text).not.toContain("[params]");
+    // No temp file is left behind (atomic temp + rename).
+    expect(fs.readdirSync(tabConfigDir())).toEqual([stem + ".toml"]);
+    expect(fs.readdirSync(tabConfigDir()).some((n) => n.startsWith(".csm-resume"))).toBe(false);
     expect(r).toEqual({ ok: true, copied: true, message: "opening in Warp… · command copied" });
+
+    // WR-02: deletion is scheduled once, WARP_TAB_CONFIG_TTL_MS later.
+    expect(WARP_TAB_CONFIG_TTL_MS).toBe(30000);
+    expect(laters).toHaveLength(1);
+    expect(laters[0]!.ms).toBe(WARP_TAB_CONFIG_TTL_MS);
+    laters[0]!.fn();
+    expect(fs.existsSync(file)).toBe(false);
+    expect(cleanupWarpTabConfig()).toBe(false);
+  });
+
+  it("O6b a failed Warp open deletes the tab config at once and schedules nothing", async () => {
+    const { deps, calls, laters } = fakeDeps({ termProgram: "WarpTerminal", results: { "/usr/bin/open": false } });
+    const r = await openResume({ id: ID, cwd, live: false }, deps);
+    expect(calls).toHaveLength(2);
+    expect(calls[1]!.cmd).toBe("/usr/bin/open");
+    expect(String(calls[1]!.args[0])).toMatch(/^warp:\/\/tab_config\/csm-resume-/);
+    expect(r).toEqual({ ok: false, copied: true, message: "could not open a new tab, paste the command · command copied" });
+    expect(tabConfigStems()).toEqual([]);
+    expect(laters).toEqual([]);
+    expect(cleanupWarpTabConfig()).toBe(false);
   });
 
   it("O7 a Warp-unsafe folder is refused and only copied", async () => {
@@ -288,7 +345,7 @@ describe("openResume (O1-O13)", () => {
     fs.mkdirSync(unsafe);
     const { deps, calls } = fakeDeps({ termProgram: "WarpTerminal" });
     const r = await openResume({ id: ID, cwd: unsafe, live: false }, deps);
-    expect(fs.existsSync(tabConfigPath())).toBe(false);
+    expect(tabConfigStems()).toEqual([]);
     expect(calls).toEqual([PBCOPY_CALL()]);
     expect(r).toEqual({
       ok: false,
@@ -312,8 +369,11 @@ describe("openResume (O1-O13)", () => {
 
   it("O9 TOML basic-string escaping and tab config shape", () => {
     expect(tomlBasicString('a\\b"c')).toBe('"a\\\\b\\"c"');
-    const toml = warpTabConfigToml(cwd, ID);
-    expect(toml).toContain('name = "CSM resume"');
+    const marker = warpTabConfigMarker(process.pid, "0123abcd");
+    const toml = warpTabConfigToml(cwd, ID, marker);
+    expect(toml.split("\n")[0]).toBe(marker);
+    expect(toml).toContain('name = "CSM resume ' + ID.slice(0, 8) + '"');
+    expect(toml).toContain('commands = ["claude --resume ' + ID + '"]');
     expect(toml).toContain("[[panes]]");
     expect(toml).toContain('type = "terminal"');
     expect(toml).not.toContain("[params]");
@@ -365,43 +425,93 @@ describe("openResume (O1-O13)", () => {
   });
 });
 
-describe("Warp tab config cleanup (W1-W2)", () => {
-  function writeMarked(first: string): string {
-    const dir = path.join(home, ".warp", "tab_configs");
-    fs.mkdirSync(dir, { recursive: true });
-    const file = path.join(dir, "csm-resume.toml");
+describe("Warp tab config ownership (W1-W3)", () => {
+  function plant(name: string, first: string): string {
+    fs.mkdirSync(tabConfigDir(), { recursive: true });
+    const file = path.join(tabConfigDir(), name);
     fs.writeFileSync(file, first + '\nname = "CSM resume"\n');
     return file;
   }
 
-  it("W1 removeWarpTabConfig removes only a marked file and never throws", () => {
-    const file = writeMarked(WARP_TAB_CONFIG_MARKER);
-    expect(removeWarpTabConfig(home)).toBe(true);
+  it("W1 removeWarpTabConfig removes only a file whose first line is the exact marker and never throws", () => {
+    const mine = warpTabConfigMarker(process.pid, "aaaaaaaa");
+    expect(mine.startsWith(WARP_TAB_CONFIG_MARKER_PREFIX)).toBe(true);
+    expect(mine).toContain("pid=" + process.pid);
+    expect(mine).toContain("nonce=aaaaaaaa");
+
+    const file = plant("csm-resume-11111111-1-aaaaaaaa.toml", mine);
+    expect(removeWarpTabConfig(file, mine)).toBe(true);
     expect(fs.existsSync(file)).toBe(false);
 
-    writeMarked("# someone else's config");
-    expect(removeWarpTabConfig(home)).toBe(false);
-    expect(fs.existsSync(file)).toBe(true);
+    // Another pid, another nonce, or a foreign first line: kept.
+    for (const other of [
+      warpTabConfigMarker(99999, "aaaaaaaa"),
+      warpTabConfigMarker(process.pid, "bbbbbbbb"),
+      "# someone else's config",
+    ]) {
+      plant("csm-resume-11111111-1-aaaaaaaa.toml", other);
+      expect(removeWarpTabConfig(file, mine)).toBe(false);
+      expect(fs.existsSync(file)).toBe(true);
+    }
 
+    // Missing file.
     fs.rmSync(file);
-    expect(removeWarpTabConfig(home)).toBe(false);
+    expect(removeWarpTabConfig(file, mine)).toBe(false);
 
-    fs.rmSync(path.join(home, ".warp"), { recursive: true, force: true });
-    fs.writeFileSync(path.join(home, ".warp"), "file");
-    expect(() => removeWarpTabConfig(home)).not.toThrow();
-    expect(removeWarpTabConfig(home)).toBe(false);
+    // A symlink to a marked file is never followed or removed.
+    const target = plant("real.toml", mine);
+    fs.symlinkSync(target, file);
+    expect(removeWarpTabConfig(file, mine)).toBe(false);
+    expect(fs.lstatSync(file).isSymbolicLink()).toBe(true);
+    expect(fs.existsSync(target)).toBe(true);
+    fs.rmSync(file);
+
+    // A directory at the path.
+    fs.mkdirSync(file);
+    expect(() => removeWarpTabConfig(file, mine)).not.toThrow();
+    expect(removeWarpTabConfig(file, mine)).toBe(false);
+    expect(fs.existsSync(file)).toBe(true);
+    fs.rmSync(file, { recursive: true });
+
+    // A huge first line (only 4 KiB is read) is not a match.
+    plant("csm-resume-11111111-1-aaaaaaaa.toml", mine + "x".repeat(8192));
+    expect(removeWarpTabConfig(file, mine)).toBe(false);
+    expect(fs.existsSync(file)).toBe(true);
   });
 
-  it("W2 cleanupWarpTabConfig removes only a file this process wrote", () => {
-    cleanupWarpTabConfig(); // clear any state left by earlier cases
-    const file = writeMarked(WARP_TAB_CONFIG_MARKER);
-    expect(cleanupWarpTabConfig()).toBe(false);
-    expect(fs.existsSync(file)).toBe(true);
+  it("W2 cleanupWarpTabConfig removes only the files this process wrote", () => {
+    cleanupWarpTabConfig();
+    const cfg = writeWarpTabConfig(home, cwd, ID);
+    expect(cfg).toBeDefined();
+    expect(cfg!.file).toBe(tabConfigFile(cfg!.stem));
+    expect(fs.readFileSync(cfg!.file, "utf8").split("\n")[0]).toBe(cfg!.marker);
 
-    expect(writeWarpTabConfig(home, cwd, ID)).toBe(true);
+    const foreign = plant("csm-resume-deadbeef-99999-0badc0de.toml", warpTabConfigMarker(99999, "0badc0de"));
     expect(cleanupWarpTabConfig()).toBe(true);
-    expect(fs.existsSync(file)).toBe(false);
+    expect(fs.existsSync(cfg!.file)).toBe(false);
+    expect(fs.existsSync(foreign)).toBe(true);
     expect(cleanupWarpTabConfig()).toBe(false);
+    expect(fs.existsSync(foreign)).toBe(true);
+  });
+
+  it("W3 two writes produce two distinct coexisting files, each with its own id and nonce", () => {
+    const ID2 = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+    const a = writeWarpTabConfig(home, cwd, ID);
+    const b = writeWarpTabConfig(home, cwd, ID2);
+    const c = writeWarpTabConfig(home, cwd, ID);
+    expect(a && b && c).toBeTruthy();
+    const stems = [a!.stem, b!.stem, c!.stem];
+    expect(new Set(stems).size).toBe(3);
+    for (const st of stems) expect(WARP_STEM_PATTERN.test(st)).toBe(true);
+    expect(tabConfigStems().sort()).toEqual([...stems].sort());
+    expect(fs.readFileSync(a!.file, "utf8")).toContain('commands = ["claude --resume ' + ID + '"]');
+    expect(fs.readFileSync(b!.file, "utf8")).toContain('commands = ["claude --resume ' + ID2 + '"]');
+    for (const cfg of [a!, b!, c!]) expect(cfg.marker).toContain("pid=" + process.pid);
+    const nonce = (m: string) => /nonce=([0-9a-f]{8})/.exec(m)?.[1];
+    expect(new Set([a!.marker, b!.marker, c!.marker].map(nonce)).size).toBe(3);
+    expect(warpTabConfigStem(ID, 42, "0123abcd")).toBe("csm-resume-11111111-42-0123abcd");
+    expect(cleanupWarpTabConfig()).toBe(true);
+    expect(tabConfigStems()).toEqual([]);
   });
 });
 
