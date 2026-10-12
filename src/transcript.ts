@@ -54,7 +54,14 @@ import * as path from "node:path";
  * custom-title, ai-title and last-prompt with last-wins semantics; entrypoint
  * is always classified from the tail, never the head. One bounded HEAD window
  * (scanFirstPrompt / readFirstPromptAsync) yields the first real user prompt
- * (promptLabel). Both windows go through one shared reader (readWindowSync /
+ * (promptLabel). WR-04 / D-10 REVISED: the HEAD window (scanHeadFacts /
+ * readHeadFactsAsync) also yields the first cwd (firstCwd) and the first cwd
+ * whose Claude Code project slug (projectSlug) equals the transcript's
+ * `<projects>/<dir>` name (slugCwd); the TAIL window also yields the first
+ * slug-matching cwd (TailFacts.slugCwd) for sessions whose matching cwd only
+ * appears after the head window. src/sessions.ts sessionCwd picks among them.
+ * LOCKSTEP: scripts/csm-resume.mjs mirrors projectSlug / scanHeadFacts (08-10).
+ * Both windows go through one shared reader (readWindowSync /
  * readWindowAsync): O_RDONLY | O_NONBLOCK | O_NOFOLLOW open, fstat isFile,
  * one positional read of at most `budget` bytes, never a whole-file read;
  * the async flavour keeps the panel event loop free and never rejects. Lines
@@ -98,10 +105,15 @@ export const TRIVIAL_COMMANDS: ReadonlySet<string> = new Set([
   "logout",
 ]);
 
-/** Facts gathered from one tail window (all last-wins). */
+/**
+ * Facts gathered from one tail window (all last-wins, except slugCwd).
+ * `slugCwd` (WR-04) is the FIRST cwd in the window whose projectSlug equals
+ * the slug passed to scanTailFacts; undefined without a slug.
+ */
 export type TailFacts = {
   entrypoint?: string;
   cwd?: string;
+  slugCwd?: string;
   hasAssistant: boolean;
   customTitle?: string;
   aiTitle?: string;
@@ -137,6 +149,18 @@ const META_MARKERS = ['"type":"custom-title"', '"type":"ai-title"', '"type":"las
 const CARRIER_MARKER = '"entrypoint":"';
 const ASSISTANT_MARKER = '"type":"assistant"';
 const USER_MARKER = '"type":"user"';
+const CWD_MARKER = '"cwd":"';
+
+/**
+ * Claude Code's projects-dir slug for a cwd (WR-04 / D-10 REVISED): every
+ * UTF-16 code unit outside [A-Za-z0-9] becomes one `-` (no `u` flag, so an
+ * astral character becomes two dashes). Very long paths, which Claude Code
+ * truncates and hashes, never match; those sessions fall back to the first
+ * head cwd.
+ */
+export function projectSlug(cwd: string): string {
+  return cwd.replace(/[^a-zA-Z0-9]/g, "-");
+}
 
 /**
  * The complete lines of a window.
@@ -190,7 +214,7 @@ export function scanCustomTitle(buf: Buffer, atBoundary: boolean, sessionId: str
  * are skipped, and metadata values come only from lines of at most
  * MAX_TITLE_LINE chars. Lines with a different sessionId are ignored.
  */
-export function scanTailFacts(buf: Buffer, atBoundary: boolean, sessionId: string): TailFacts {
+export function scanTailFacts(buf: Buffer, atBoundary: boolean, sessionId: string, slug?: string): TailFacts {
   const f: TailFacts = { hasAssistant: false };
   for (const line of windowLines(buf, atBoundary)) {
     if (line.length === 0 || line.length > MAX_SCAN_LINE) continue;
@@ -224,7 +248,12 @@ export function scanTailFacts(buf: Buffer, atBoundary: boolean, sessionId: strin
     }
     if (o.type === "assistant") f.hasAssistant = true;
     if (typeof o.entrypoint === "string") f.entrypoint = o.entrypoint;
-    if (typeof o.cwd === "string") f.cwd = o.cwd;
+    if (typeof o.cwd === "string") {
+      f.cwd = o.cwd;
+      if (slug !== undefined && f.slugCwd === undefined && o.cwd.length > 0 && projectSlug(o.cwd) === slug) {
+        f.slugCwd = o.cwd;
+      }
+    }
   }
   return f;
 }
@@ -291,6 +320,44 @@ export function scanFirstPrompt(buf: Buffer, sessionId: string): string | undefi
     if (label !== undefined) return label;
   }
   return undefined;
+}
+
+/** Facts gathered from one head window (WR-04 / D-06). */
+export type HeadFacts = { prompt?: string; firstCwd?: string; slugCwd?: string };
+
+/**
+ * One pass over a head window (offset 0): the first real user prompt (same
+ * answer as scanFirstPrompt), the first non-empty cwd, and the first cwd
+ * whose projectSlug equals `slug`. Lines over MAX_SCAN_LINE, unparseable
+ * lines and lines with a different sessionId are skipped; empty cwd values
+ * are ignored. Stops once both the prompt and slugCwd are known.
+ */
+export function scanHeadFacts(buf: Buffer, sessionId: string, slug: string): HeadFacts {
+  const f: HeadFacts = {};
+  for (const line of windowLines(buf, true)) {
+    if (line.length === 0 || line.length > MAX_SCAN_LINE) continue;
+    const isUser = line.includes(USER_MARKER);
+    if (!isUser && !line.includes(CWD_MARKER)) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (parsed === null || typeof parsed !== "object") continue;
+    const o = parsed as { sessionId?: unknown; cwd?: unknown };
+    if (o.sessionId !== undefined && o.sessionId !== sessionId) continue;
+    if (f.prompt === undefined && isUser) {
+      const label = promptLabel(parsed);
+      if (label !== undefined) f.prompt = label;
+    }
+    if (typeof o.cwd === "string" && o.cwd.length > 0) {
+      if (f.firstCwd === undefined) f.firstCwd = o.cwd;
+      if (f.slugCwd === undefined && projectSlug(o.cwd) === slug) f.slugCwd = o.cwd;
+    }
+    if (f.prompt !== undefined && f.slugCwd !== undefined) break;
+  }
+  return f;
 }
 
 /** Guarded open flags: never follow a symlink, never block on a FIFO. */
@@ -392,11 +459,12 @@ export async function readTailFactsAsync(
   realPath: string,
   sessionId: string,
   budget = TAIL_BYTES,
+  slug?: string,
 ): Promise<(TailFacts & { size: number; mtimeMs: number }) | undefined> {
   try {
     const w = await readWindowAsync(realPath, "tail", budget);
     if (w === undefined) return undefined;
-    return { ...scanTailFacts(w.buf, w.atBoundary, sessionId), size: w.size, mtimeMs: w.mtimeMs };
+    return { ...scanTailFacts(w.buf, w.atBoundary, sessionId, slug), size: w.size, mtimeMs: w.mtimeMs };
   } catch {
     return undefined;
   }
@@ -418,6 +486,34 @@ export async function readFirstPromptAsync(
     const prompt = scanFirstPrompt(w.buf, sessionId);
     const final = prompt !== undefined || w.size > Math.max(0, budget);
     return prompt === undefined ? { final } : { prompt, final };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * One guarded head window scanned for HeadFacts (WR-04). `final` is true when
+ * the answer cannot change as the file grows: the file already exceeds the
+ * head budget, or both the prompt and the slug-matching cwd were found. Only
+ * defined fact keys are returned. `realPath` must already be validated.
+ * Never rejects.
+ */
+export async function readHeadFactsAsync(
+  realPath: string,
+  sessionId: string,
+  slug: string,
+  budget = HEAD_BYTES,
+): Promise<(HeadFacts & { final: boolean }) | undefined> {
+  try {
+    const w = await readWindowAsync(realPath, "head", budget);
+    if (w === undefined) return undefined;
+    const h = scanHeadFacts(w.buf, sessionId, slug);
+    const final = w.size > Math.max(0, budget) || (h.prompt !== undefined && h.slugCwd !== undefined);
+    const out: HeadFacts & { final: boolean } = { final };
+    if (h.prompt !== undefined) out.prompt = h.prompt;
+    if (h.firstCwd !== undefined) out.firstCwd = h.firstCwd;
+    if (h.slugCwd !== undefined) out.slugCwd = h.slugCwd;
+    return out;
   } catch {
     return undefined;
   }
