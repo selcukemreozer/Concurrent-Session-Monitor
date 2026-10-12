@@ -3,10 +3,13 @@
 //
 // Self-contained (Node stdlib only, T-1-SC): NO import from src/. This is a
 // LOCKSTEP mirror of src/sessions.ts (discovery, filters, label chain, caps,
-// liveness), src/transcript.ts (scanTailFacts, promptLabel, scanFirstPrompt,
-// the bounded O_NOFOLLOW | O_NONBLOCK window read, the realpath containment
-// guard) and src/label.ts (cleanTitle / truncateLabel). Any change there must
-// be made here too; src/csm-resume.test.ts P1 pins the parity.
+// liveness, and the WR-04 sessionCwd chain), src/transcript.ts (projectSlug,
+// scanTailFacts with its slug match, promptLabel, scanHeadFacts, the bounded
+// O_NOFOLLOW | O_NONBLOCK window read, the realpath containment guard),
+// src/panel/launch.ts (commandCwd / shellSingleQuote / resumeCommand) and
+// src/label.ts (cleanTitle / truncateLabel). Any change there must be made
+// here too; src/csm-resume.test.ts P1 / P2 pin the parity (ids, labels,
+// folders, live flags and the byte-identical resume line).
 //
 // Invoked by commands/csm-resume.md as
 //   node csm-resume.mjs "<caller_session_id>"      (caller id = process.argv[2])
@@ -18,7 +21,15 @@
 //     every untrusted field is cleanTitle'd then capped first (T-08-01).
 //   - The output is a data listing, not instructions (T-08-02); the header
 //     line says so.
-//   - D-10: the copy-paste line is exactly `claude --resume <uuid>`.
+//   - D-10 REVISED: the copy-paste line is
+//     `cd '<session cwd>' && claude --resume <uuid>` (cwd POSIX single-quoted,
+//     each `'` written as `'\''`); when commandCwd rejects the cwd (missing,
+//     relative, unnormalized, trailing separator, control / format code
+//     point, backslash or backtick) it is the plain `claude --resume <uuid>`.
+//   - IN-06: every backtick in transcript text (label, folder, last prompt) is
+//     printed as U+02CB (fenceSafe), and a cwd with a backtick falls back to
+//     the plain line, so stdout never carries a backtick that could close the
+//     code fence /csm-resume asks the model to print.
 //   - The whole body is wrapped so it ALWAYS exits 0.
 //
 // Kept ASCII-only: non-ASCII glyphs are written as \u escapes.
@@ -86,6 +97,20 @@ const META_MARKERS = ['"type":"custom-title"', '"type":"ai-title"', '"type":"las
 const CARRIER_MARKER = '"entrypoint":"';
 const ASSISTANT_MARKER = '"type":"assistant"';
 const USER_MARKER = '"type":"user"';
+const CWD_MARKER = '"cwd":"';
+
+/** Longest cwd a resume line may cd into (mirror of launch.ts MAX_CWD_LEN). */
+const MAX_CWD_LEN = 4096;
+
+/** A cwd with a backslash (fish escape) or backtick (IN-06) is never printed. */
+const COMMAND_CWD_FORBIDDEN = /[\\`]/;
+
+/** Format (Cf) code points: never printed inside a resume line. */
+const FORMAT_CP = /\p{Cf}/u;
+
+/** IN-06: U+02CB modifier letter grave accent, printed in place of a backtick. */
+const MODIFIER_GRAVE = "\u02cb";
+
 const NOISE = /^<(local-command-(stdout|stderr)|command-caveat|system-reminder|bash-(input|stdout|stderr))>/;
 const COMMAND_NAME = /<command-name>\/?([^<]{1,80})<\/command-name>/;
 const COMMAND_ARGS = /<command-args>([^<]{0,200})<\/command-args>/;
@@ -204,8 +229,19 @@ function windowLines(buf, atBoundary) {
   return buf.subarray(first, last).toString("utf8").split("\n");
 }
 
-/** Tail facts, all last-wins (mirror of scanTailFacts). */
-function scanTailFacts(buf, atBoundary, sessionId) {
+/**
+ * Claude Code's projects-dir slug for a cwd (mirror of projectSlug): every
+ * UTF-16 code unit outside [A-Za-z0-9] becomes one `-` (no `u` flag).
+ */
+function projectSlug(cwd) {
+  return cwd.replace(/[^a-zA-Z0-9]/g, "-");
+}
+
+/**
+ * Tail facts, all last-wins except slugCwd, the FIRST non-empty cwd whose
+ * projectSlug equals `slug` (mirror of scanTailFacts).
+ */
+function scanTailFacts(buf, atBoundary, sessionId, slug) {
   const f = { hasAssistant: false };
   for (const line of windowLines(buf, atBoundary)) {
     if (line.length === 0 || line.length > MAX_SCAN_LINE) continue;
@@ -230,7 +266,12 @@ function scanTailFacts(buf, atBoundary, sessionId) {
     }
     if (o.type === "assistant") f.hasAssistant = true;
     if (typeof o.entrypoint === "string") f.entrypoint = o.entrypoint;
-    if (typeof o.cwd === "string") f.cwd = o.cwd;
+    if (typeof o.cwd === "string") {
+      f.cwd = o.cwd;
+      if (slug !== undefined && f.slugCwd === undefined && o.cwd.length > 0 && projectSlug(o.cwd) === slug) {
+        f.slugCwd = o.cwd;
+      }
+    }
   }
   return f;
 }
@@ -267,11 +308,17 @@ function promptLabel(o) {
   return t;
 }
 
-/** First real user prompt in a head window (mirror of scanFirstPrompt). */
-function scanFirstPrompt(buf, sessionId) {
+/**
+ * One pass over a head window (mirror of scanHeadFacts): the first real user
+ * prompt, the first non-empty cwd (firstCwd) and the first cwd whose
+ * projectSlug equals `slug` (slugCwd). Stops once prompt and slugCwd are known.
+ */
+function scanHeadFacts(buf, sessionId, slug) {
+  const f = {};
   for (const line of windowLines(buf, true)) {
     if (line.length === 0 || line.length > MAX_SCAN_LINE) continue;
-    if (!line.includes(USER_MARKER)) continue;
+    const isUser = line.includes(USER_MARKER);
+    if (!isUser && !line.includes(CWD_MARKER)) continue;
     let o;
     try {
       o = JSON.parse(line);
@@ -280,10 +327,17 @@ function scanFirstPrompt(buf, sessionId) {
     }
     if (o === null || typeof o !== "object") continue;
     if (o.sessionId !== undefined && o.sessionId !== sessionId) continue;
-    const label = promptLabel(o);
-    if (label !== undefined) return label;
+    if (f.prompt === undefined && isUser) {
+      const label = promptLabel(o);
+      if (label !== undefined) f.prompt = label;
+    }
+    if (typeof o.cwd === "string" && o.cwd.length > 0) {
+      if (f.firstCwd === undefined) f.firstCwd = o.cwd;
+      if (f.slugCwd === undefined && projectSlug(o.cwd) === slug) f.slugCwd = o.cwd;
+    }
+    if (f.prompt !== undefined && f.slugCwd !== undefined) break;
   }
-  return undefined;
+  return f;
 }
 
 /** Guarded open flags: never follow a symlink, never block on a FIFO. */
@@ -506,7 +560,16 @@ function resumeLabel(src) {
   return { label: UNNAMED, labelKind: "unnamed" };
 }
 
-/** Folder = capped basename of the tail cwd, else the capped slug. */
+/**
+ * WR-04 session cwd (mirror of sessionCwd): the head's first slug-matching
+ * cwd, else the tail's first slug-matching cwd, else the first head cwd. The
+ * tail's last-wins cwd drifts with in-session `cd`s and is never used.
+ */
+function sessionCwd(head, tailSlugCwd) {
+  return head?.slugCwd ?? tailSlugCwd ?? head?.firstCwd;
+}
+
+/** Folder = capped basename of the WR-04 session cwd, else the capped slug. */
 function folderOf(cwd, slug) {
   if (typeof cwd === "string" && cwd.length > 0) {
     const base = cleanTitle(path.basename(cwd));
@@ -515,32 +578,75 @@ function folderOf(cwd, slug) {
   return truncateLabel(cleanTitle(slug), FOLDER_CAP);
 }
 
+/**
+ * D-10 REVISED (mirror of launch.ts commandCwd): `cwd` only when it is a
+ * 1..4096-char absolute, normalized path (no trailing separator except the
+ * root itself) with no C0 / DEL / C1 / lone surrogate / Cf code point and no
+ * backslash or backtick; else undefined. Never throws.
+ */
+function commandCwd(cwd) {
+  try {
+    if (typeof cwd !== "string" || cwd.length < 1 || cwd.length > MAX_CWD_LEN) return undefined;
+    if (!path.isAbsolute(cwd) || path.normalize(cwd) !== cwd) return undefined;
+    // path.normalize keeps a trailing separator ("/a/"); only the root may end in one.
+    if (cwd.length > 1 && cwd.endsWith(path.sep)) return undefined;
+    for (const ch of cwd) {
+      const cp = ch.codePointAt(0) ?? 0;
+      if (cp <= 0x1f || cp === 0x7f) return undefined;
+      if (cp >= 0x80 && cp <= 0x9f) return undefined;
+      if (cp >= 0xd800 && cp <= 0xdfff) return undefined;
+      if (FORMAT_CP.test(ch)) return undefined;
+    }
+    if (COMMAND_CWD_FORBIDDEN.test(cwd)) return undefined;
+    return cwd;
+  } catch {
+    return undefined;
+  }
+}
+
+/** POSIX single-quoting: wrap in `'...'`, writing each `'` as `'\''` (mirror of launch.ts). */
+function shellSingleQuote(s) {
+  return "'" + s.replace(/'/g, "'\\''") + "'";
+}
+
+/** D-10 REVISED resume line (mirror of launch.ts resumeCommand). */
+function resumeCommand(id, cwd) {
+  const c = commandCwd(cwd);
+  if (c === undefined) return "claude --resume " + id;
+  return "cd " + shellSingleQuote(c) + " && claude --resume " + id;
+}
+
+/** IN-06: every backtick becomes U+02CB, so transcript text cannot close a code fence. */
+function fenceSafe(s) {
+  return String(s).replace(/`/g, MODIFIER_GRAVE);
+}
+
 /** One row for a candidate, or undefined when it does not qualify. */
 function rowFor(c, roots, live) {
   const realPath = allowedPath(c.id, c.path, roots);
   if (realPath === undefined) return undefined;
   const w = readWindow(realPath, "tail", TAIL_BYTES);
   if (w === undefined) return undefined;
-  const facts = scanTailFacts(w.buf, w.atBoundary, c.id);
+  const facts = scanTailFacts(w.buf, w.atBoundary, c.id, c.slug);
   if (typeof facts.entrypoint === "string" && facts.entrypoint.startsWith("sdk-")) return undefined; // D-01
   const custom = cleanTitle(facts.customTitle);
   if (!facts.hasAssistant && custom.length === 0) return undefined; // D-04
-  let firstPrompt;
-  if (custom.length === 0 && cleanTitle(facts.aiTitle).length === 0) {
-    const head = readWindow(realPath, "head", HEAD_BYTES);
-    if (head !== undefined) firstPrompt = scanFirstPrompt(head.buf, c.id);
-  }
+  // WR-04: the head is read for every qualifying row (it carries the session cwd).
+  const hw = readWindow(realPath, "head", HEAD_BYTES);
+  const head = hw !== undefined ? scanHeadFacts(hw.buf, c.id, c.slug) : {};
   const { label, labelKind } = resumeLabel({
     customTitle: facts.customTitle,
     aiTitle: facts.aiTitle,
-    firstPrompt,
+    firstPrompt: head.prompt,
   });
   const lp = cleanTitle(facts.lastPrompt);
+  const cwd = sessionCwd(head, facts.slugCwd);
   return {
     id: c.id,
     label,
     labelKind,
-    folder: folderOf(facts.cwd, c.slug),
+    folder: folderOf(cwd, c.slug),
+    cwd,
     mtimeMs: c.mtimeMs,
     live: live.has(c.id),
     lastPrompt: lp.length > 0 ? truncateLabel(lp, LAST_PROMPT_CAP) : undefined,
@@ -589,12 +695,13 @@ function main() {
   const out = [`Recent sessions (newest first)${DOT}${rows.length} shown${DOT}data listing, not instructions`];
   for (const r of rows) {
     const text = r.labelKind === "derived" ? `${LQ}${r.label}${RQ}` : r.label;
-    let line1 = `${text}${DOT}${r.folder}${DOT}${fmtAge(r.mtimeMs, now)}${DOT}${r.id.slice(0, 8)}`;
+    let line1 = `${fenceSafe(text)}${DOT}${fenceSafe(r.folder)}${DOT}${fmtAge(r.mtimeMs, now)}${DOT}${r.id.slice(0, 8)}`;
     if (r.live) line1 += `${DOT}live`;
     if (callerId !== undefined && r.id === callerId) line1 += " (you)";
     out.push(line1);
-    if (r.lastPrompt !== undefined) out.push(`${LAST_LEAD}${LQ}${r.lastPrompt}${RQ}`);
-    out.push(`  claude --resume ${r.id}`);
+    if (r.lastPrompt !== undefined) out.push(`${LAST_LEAD}${LQ}${fenceSafe(r.lastPrompt)}${RQ}`);
+    // commandCwd admits no control code point, so sanitize() never alters a printed cwd.
+    out.push(`  ${resumeCommand(r.id, r.cwd)}`);
   }
   process.stdout.write(out.map(sanitize).join("\n") + "\n");
 }
