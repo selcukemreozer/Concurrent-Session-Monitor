@@ -4,8 +4,9 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-// P1 parity only: the panel reducer, compared against the /csm-resume script.
+// P1/P2 parity only: the panel reducer and resume line, compared against the /csm-resume script.
 import { discoverSessions, resetSessionsCache } from "./sessions.js";
+import { resumeCommand } from "./panel/launch.js";
 
 // 08-04: spawnSync integration tests for scripts/csm-resume.mjs (RESUME-01..03).
 // Every run sets HOME, CLAUDE_CONFIG_DIR and CSM_STORE_DIR to realpath'd
@@ -142,7 +143,52 @@ function writeRegistry(name: string, body: unknown): void {
   fs.writeFileSync(path.join(reg, name), JSON.stringify(body));
 }
 
-type Block = { line1: string; last?: string; id?: string; lastIdx?: number; line1Idx: number };
+type Segment = { cwd: string | null; padBefore?: number };
+
+/**
+ * 08-10 (WR-04 parity): same shape as the 08-09 sessions.test.ts helper. Each
+ * segment writes `padBefore` bytes of cwd-less attachment lines, then one user
+ * line (a real prompt) and one assistant line carrying that cwd (null omits it).
+ */
+function writeDrift(
+  root: string,
+  slug: string,
+  sessionId: string,
+  segments: Segment[],
+  extra: { aiTitle?: string; mtimeSec?: number } = {},
+): string {
+  const dir = path.join(root, slug);
+  fs.mkdirSync(dir, { recursive: true });
+  const lines: string[] = [];
+  segments.forEach((seg, i) => {
+    const chunk = "x".repeat(1000);
+    for (let b = 0; b < (seg.padBefore ?? 0); b += 1000) {
+      lines.push(JSON.stringify({ type: "attachment", sessionId, attachment: { content: chunk } }));
+    }
+    const base: Record<string, unknown> = { sessionId, entrypoint: "cli" };
+    if (seg.cwd !== null) base.cwd = seg.cwd;
+    lines.push(JSON.stringify({ ...base, type: "user", message: { role: "user", content: `step ${i + 1}` } }));
+    lines.push(
+      JSON.stringify({ ...base, type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "ok" }] } }),
+    );
+  });
+  if (extra.aiTitle !== undefined) {
+    lines.push(JSON.stringify({ type: "ai-title", aiTitle: extra.aiTitle, sessionId }));
+  }
+  const p = path.join(dir, `${sessionId}.jsonl`);
+  fs.writeFileSync(p, lines.join(NL) + NL);
+  if (extra.mtimeSec !== undefined) fs.utimesSync(p, extra.mtimeSec, extra.mtimeSec);
+  return p;
+}
+
+/**
+ * D-10 REVISED resume line: `  cd '<cwd>' && claude --resume <uuid>` (each `'`
+ * written as `'\''`) or the plain `  claude --resume <uuid>`. Group 1 = id.
+ */
+const RESUME_LINE =
+  /^ {2}(?:cd '(?:[^']|'\\'')*' && )?claude --resume ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
+
+type Block = { line1: string; last?: string; id?: string; cmd?: string; lastIdx?: number; line1Idx: number };
 
 /** Split stdout into the header and per-session blocks. */
 function parse(stdout: string): { header: string; blocks: Block[]; lines: string[] } {
@@ -161,8 +207,12 @@ function parse(stdout: string): { header: string; blocks: Block[]; lines: string
     if (l.startsWith("  ↳ last: ")) {
       b.last = l;
       b.lastIdx = i;
-    } else if (l.startsWith("  claude --resume ")) {
-      b.id = l.slice("  claude --resume ".length);
+    } else {
+      const m = RESUME_LINE.exec(l);
+      if (m !== null) {
+        b.id = m[1];
+        b.cmd = l.slice(2);
+      }
     }
   }
   return { header, blocks, lines };
@@ -173,10 +223,12 @@ function blockOf(stdout: string, sid: string): Block | undefined {
 }
 
 function resumeIds(stdout: string): string[] {
-  return stdout
-    .split(NL)
-    .filter((l) => l.startsWith("  claude --resume "))
-    .map((l) => l.slice("  claude --resume ".length));
+  const out: string[] = [];
+  for (const l of stdout.split(NL)) {
+    const m = RESUME_LINE.exec(l);
+    if (m !== null) out.push(m[1]!);
+  }
+  return out;
 }
 
 const T0 = 1_700_000_000;
@@ -197,9 +249,12 @@ describe("scripts/csm-resume.mjs", () => {
     const { header, lines } = parse(r.stdout);
     expect(header).toBe("Recent sessions (newest first) · 3" + HEADER_TAIL);
     expect(resumeIds(r.stdout)).toEqual([id(3), id(2), id(1)]);
-    for (const l of lines.filter((x) => x.startsWith("  claude --resume "))) {
-      expect(l).toMatch(/^ {2}claude --resume [0-9a-f-]{36}$/);
-    }
+    const want = [
+      `  cd '/work/beta' && claude --resume ${id(3)}`,
+      `  cd '/work/gamma' && claude --resume ${id(2)}`,
+      `  cd '/work/alpha' && claude --resume ${id(1)}`,
+    ];
+    expect(lines.filter((x) => RESUME_LINE.test(x))).toEqual(want);
     expect(blockOf(r.stdout, id(1))!.line1).toContain(" · alpha · ");
     expect(blockOf(r.stdout, id(1))!.line1).toContain(id(1).slice(0, 8));
     expect(blockOf(r.stdout, id(3))!.line1).toContain(" · beta · ");
@@ -291,6 +346,8 @@ describe("scripts/csm-resume.mjs", () => {
     const r = run();
     expect(r.status).toBe(0);
     expect(resumeIds(r.stdout)).toEqual([id(1)]);
+    // T-08-42: the control-character cwd is never printed; the row gets the plain line.
+    expect(blockOf(r.stdout, id(1))!.cmd).toBe(`claude --resume ${id(1)}`);
     for (const ch of r.stdout) {
       const cp = ch.codePointAt(0)!;
       if (cp === 0x0a) continue;
@@ -304,7 +361,7 @@ describe("scripts/csm-resume.mjs", () => {
     for (let i = 1; i <= 25; i++) writeSession(rootA, `-work-${i}`, id(i), { aiTitle: `S${i}`, mtimeSec: T0 + i });
     const r = run();
     expect(parse(r.stdout).header).toBe("Recent sessions (newest first) · 20" + HEADER_TAIL);
-    expect(r.stdout.split(NL).filter((l) => l.startsWith("  claude --resume "))).toHaveLength(20);
+    expect(r.stdout.split(NL).filter((l) => RESUME_LINE.test(l))).toHaveLength(20);
     expect(resumeIds(r.stdout)[0]).toBe(id(25));
   });
 
@@ -313,7 +370,7 @@ describe("scripts/csm-resume.mjs", () => {
     const r = run();
     const b = blockOf(r.stdout, id(1))!;
     expect(b.line1).not.toContain("live");
-    expect(r.stdout).toContain(`  claude --resume ${id(1)}${NL}`);
+    expect(r.stdout).toContain(`  cd '/work/-work-a' && claude --resume ${id(1)}${NL}`);
   });
 
   it("S12 (T-08-05): nested, non-UUID and symlinked transcripts are not listed", () => {
@@ -364,6 +421,75 @@ describe("scripts/csm-resume.mjs", () => {
       const text = row.labelKind === "derived" ? `${LQ}${row.label}${RQ}` : row.label;
       expect(b.line1.startsWith(`${text} · ${row.folder} · `)).toBe(true);
       expect(b.line1.includes(" · live")).toBe(row.live);
+      expect(b.cmd).toBe(resumeCommand(row.id, row.cwd));
     }
+  });
+
+  it("S15 (IN-06): no backtick from transcript text reaches stdout", () => {
+    writeSession(rootA, "-work-a", id(1), { customTitle: "```evil", lastPrompt: "run `rm -rf` now", mtimeSec: T0 + 2 });
+    writeSession(rootA, "-work-b", id(2), { aiTitle: "a`b", mtimeSec: T0 + 1 });
+    const r = run();
+    expect(r.status).toBe(0);
+    expect(resumeIds(r.stdout)).toEqual([id(1), id(2)]);
+    expect(r.stdout).not.toContain("`");
+    expect(blockOf(r.stdout, id(1))!.line1.startsWith("\u02cb\u02cb\u02cbevil")).toBe(true);
+    expect(blockOf(r.stdout, id(1))!.last).toBe(`  ↳ last: ${LQ}run \u02cbrm -rf\u02cb now${RQ}`);
+    expect(blockOf(r.stdout, id(2))!.line1.startsWith(`${LQ}a\u02cbb${RQ} · `)).toBe(true);
+  });
+
+  it("S16 (T-08-42): a cwd with a backtick or backslash gets the plain resume line", () => {
+    writeSession(rootA, "-work-a-b", id(1), { aiTitle: "Tick", cwd: "/work/a`b", mtimeSec: T0 + 2 });
+    writeSession(rootA, "-work-a-c", id(2), { aiTitle: "Slash", cwd: "/work/a\\b", mtimeSec: T0 + 1 });
+    const r = run();
+    expect(r.status).toBe(0);
+    expect(r.stdout).not.toContain("`");
+    expect(blockOf(r.stdout, id(1))!.cmd).toBe(`claude --resume ${id(1)}`);
+    expect(blockOf(r.stdout, id(2))!.cmd).toBe(`claude --resume ${id(2)}`);
+  });
+
+  it("P2 (WR-04): drifted, tail-only, unmatched, quoted, unsafe and cwd-less sessions match the panel", async () => {
+    writeDrift(rootA, "-work-alpha", id(1), [{ cwd: "/work/alpha" }, { cwd: "/work/alpha/frontend" }, { cwd: "/work/other-repo" }], {
+      mtimeSec: T0 + 8,
+    });
+    writeDrift(rootA, "-work-real", id(2), [{ cwd: "/scratch/ws-1" }, { cwd: "/work/real", padBefore: 300 * 1024 }], {
+      mtimeSec: T0 + 7,
+    });
+    writeDrift(rootA, "proj", id(3), [{ cwd: "/elsewhere/a" }, { cwd: "/elsewhere/b" }], { mtimeSec: T0 + 6 });
+    writeDrift(rootA, "-work-it-s-here", id(4), [{ cwd: "/work/it's here" }], { mtimeSec: T0 + 5 });
+    writeDrift(rootA, "-work-a-b", id(5), [{ cwd: "/work/a\\b" }], { mtimeSec: T0 + 4 });
+    writeDrift(rootA, "-work-none", id(6), [{ cwd: null }, { cwd: null }], { mtimeSec: T0 + 3 });
+    // 08-09 D19 second fixture: the tail's first slug match wins over a later drift into a subfolder.
+    writeDrift(
+      rootA,
+      "-work-real",
+      id(7),
+      [{ cwd: "/scratch/ws-1" }, { cwd: "/work/real", padBefore: 300 * 1024 }, { cwd: "/work/real/docs" }],
+      { mtimeSec: T0 + 2 },
+    );
+    // 08-08 deviation: a trailing separator (path.normalize keeps it) is unusable.
+    writeDrift(rootA, "-work-tr-", id(8), [{ cwd: "/work/tr/" }], { mtimeSec: T0 + 1 });
+
+    const r = run();
+    expect(r.status).toBe(0);
+    resetSessionsCache();
+    const rows = await discoverSessions({ roots: [rootA, rootB], registryDirs: [reg], n: 20 });
+    expect(resumeIds(r.stdout)).toEqual(rows.map((x) => x.id));
+    expect(rows.map((x) => x.id)).toEqual([id(1), id(2), id(3), id(4), id(5), id(6), id(7), id(8)]);
+    for (const row of rows) {
+      const b = blockOf(r.stdout, row.id)!;
+      expect(b.cmd).toBe(resumeCommand(row.id, row.cwd));
+      expect(b.line1).toContain(" · " + row.folder + " · ");
+    }
+    expect(rows.slice(0, 4).map((x) => x.cwd)).toEqual(["/work/alpha", "/work/real", "/elsewhere/a", "/work/it's here"]);
+    expect(rows[6]!.cwd).toBe("/work/real");
+    expect(blockOf(r.stdout, id(1))!.cmd).toBe(`cd '/work/alpha' && claude --resume ${id(1)}`);
+    expect(blockOf(r.stdout, id(2))!.cmd).toBe(`cd '/work/real' && claude --resume ${id(2)}`);
+    expect(blockOf(r.stdout, id(3))!.cmd).toBe(`cd '/elsewhere/a' && claude --resume ${id(3)}`);
+    expect(blockOf(r.stdout, id(4))!.cmd).toBe(`cd '/work/it'\\''s here' && claude --resume ${id(4)}`);
+    expect(blockOf(r.stdout, id(5))!.cmd).toBe(`claude --resume ${id(5)}`);
+    expect(blockOf(r.stdout, id(6))!.cmd).toBe(`claude --resume ${id(6)}`);
+    expect(blockOf(r.stdout, id(7))!.cmd).toBe(`cd '/work/real' && claude --resume ${id(7)}`);
+    expect(blockOf(r.stdout, id(8))!.cmd).toBe(`claude --resume ${id(8)}`);
+    expect(blockOf(r.stdout, id(1))!.line1).toContain(" · alpha · ");
   });
 });
