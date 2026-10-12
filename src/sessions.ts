@@ -4,10 +4,12 @@ import * as os from "node:os";
 import * as path from "node:path";
 import {
   SESSION_UUID_PATTERN,
+  TAIL_BYTES,
   isAllowedTranscriptPath,
   projectRoots,
-  readFirstPromptAsync,
+  readHeadFactsAsync,
   readTailFactsAsync,
+  type HeadFacts,
   type TailFacts,
 } from "./transcript.js";
 import { NAME_CAP, UNNAMED, cleanTitle, truncateLabel } from "./label.js";
@@ -39,7 +41,15 @@ import { clampOffset } from "./phases.js";
  *     session id across refreshes.
  *   - D-19: resumeScanMs (CSM_RESUME_SCAN_MS) is the pane's scan cadence; the
  *     scan is async (fs/promises only) and a warm scan is stat-only thanks to
- *     the per-path (size, mtime) cache.
+ *     the per-path (size, mtime) cache. WR-05: the cadence is floored at
+ *     MIN_RESUME_SCAN_MS.
+ *   - D-10 REVISED / WR-04: the row's cwd (the `o` launch folder and the
+ *     copied `cd` line) and its folder column come from sessionCwd: the head
+ *     window's first cwd whose project slug equals the `<projects>/<dir>`
+ *     name, else the tail window's first slug match, else the first head cwd.
+ *     The tail's last-wins cwd drifts with in-session `cd`s and is never used.
+ *     Per changed transcript at most one bounded tail and one bounded head
+ *     window are read; the head is re-read only while its facts are not final.
  *
  * Contract: this module only READS. It writes nothing anywhere and installs no
  * hook. The CC registry dir also holds `<pid>.<hash>.key` peer-secret files;
@@ -48,7 +58,8 @@ import { clampOffset } from "./phases.js";
  *
  * LOCKSTEP: scripts/csm-resume.mjs is a self-contained stdlib script that
  * cannot import src/; it mirrors this reducer (label chain, filters, caps,
- * liveness). Any change here must be made there too.
+ * liveness, and - from 08-10 - the sessionCwd chain). Any change here must be
+ * made there too.
  */
 
 /** D-03: rows kept per scan. */
@@ -78,7 +89,11 @@ export type ResumeRow = {
   labelKind: LabelKind;
   /** Cleaned and capped at FOLDER_CAP. */
   folder: string;
-  /** Raw tail cwd (launch.ts re-validates it before use). */
+  /**
+   * The WR-04 session cwd (sessionCwd), raw and untrusted. launch.ts
+   * re-validates it before every use: commandCwd for the copied line,
+   * validLaunchCwd for `o`.
+   */
   cwd?: string;
   mtimeMs: number;
   live: boolean;
@@ -107,9 +122,31 @@ export function fmtAge(thenMs: number, now: number): string {
   return `${Math.floor(h / 24)}d`;
 }
 
-/** D-19: the pane's scan cadence, read lazily so tests can flip the env. */
+/** WR-05: the lowest accepted scan cadence. */
+export const MIN_RESUME_SCAN_MS = 1000;
+
+/**
+ * D-19: the pane's scan cadence, read lazily so tests can flip the env.
+ * WR-05: floored at MIN_RESUME_SCAN_MS so a 0 or tiny value cannot busy-loop
+ * the projects walk while OTURUMLAR is visible.
+ */
 export function resumeScanMs(): number {
-  return numEnv("CSM_RESUME_SCAN_MS", 10000);
+  return Math.max(MIN_RESUME_SCAN_MS, numEnv("CSM_RESUME_SCAN_MS", 10000));
+}
+
+/**
+ * WR-04 / D-10 REVISED session cwd chain:
+ *   1. the head window's first slug-matching cwd (the user's "prefer the head
+ *      (first) occurrence");
+ *   2. else the tail window's first slug-matching cwd (a matching cwd that
+ *      only appears after the head window);
+ *   3. else the first head cwd;
+ *   4. else undefined.
+ * The tail's last-wins cwd is deliberately never used: it drifts when a
+ * session `cd`s into a subfolder or another repository.
+ */
+export function sessionCwd(head: HeadFacts | undefined, tailSlugCwd: string | undefined): string | undefined {
+  return head?.slugCwd ?? tailSlugCwd ?? head?.firstCwd;
 }
 
 /**
@@ -259,8 +296,12 @@ type CacheEntry = {
   realPath: string;
   sdk: boolean;
   facts?: TailFacts;
-  prompt?: string;
-  promptFinal: boolean;
+  /** Head-window facts (first prompt, first cwd, slug-matching cwd). */
+  head?: HeadFacts;
+  /** True once the head facts cannot change as the file grows. */
+  headFinal: boolean;
+  /** File size at the last head read; the head is re-read only on a change. */
+  headSize?: number;
 };
 
 /** Per candidate path; survives pane toggles so a reopen is a warm scan. */
@@ -271,7 +312,7 @@ export function resetSessionsCache(): void {
   cache.clear();
 }
 
-/** Folder = capped basename of the tail cwd, else the capped slug. */
+/** Folder = capped basename of the WR-04 session cwd, else the capped slug. */
 function folderOf(cwd: string | undefined, slug: string): string {
   if (typeof cwd === "string" && cwd.length > 0) {
     const base = cleanTitle(path.basename(cwd));
@@ -291,7 +332,7 @@ async function rowFor(
   if (entry === undefined || entry.facts === undefined || entry.size !== c.size || entry.mtimeMs !== c.mtimeMs) {
     const realPath = isAllowedTranscriptPath(c.id, c.path, roots);
     if (realPath === undefined) return undefined;
-    const read = await readTailFactsAsync(realPath, c.id);
+    const read = await readTailFactsAsync(realPath, c.id, TAIL_BYTES, c.slug);
     if (read === undefined) return undefined;
     const { size, mtimeMs, ...facts } = read;
     const shrank = entry !== undefined && size < entry.size;
@@ -301,8 +342,9 @@ async function rowFor(
       realPath,
       sdk: false,
       facts,
-      prompt: shrank ? undefined : entry?.prompt,
-      promptFinal: shrank ? false : (entry?.promptFinal ?? false),
+      head: shrank ? undefined : entry?.head,
+      headFinal: shrank ? false : (entry?.headFinal ?? false),
+      headSize: shrank ? undefined : entry?.headSize,
     };
     if (typeof facts.entrypoint === "string" && facts.entrypoint.startsWith("sdk-")) {
       next.sdk = true;
@@ -317,25 +359,30 @@ async function rowFor(
   if (facts === undefined) return undefined;
   const custom = cleanTitle(facts.customTitle);
   if (!facts.hasAssistant && custom.length === 0) return undefined; // D-04
-  if (custom.length === 0 && cleanTitle(facts.aiTitle).length === 0 && !entry.promptFinal) {
-    const head = await readFirstPromptAsync(entry.realPath, c.id);
+  // WR-04: the head is read for every qualifying row (it carries the session
+  // cwd), but only while its facts are not final and the size changed.
+  if (!entry.headFinal && entry.headSize !== entry.size) {
+    const head = await readHeadFactsAsync(entry.realPath, c.id, c.slug);
     if (head !== undefined) {
-      entry.prompt = head.prompt;
-      entry.promptFinal = head.final;
+      const { final, ...headFacts } = head;
+      entry.head = headFacts;
+      entry.headFinal = final;
+      entry.headSize = entry.size;
     }
   }
   const { label, labelKind } = resumeLabel({
     customTitle: facts.customTitle,
     aiTitle: facts.aiTitle,
-    firstPrompt: entry.prompt,
+    firstPrompt: entry.head?.prompt,
   });
   const lp = cleanTitle(facts.lastPrompt);
+  const cwd = sessionCwd(entry.head, facts.slugCwd);
   return {
     id: c.id,
     label,
     labelKind,
-    folder: folderOf(facts.cwd, c.slug),
-    cwd: facts.cwd,
+    folder: folderOf(cwd, c.slug),
+    cwd,
     mtimeMs: c.mtimeMs,
     live: live.has(c.id),
     lastPrompt: lp.length > 0 ? truncateLabel(lp, LAST_PROMPT_CAP) : undefined,
