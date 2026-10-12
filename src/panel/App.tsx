@@ -467,6 +467,10 @@ export function App() {
   // key handlers never act on a stale list (T-08-11) and quick successive keys
   // see each other's effect before React re-renders.
   const scanningResume = React.useRef(false);
+  // Generation of the current OTURUMLAR visible period (D-19) and the tick of
+  // the live scan effect, so a discarded scan can kick a fresh one at once.
+  const resumeScanGen = React.useRef(0);
+  const resumeTickRef = React.useRef<(() => void) | null>(null);
   const rightPaneRef = React.useRef(rightPane);
   rightPaneRef.current = rightPane;
   const resumeRowsRef = React.useRef(resumeRows);
@@ -505,13 +509,26 @@ export function App() {
   // Visibility-gated resume scan (D-19, RESUME-04): runs ONLY while OTURUMLAR is
   // visible — one immediate tick when `r` opens it, then a slow resumeScanMs()
   // interval; switching back to FAZLAR (or unmounting) clears the interval. It
-  // is async and overlap-guarded, and never part of the 750ms poll (T-08-12).
-  // liveIds are the non-ended store rows' session ids, so a CSM-tracked live
-  // session is marked live even without a registry entry (D-11). A rejected
-  // scan keeps the last-good rows; rows are not reset on hide, so reopening
-  // shows the cached list while the next scan runs.
+  // is async and never part of the 750ms poll (T-08-12). liveIds are the
+  // non-ended store rows' session ids, so a CSM-tracked live session is marked
+  // live even without a registry entry (D-11); launch holds are never fed in.
+  // A rejected scan keeps the last-good rows; rows are not reset on hide, so
+  // reopening shows the cached list while the next scan runs.
+  //
+  // D-19 overlap rules (review WR-03, 08-07):
+  // - The in-flight scan owns the overlap guard: only its own `finally` clears
+  //   scanningResume, never the effect cleanup, so a quick r,r,r (show, hide,
+  //   show) can never run two discoverSessions calls at once.
+  // - Each visible period has a generation; the cleanup bumps it on hide or
+  //   unmount. A scan's rows apply only when its generation is still current
+  //   and App is mounted, so an older scan never overwrites fresher rows.
+  // - When a discarded scan ends while OTURUMLAR is visible again, a fresh scan
+  //   starts at once instead of waiting a full interval.
+  // - Launch holds (D-16) are settled only from applied scans, using the time
+  //   the scan started.
   React.useEffect(() => {
     if (rightPane !== "oturumlar") return undefined;
+    const gen = ++resumeScanGen.current;
     const tick = () => {
       if (scanningResume.current) return; // prior scan still running — no overlap
       scanningResume.current = true;
@@ -523,7 +540,7 @@ export function App() {
         liveIds: new Set(liveRowsRef.current.map((r) => r.session_id)),
       })
         .then((rows) => {
-          if (!mounted.current) return;
+          if (!mounted.current || gen !== resumeScanGen.current) return; // stale scan
           if (settleHolds(launchHolds.current, rows, startedAt)) bumpHolds();
           setResumeRows(rows);
         })
@@ -532,13 +549,20 @@ export function App() {
         })
         .finally(() => {
           scanningResume.current = false;
+          // A discarded scan blocked the reopened pane's first tick: run it now.
+          if (gen !== resumeScanGen.current && mounted.current) resumeTickRef.current?.();
         });
     };
+    resumeTickRef.current = tick;
     tick();
     const t = setInterval(tick, resumeScanMs());
     return () => {
-      scanningResume.current = false;
       clearInterval(t);
+      // Discard results of scans started in this visible period from now on.
+      // scanningResume is deliberately left alone: only the scan's finally
+      // releases it.
+      resumeScanGen.current += 1;
+      if (resumeTickRef.current === tick) resumeTickRef.current = null;
     };
   }, [rightPane]);
 
