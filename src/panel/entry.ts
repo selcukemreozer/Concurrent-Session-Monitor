@@ -14,9 +14,10 @@
 // unregisterPanel removes the file only if it still holds our pid. Both never
 // throw.
 //
-// Phase 8 (RESUME-04): on the same clean exit cleanupWarpTabConfig removes the
-// ~/.warp/tab_configs/csm-resume.toml that THIS panel wrote for an `o` launch
-// in Warp (marker-checked, never throws), and touches nothing else.
+// Phase 8 (RESUME-04): on the same clean exit cleanupWarpTabConfig removes every
+// per-launch Warp tab config (~/.warp/tab_configs/csm-resume-<shortid>-<pid>-<nonce>.toml)
+// that THIS panel wrote for an `o` launch and still holds (marker-checked by pid
+// and nonce, never throws), and nothing else.
 import type { Instance } from "ink";
 import { run } from "./main.js"; // the sole rendering call site stays in main.tsx
 import { registerPanel, unregisterPanel } from "./registration.js";
