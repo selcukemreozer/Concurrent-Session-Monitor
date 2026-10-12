@@ -85,8 +85,17 @@ export function settleHolds(
 /**
  * Display overlay: every held row reads as live. Returns the SAME array when
  * no held row needs a change; otherwise a new array where only the changed
- * rows are copies. Never mutates its input.
+ * rows are copies. Never mutates its input. A mutable array in gives a mutable
+ * array type out, so the result can feed a `T[]` prop directly.
  */
+export function applyHolds<T extends { id: string; live: boolean }>(
+  rows: T[] | null,
+  holds: LaunchHolds,
+): T[] | null;
+export function applyHolds<T extends { id: string; live: boolean }>(
+  rows: ReadonlyArray<T> | null,
+  holds: LaunchHolds,
+): ReadonlyArray<T> | null;
 export function applyHolds<T extends { id: string; live: boolean }>(
   rows: ReadonlyArray<T> | null,
   holds: LaunchHolds,

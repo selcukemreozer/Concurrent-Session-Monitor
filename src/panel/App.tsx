@@ -22,9 +22,18 @@ import {
   followOffset,
   RESUME_LIST_N,
   RESUME_VISIBLE_ROWS,
+  readLiveRegistry,
+  registryDirs,
   type ResumeRow,
 } from "../sessions.js";
 import { copyResume, openResume, type LaunchResult } from "./launch.js";
+import {
+  claimLaunch,
+  settleLaunch,
+  settleHolds,
+  applyHolds,
+  type LaunchHolds,
+} from "./launch-hold.js";
 import { detectConflicts, type Conflict } from "../conflicts.js";
 import { scanPorts, portScanMs, type ScannedPort } from "../ports.js";
 import { scanBranches, branchScanMs, liveBranch } from "../branch.js";
@@ -231,6 +240,16 @@ function fmtClock(now: number): string {
  * overlap-guarded and never part of the 750ms poll; its last-good rows stay
  * cached across toggles. The cursor is kept as a session id (D-17), Enter copies
  * and `o` opens the selected session through launch.ts (D-15, D-16).
+ *
+ * D-16 launch hold (review CR-01, 08-07): `o` claims the session id
+ * synchronously, before anything is awaited (launch-hold.ts). A held id is
+ * treated as live, so a second `o` (or Enter) on it copies and warns and never
+ * starts a second `claude --resume` on the same transcript. Right before
+ * launching, `o` also re-checks liveness from fresh sources (the CC registry
+ * plus the current CSM store ids), because the scanned `live` flag can be one
+ * scan interval old. Held rows render `· live` at once through an applyHolds
+ * overlay (D-11). Only the claiming press's failed launch, or a later scan
+ * (confirmation, or one started LAUNCH_HOLD_MS after the claim), releases a hold.
  */
 /**
  * The panel keyboard handler (PANEL-09, Phase 8 D-15), isolated into its own
@@ -464,6 +483,16 @@ export function App() {
   }
   const resumeOffsetRef = React.useRef(resumeOffset);
   resumeOffsetRef.current = resumeOffset;
+  // D-16 launch holds (launch-hold.ts): ids this panel is launching or has just
+  // launched, keyed by session id, plus the per-press token counter. Kept in
+  // refs so quick successive keys see each other's claim before React
+  // re-renders; holdVersion only forces a re-render after a hold changes.
+  const launchHolds = React.useRef<LaunchHolds>(new Map());
+  const holdToken = React.useRef(0);
+  const [, setHoldVersion] = React.useState(0);
+  const bumpHolds = () => {
+    if (mounted.current) setHoldVersion((v) => v + 1);
+  };
   const flashTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   React.useEffect(
     () => () => {
@@ -486,12 +515,17 @@ export function App() {
     const tick = () => {
       if (scanningResume.current) return; // prior scan still running — no overlap
       scanningResume.current = true;
+      const startedAt = Date.now();
+      // liveIds come from the store only, never from launch holds: settleHolds
+      // reads the scan's live flag as the confirmation that releases a hold.
       discoverSessions({
         n: RESUME_LIST_N,
         liveIds: new Set(liveRowsRef.current.map((r) => r.session_id)),
       })
         .then((rows) => {
-          if (mounted.current) setResumeRows(rows);
+          if (!mounted.current) return;
+          if (settleHolds(launchHolds.current, rows, startedAt)) bumpHolds();
+          setResumeRows(rows);
         })
         .catch(() => {
           /* non-fatal: keep the last-good rows */
@@ -557,6 +591,9 @@ export function App() {
     if (rows === null || id === null) return null;
     return rows.find((r) => r.id === id) ?? null;
   };
+  // A row counts as live when the last scan said so OR this panel holds it
+  // (launching or just launched, D-16).
+  const isLive = (row: ResumeRow): boolean => row.live || launchHolds.current.has(row.id);
 
   const onToggle = () => {
     const next: RightPane = rightPaneRef.current === "fazlar" ? "oturumlar" : "fazlar";
@@ -591,22 +628,58 @@ export function App() {
     setResumeOffset(off);
     clearResumeStatus();
   };
-  // Enter: copy `claude --resume <id>` for the selected row (D-15). The live
-  // flag is always passed so launch.ts can warn on a live session (D-16).
+  // Enter: copy the resume line for the selected row (D-15). The row's cwd is
+  // passed so launch.ts can build the session-cwd form (D-10 REVISED), and the
+  // live flag (scan OR launch hold) so launch.ts warns on a live session (D-16).
   const onEnter = () => {
     const row = selectedRow();
     if (row === null) return;
-    copyResume({ id: row.id, live: row.live }).then(showResult, () => {});
+    copyResume({ id: row.id, cwd: row.cwd, live: isLive(row) }).then(showResult, () => {});
   };
   // `o`: open the selected session in a new terminal window/tab. A live row is
-  // never opened — launch.ts copies and warns instead (D-16, T-08-09).
+  // never opened — launch.ts copies and warns instead (D-16, T-08-09). To keep
+  // a double `o`, or an `o` during a pending launch, from starting a second
+  // process (review CR-01), the id is claimed synchronously BEFORE anything is
+  // awaited; a held id is treated as live. Liveness is then re-checked from
+  // fresh sources (CC registry + current store ids), since the scanned flag can
+  // be one scan interval old. Only this press's own failed launch (token-
+  // checked) releases the claim; a success stays held until a scan settles it.
   const onOpen = () => {
     const row = selectedRow();
     if (row === null) return;
+    // `row` is a const snapshot of an immutable scan row, so a later cursor
+    // move cannot change what this in-flight press launches (T-08-11).
+    const id = row.id;
     if (flashTimer.current) clearTimeout(flashTimer.current);
     flashTimer.current = null;
     setResumeStatus("opening…");
-    openResume({ id: row.id, cwd: row.cwd, live: row.live }).then(showResult, () => {});
+    if (isLive(row)) {
+      // Live or held: copy and warn only; no claim, and the result never
+      // touches the holds.
+      openResume({ id, cwd: row.cwd, live: true }).then(showResult, () => {});
+      return;
+    }
+    const token = ++holdToken.current;
+    claimLaunch(launchHolds.current, id, Date.now(), token);
+    bumpHolds(); // the row shows `· live` at once (D-11)
+    readLiveRegistry(registryDirs())
+      .catch(() => new Set<string>())
+      .then((registry) => {
+        const fresh = new Set(registry);
+        for (const r of liveRowsRef.current) fresh.add(r.session_id);
+        return openResume({ id, cwd: row.cwd, live: fresh.has(id) });
+      })
+      .then(
+        (r) => {
+          settleLaunch(launchHolds.current, id, token, r.ok);
+          bumpHolds();
+          showResult(r);
+        },
+        () => {
+          settleLaunch(launchHolds.current, id, token, false);
+          bumpHolds();
+        },
+      );
   };
 
   const nConf = state.conflicts.length;
@@ -630,6 +703,9 @@ export function App() {
   const nSubagent = state.display.filter((d) => !d.ended && d.row.subagent).length;
   const subagentLabel = sanitize(`${nSubagent} subagent`);
   const clock = sanitize(fmtClock(Date.now()));
+  // OTURUMLAR display rows: held ids read as live at once (D-11, D-16). Cursor,
+  // scroll and selection stay on the RAW resumeRows; the ids are identical.
+  const shownRows = applyHolds(resumeRows, launchHolds.current);
 
   // Merge the live-derived branch into each roster row (D-LB-03): App overrides
   // the `branch` field so SessionCard's `s.branch` display AND its 260914-507
@@ -710,7 +786,7 @@ export function App() {
               by default; `r` swaps in OTURUMLAR, the resume picker (D-14). */}
           {rightPane === "oturumlar" ? (
             <SessionsPane
-              rows={resumeRows}
+              rows={shownRows}
               cursorId={selId}
               scrollOffset={resumeOffset}
               status={resumeStatus}
