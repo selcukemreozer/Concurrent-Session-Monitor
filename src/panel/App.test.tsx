@@ -101,6 +101,9 @@ vi.mock("../sessions.js", async (importOriginal) => {
     ...actual,
     discoverSessions: vi.fn(async () => []),
     resumeScanMs: vi.fn(() => 4000),
+    // 08-07 (D-16): `o` re-checks liveness from the CC registry right before
+    // launching. registryDirs stays real (importOriginal spread).
+    readLiveRegistry: vi.fn(async () => new Set<string>()),
   };
 });
 // Mock the launcher's two side-effecting entry points so no test ever runs
@@ -119,7 +122,14 @@ vi.mock("./launch.js", async (importOriginal) => {
 });
 import { readAll } from "../aggregate.js";
 import { pruneSession } from "../prune.js";
-import { discoverSessions, resumeScanMs, RESUME_LIST_N, type ResumeRow } from "../sessions.js";
+import {
+  discoverSessions,
+  resumeScanMs,
+  readLiveRegistry,
+  registryDirs,
+  RESUME_LIST_N,
+  type ResumeRow,
+} from "../sessions.js";
 import { copyResume, openResume } from "./launch.js";
 import { scanPorts, portScanMs } from "../ports.js";
 import type { ScannedPort } from "../ports.js";
@@ -257,6 +267,7 @@ beforeEach(() => {
   // so App never awaits an undefined-returning discoverSessions()/copyResume().
   vi.mocked(discoverSessions).mockResolvedValue([]);
   vi.mocked(resumeScanMs).mockReturnValue(RESUME_CADENCE);
+  vi.mocked(readLiveRegistry).mockResolvedValue(new Set<string>());
   vi.mocked(copyResume).mockResolvedValue({ ok: true, copied: true, message: "copied ✓" });
   vi.mocked(openResume).mockResolvedValue({
     ok: true,
@@ -1093,6 +1104,7 @@ describe("App OTURUMLAR pane (Phase 8, D-14..D-19)", () => {
     vi.mocked(resumeScanMs).mockClear();
     vi.mocked(copyResume).mockClear();
     vi.mocked(openResume).mockClear();
+    vi.mocked(readLiveRegistry).mockClear();
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -1204,7 +1216,9 @@ describe("App OTURUMLAR pane (Phase 8, D-14..D-19)", () => {
 
     press(stdin, KEYS.enter);
     await vi.waitFor(() =>
-      expect(copyResume).toHaveBeenCalledWith(expect.objectContaining({ id: B_ID, live: false })),
+      expect(copyResume).toHaveBeenCalledWith(
+        expect.objectContaining({ id: B_ID, cwd: "/w/b", live: false }),
+      ),
     );
     await vi.waitFor(() => expect(latest(cap.frame())).toContain("copied ✓"));
 
@@ -1309,5 +1323,138 @@ describe("App OTURUMLAR pane (Phase 8, D-14..D-19)", () => {
       sleep(2000).then(() => false),
     ]);
     expect(exited).toBe(true);
+  });
+  // ── 08-07 gap closure: D-16 launch hold (review CR-01) ─────────────────────
+  // Every G-case targets row B (index 1). A's id is also a live store row
+  // (readAll focus rows), so the fresh store re-check correctly treats A as live.
+  /** openResume calls whose target carried live:false (i.e. real launches). */
+  const launches = () =>
+    vi.mocked(openResume).mock.calls.filter((c) => (c[0] as { live: boolean }).live === false);
+  /** The live flag of the most recent openResume call. */
+  const lastOpenLive = () => {
+    const c = vi.mocked(openResume).mock.calls;
+    return (c[c.length - 1]![0] as { live: boolean }).live;
+  };
+  /** Open OTURUMLAR (60 s cadence unless set before) and put the cursor on B. */
+  async function selectB() {
+    const { stdin, cap } = await openTty();
+    await openSessions(stdin, cap);
+    await vi.waitFor(() => expect(cursorLine(cap.frame())).toContain("alpha-sess"));
+    press(stdin, KEYS.down);
+    await vi.waitFor(() => expect(cursorLine(cap.frame())).toContain("beta-sess"));
+    return { stdin, cap };
+  }
+
+  it("G1 a second `o` while the first launch is pending never launches again; the held row shows · live (D-16, D-11)", async () => {
+    vi.mocked(resumeScanMs).mockReturnValue(60000);
+    vi.mocked(discoverSessions).mockResolvedValue([A, B, C]);
+    vi.mocked(openResume).mockImplementationOnce(() => new Promise(() => {}));
+    const { stdin, cap } = await selectB();
+
+    press(stdin, KEYS.o);
+    await vi.waitFor(() => expect(openResume).toHaveBeenCalledTimes(1));
+    expect(openResume).toHaveBeenCalledWith(
+      expect.objectContaining({ id: B_ID, cwd: "/w/b", live: false }),
+    );
+    await vi.waitFor(() => expect(cursorLine(cap.frame())).toContain("· live"));
+    expect(cursorLine(cap.frame())).toContain("beta-sess");
+
+    press(stdin, KEYS.o);
+    await vi.waitFor(() => expect(openResume).toHaveBeenCalledTimes(2));
+    expect(lastOpenLive()).toBe(true);
+    expect(launches()).toHaveLength(1);
+    cap.inst.unmount();
+  });
+
+  it("G2 after a successful launch the row stays held: `o` passes live:true and Enter warns (D-16)", async () => {
+    vi.mocked(resumeScanMs).mockReturnValue(60000);
+    vi.mocked(discoverSessions).mockResolvedValue([A, B, C]);
+    const { stdin, cap } = await selectB();
+
+    press(stdin, KEYS.o);
+    await vi.waitFor(() => expect(openResume).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(latest(cap.frame())).toContain("opened a new Terminal window"));
+
+    press(stdin, KEYS.o);
+    await vi.waitFor(() => expect(openResume).toHaveBeenCalledTimes(2));
+    expect(lastOpenLive()).toBe(true);
+
+    press(stdin, KEYS.enter);
+    await vi.waitFor(() =>
+      expect(copyResume).toHaveBeenCalledWith(
+        expect.objectContaining({ id: B_ID, cwd: "/w/b", live: true }),
+      ),
+    );
+    expect(launches()).toHaveLength(1);
+    cap.inst.unmount();
+  });
+
+  it("G3 a failed launch releases its own claim, so `o` can retry at once (D-16)", async () => {
+    vi.mocked(resumeScanMs).mockReturnValue(60000);
+    vi.mocked(discoverSessions).mockResolvedValue([A, B, C]);
+    vi.mocked(openResume).mockResolvedValueOnce({
+      ok: false,
+      copied: true,
+      message: "could not open a new tab, paste the command · command copied",
+    });
+    const { stdin, cap } = await selectB();
+
+    press(stdin, KEYS.o);
+    await vi.waitFor(() =>
+      expect(latest(cap.frame())).toContain("could not open a new tab, paste the command"),
+    );
+
+    press(stdin, KEYS.o);
+    await vi.waitFor(() => expect(openResume).toHaveBeenCalledTimes(2));
+    expect(lastOpenLive()).toBe(false);
+    cap.inst.unmount();
+  });
+
+  it("G4 a scan that confirms the session live releases the hold; once it ends, `o` launches again (D-16)", async () => {
+    vi.mocked(resumeScanMs).mockReturnValue(30);
+    vi.mocked(discoverSessions).mockResolvedValue([A, B, C]);
+    const { stdin, cap } = await selectB();
+
+    press(stdin, KEYS.o);
+    await vi.waitFor(() => expect(openResume).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(latest(cap.frame())).toContain("opened a new Terminal window"));
+
+    vi.mocked(discoverSessions).mockResolvedValue([A, { ...B, live: true }, C]);
+    let n = calls();
+    await vi.waitFor(() => expect(calls()).toBeGreaterThanOrEqual(n + 2));
+
+    vi.mocked(discoverSessions).mockResolvedValue([A, B, C]);
+    n = calls();
+    await vi.waitFor(() => expect(calls()).toBeGreaterThanOrEqual(n + 2));
+
+    press(stdin, KEYS.o);
+    await vi.waitFor(() => expect(openResume).toHaveBeenCalledTimes(2));
+    expect(lastOpenLive()).toBe(false);
+    cap.inst.unmount();
+  });
+
+  it("G5 `o` re-checks liveness from the registry right before launching (D-16)", async () => {
+    vi.mocked(resumeScanMs).mockReturnValue(60000);
+    vi.mocked(discoverSessions).mockResolvedValue([A, B, C]);
+    vi.mocked(readLiveRegistry).mockResolvedValueOnce(new Set([B_ID]));
+    vi.mocked(openResume).mockImplementation(async (t) =>
+      t.live
+        ? { ok: false, copied: true, message: "session still open, no new tab opened · command copied" }
+        : { ok: true, copied: true, message: "opened a new Terminal window · command copied" },
+    );
+    const { stdin, cap } = await selectB();
+
+    press(stdin, KEYS.o);
+    await vi.waitFor(() => expect(openResume).toHaveBeenCalledTimes(1));
+    expect(openResume).toHaveBeenCalledWith(expect.objectContaining({ id: B_ID, live: true }));
+    await vi.waitFor(() =>
+      expect(latest(cap.frame())).toContain("session still open, no new tab opened"),
+    );
+    expect(readLiveRegistry).toHaveBeenCalledWith(registryDirs());
+
+    press(stdin, KEYS.o);
+    await vi.waitFor(() => expect(openResume).toHaveBeenCalledTimes(2));
+    expect(lastOpenLive()).toBe(false);
+    cap.inst.unmount();
   });
 });
