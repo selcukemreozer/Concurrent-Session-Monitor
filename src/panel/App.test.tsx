@@ -1457,4 +1457,38 @@ describe("App OTURUMLAR pane (Phase 8, D-14..D-19)", () => {
     expect(lastOpenLive()).toBe(false);
     cap.inst.unmount();
   });
+  // ── 08-07 gap closure: D-19 generation-tagged resume scan (review WR-03) ───
+  it("G6 rapid r,r,r never runs two scans at once and a stale scan never overwrites fresher rows (D-19)", async () => {
+    vi.mocked(resumeScanMs).mockReturnValue(60000);
+    let inFlight = 0;
+    let maxInFlight = 0;
+    let resolveS1: (rows: ResumeRow[]) => void = () => {};
+    let first = true;
+    vi.mocked(discoverSessions).mockImplementation(() => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      const p = first
+        ? new Promise<ResumeRow[]>((r) => { resolveS1 = r; })
+        : Promise.resolve([A]);
+      first = false;
+      return p.finally(() => { inFlight -= 1; });
+    });
+    const { stdin, cap } = await openTty();
+
+    press(stdin, KEYS.r); // show: scan S1 starts and stays pending
+    await vi.waitFor(() => expect(latest(cap.frame())).toContain("OTURUMLAR"));
+    press(stdin, KEYS.r); // hide
+    await vi.waitFor(() => expect(latest(cap.frame())).toContain("MILE"));
+    press(stdin, KEYS.r); // show again while S1 is still in flight
+    await vi.waitFor(() => expect(latest(cap.frame())).toContain("OTURUMLAR"));
+    await sleep(100);
+    expect(discoverSessions).toHaveBeenCalledTimes(1);
+
+    resolveS1([B]); // S1's generation is stale now: its rows must be discarded
+    await vi.waitFor(() => expect(calls()).toBe(2)); // immediate follow-up scan
+    await vi.waitFor(() => expect(latest(cap.frame())).toContain("alpha-sess"));
+    expect(cap.frame()).not.toContain("beta-sess");
+    expect(maxInFlight).toBe(1);
+    cap.inst.unmount();
+  });
 });
