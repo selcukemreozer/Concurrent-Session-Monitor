@@ -12,15 +12,18 @@ import {
   TRIVIAL_COMMANDS,
   isAllowedTranscriptPath,
   projectRoots,
+  projectSlug,
   promptLabel,
   pruneTranscriptTitleCache,
   readFirstPromptAsync,
+  readHeadFactsAsync,
   readTailCustomTitle,
   readTailFactsAsync,
   readTranscriptTitle,
   resetTranscriptTitleCache,
   scanCustomTitle,
   scanFirstPrompt,
+  scanHeadFacts,
   scanTailFacts,
 } from "./transcript.js";
 
@@ -667,5 +670,161 @@ describe("async window readers", () => {
     expect(SESSION_UUID_PATTERN.test(ID.toUpperCase().replace(/1/g, "A"))).toBe(false);
     expect(SESSION_UUID_PATTERN.test("notes")).toBe(false);
     expect(SESSION_UUID_PATTERN.test(ID + NL)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 08-09 (WR-04 / D-10 REVISED): slug-matched session cwds from the bounded
+// head and tail windows.
+// ---------------------------------------------------------------------------
+
+describe("projectSlug", () => {
+  it("S-slug: every UTF-16 code unit outside [A-Za-z0-9] becomes one dash", () => {
+    expect(projectSlug("/Users/x/Concurrent Session Monitor")).toBe("-Users-x-Concurrent-Session-Monitor");
+    expect(projectSlug("/a/b.c_d")).toBe("-a-b-c-d");
+    expect(projectSlug("/a/\u00f6")).toBe("-a--");
+    expect(projectSlug("/a/\u{1F600}")).toBe("-a---");
+    expect(projectSlug("/A9z")).toBe("-A9z");
+  });
+});
+
+describe("scanHeadFacts", () => {
+  it("H1: firstCwd is the first cwd, slugCwd the first slug-matching cwd", () => {
+    const b = buf(
+      body([
+        PAD_LINE,
+        carrier("user", "cli", "/other"),
+        carrier("assistant", "cli", "/work/a/b"),
+        carrier("user", "cli", "/work/a-b"),
+      ]),
+    );
+    const f = scanHeadFacts(b, ID, "-work-a-b");
+    expect(f.firstCwd).toBe("/other");
+    expect(f.slugCwd).toBe("/work/a/b");
+    expect(f.prompt).toBeUndefined();
+    expect(scanHeadFacts(b, ID, "-nomatch")).toEqual({ firstCwd: "/other" });
+  });
+
+  it("H2: foreign, over-long, empty-cwd and unparseable lines are skipped", () => {
+    const foreign = JSON.stringify({
+      type: "user",
+      cwd: "/work/a/b",
+      message: { content: "theirs" },
+      sessionId: "other-id",
+    });
+    const long = carrier("user", "cli", "/work.a.b", { message: { content: "z".repeat(70000) } });
+    expect(long.length).toBeGreaterThan(MAX_SCAN_LINE);
+    const empty = carrier("user", "cli", "", { message: { content: "blank cwd" } });
+    const broken = '{"type":"user","cwd":"/work_a_b","message":{"content":"broken"}';
+    const good = carrier("user", "cli", "/work-a-b", { message: { content: "mine" } });
+    const f = scanHeadFacts(buf(body([foreign, long, broken, empty, good])), ID, "-work-a-b");
+    expect(f.slugCwd).toBe("/work-a-b");
+    expect(f.firstCwd).toBe("/work-a-b");
+    expect(f.prompt).toBe("blank cwd");
+    const g = scanHeadFacts(buf(body([foreign, long, broken, good])), ID, "-work-a-b");
+    expect(g).toEqual({ prompt: "mine", firstCwd: "/work-a-b", slugCwd: "/work-a-b" });
+  });
+
+  it("H3: prompt equals scanFirstPrompt on the same window", () => {
+    const foreign = JSON.stringify({ type: "user", message: { content: "theirs" }, sessionId: "other-id" });
+    const fixtures = [
+      body([
+        PAD_LINE,
+        PAD_LINE,
+        userText("caveat", { isMeta: true }),
+        userText(wrapper(["name", "message", "args"], "/clear", "")),
+        userText("<local-command-stdout>ok</local-command-stdout>"),
+        userText("real prompt"),
+        userText("second"),
+      ]),
+      body([userText(wrapper(["message", "name", "args"], "/gsd-discuss-phase", "8"))]),
+      body([foreign, userText("mine")]),
+      body([userText("z".repeat(70000)), userText("after")]),
+      userText("torn"),
+      body([userText("meta only", { isMeta: true })]),
+    ];
+    for (const text of fixtures) {
+      const b = buf(text);
+      expect(scanHeadFacts(b, ID, "-x").prompt).toBe(scanFirstPrompt(b, ID));
+    }
+    expect(scanHeadFacts(buf(fixtures[0]!), ID, "-x").prompt).toBe("real prompt");
+    expect(scanHeadFacts(buf(fixtures[1]!), ID, "-x").prompt).toBe("/gsd-discuss-phase 8");
+  });
+});
+
+describe("readHeadFactsAsync", () => {
+  it("H4: one bounded head window; final when the file exceeds the budget or both facts are known", async () => {
+    const both = file([carrier("user", "cli", "/work/a-b", { message: { content: "hello" } })], { padKiB: 50 });
+    expect(await readHeadFactsAsync(fs.realpathSync(both), ID, "-work-a-b")).toEqual({
+      prompt: "hello",
+      firstCwd: "/work/a-b",
+      slugCwd: "/work/a-b",
+      final: true,
+    });
+
+    const noSlug = file([carrier("user", "cli", "/elsewhere", { message: { content: "hello" } })]);
+    expect(await readHeadFactsAsync(fs.realpathSync(noSlug), ID, "-work-a-b")).toEqual({
+      prompt: "hello",
+      firstCwd: "/elsewhere",
+      final: false,
+    });
+
+    const noPrompt = file([carrier("assistant", "cli", "/work/a-b")]);
+    expect(await readHeadFactsAsync(fs.realpathSync(noPrompt), ID, "-work-a-b")).toEqual({
+      firstCwd: "/work/a-b",
+      slugCwd: "/work/a-b",
+      final: false,
+    });
+
+    const late = file([carrier("user", "cli", "/work/a-b", { message: { content: "late" } })], {
+      padKiB: 300,
+      padAt: "head",
+    });
+    expect(await readHeadFactsAsync(fs.realpathSync(late), ID, "-work-a-b")).toEqual({ final: true });
+
+    const near = file([carrier("user", "cli", "/work/a-b", { message: { content: "near" } })], {
+      padKiB: 4,
+      padAt: "head",
+    });
+    expect(await readHeadFactsAsync(fs.realpathSync(near), ID, "-work-a-b", 1024)).toEqual({ final: true });
+  });
+
+  it("H4b: missing files and FIFOs resolve undefined without rejecting", { timeout: 3000 }, async () => {
+    await expect(
+      readHeadFactsAsync(path.join(raw, "projects", "p", "missing.jsonl"), ID, "-p"),
+    ).resolves.toBeUndefined();
+    const p = transcriptPath(ID);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    execFileSync("mkfifo", [p]);
+    await expect(readHeadFactsAsync(fs.realpathSync(p), ID, "-p")).resolves.toBeUndefined();
+  });
+});
+
+describe("tail slugCwd", () => {
+  it("T-slug: slugCwd is the first slug-matching tail cwd; cwd stays last-wins", () => {
+    const b = buf(
+      body([
+        carrier("user", "cli", "/a"),
+        carrier("user", "cli", "/work/a/b"),
+        carrier("assistant", "cli", "/work/a-b"),
+        carrier("user", "cli", "/z"),
+      ]),
+    );
+    const f = scanTailFacts(b, true, ID, "-work-a-b");
+    expect(f.slugCwd).toBe("/work/a/b");
+    expect(f.cwd).toBe("/z");
+    expect(scanTailFacts(b, true, ID).slugCwd).toBeUndefined();
+    expect(scanTailFacts(b, true, ID, "-nomatch").slugCwd).toBeUndefined();
+    const withEmpty = buf(body([carrier("user", "cli", ""), carrier("user", "cli", "/q")]));
+    expect(scanTailFacts(withEmpty, true, ID, "-q").slugCwd).toBe("/q");
+  });
+
+  it("T-slug async: readTailFactsAsync passes the slug through", async () => {
+    const p = file([carrier("user", "cli", "/work/a/b"), carrier("user", "cli", "/z")], { padKiB: 300 });
+    const real = fs.realpathSync(p);
+    const r = await readTailFactsAsync(real, ID, TAIL_BYTES, "-work-a-b");
+    expect(r?.slugCwd).toBe("/work/a/b");
+    expect(r?.cwd).toBe("/z");
+    expect((await readTailFactsAsync(real, ID))?.slugCwd).toBeUndefined();
   });
 });
