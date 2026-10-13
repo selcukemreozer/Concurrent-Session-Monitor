@@ -20,8 +20,10 @@ import path from "node:path";
  *   - Every route copies FIRST, so a silent launch failure never loses the
  *     command; a live session (D-16) is copied but never launched.
  *   - `id` and `cwd` come from untrusted transcript text. The id must be a
- *     lowercase UUID (never a leading `-`); the folder must be an absolute,
- *     normalized, control/format-free existing directory. Neither is ever
+ *     lowercase UUID (never a leading `-`); the folder must pass commandCwd
+ *     (absolute, normalized, no trailing separator, no control/format code
+ *     point, no backslash or backtick) and be an existing directory, so the
+ *     `o` launch and the copied line share one rule. Neither is ever
  *     spliced into shell or AppleScript source: osascript gets CONSTANT script
  *     lines plus `--`, cwd, id as argv and quotes them with `quoted form of`.
  *   - Binaries are spawned by absolute path with an argv array — no shell, no
@@ -213,22 +215,20 @@ export function resumeCommand(id: string, cwd?: unknown): string {
 }
 
 /**
- * T-08-03: the folder a launch may `cd` into. Returns `cwd` only when it is a
- * 1..4096-char absolute, normalized path with no C0 / DEL / C1 / lone
- * surrogate / format (Cf) code point that names an existing directory.
+ * T-08-03: the folder a launch may `cd` into is exactly commandCwd(cwd), with
+ * one rule for the copied line and for every launch route (Terminal, iTerm2,
+ * Warp), and that folder must also be an existing directory. Why one rule:
+ * osascript's `quoted form of` writes a `'` as `'\''`, which a fish login
+ * shell reads as an escaped quote inside single quotes. A backslash in the
+ * folder name would therefore let it break out, so commandCwd's
+ * backslash/backtick and trailing-separator rules must apply here too. This
+ * also keeps the copied `cd` line and the launched command naming the same
+ * folder. Never throws, even when `isDir` throws.
  */
 export function validLaunchCwd(cwd: unknown, isDir: (p: string) => boolean): string | undefined {
   try {
-    if (typeof cwd !== "string" || cwd.length < 1 || cwd.length > MAX_CWD_LEN) return undefined;
-    if (!path.isAbsolute(cwd) || path.normalize(cwd) !== cwd) return undefined;
-    for (const ch of cwd) {
-      const cp = ch.codePointAt(0) ?? 0;
-      if (cp <= 0x1f || cp === 0x7f) return undefined;
-      if (cp >= 0x80 && cp <= 0x9f) return undefined;
-      if (cp >= 0xd800 && cp <= 0xdfff) return undefined;
-      if (FORMAT_CP.test(ch)) return undefined;
-    }
-    return isDir(cwd) ? cwd : undefined;
+    const c = commandCwd(cwd);
+    return c !== undefined && isDir(c) ? c : undefined;
   } catch {
     return undefined;
   }
