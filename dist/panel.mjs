@@ -39892,16 +39892,8 @@ function resumeCommand(id, cwd2) {
 }
 function validLaunchCwd(cwd2, isDir) {
   try {
-    if (typeof cwd2 !== "string" || cwd2.length < 1 || cwd2.length > MAX_CWD_LEN) return void 0;
-    if (!path7.isAbsolute(cwd2) || path7.normalize(cwd2) !== cwd2) return void 0;
-    for (const ch of cwd2) {
-      const cp = ch.codePointAt(0) ?? 0;
-      if (cp <= 31 || cp === 127) return void 0;
-      if (cp >= 128 && cp <= 159) return void 0;
-      if (cp >= 55296 && cp <= 57343) return void 0;
-      if (FORMAT_CP.test(ch)) return void 0;
-    }
-    return isDir(cwd2) ? cwd2 : void 0;
+    const c = commandCwd(cwd2);
+    return c !== void 0 && isDir(c) ? c : void 0;
   } catch {
     return void 0;
   }

@@ -112,10 +112,11 @@ Otherwise it shows `⌨ keys off` and stays on FAZLAR.
   panel deletes it about 30 seconds after Warp opens it, and on exit, and only
   ever deletes files it wrote itself. A file left behind by a killed panel can
   be deleted by hand. In any other terminal, or on any failure, `o` just
-  copies. On a `live` row `o` never opens a window: it copies and warns that
-  the session is still open. Right after `o` starts a session its row shows
-  `live`, and pressing `o` again only copies, so the same session is never
-  started twice.
+  copies. `o` uses the same folder rule as `Enter`: when the folder is
+  unknown, unsafe to print or no longer exists, it only copies. On a `live`
+  row `o` never opens a window: it copies and warns that the session is still
+  open. Right after `o` starts a session its row shows `live`, and pressing
+  `o` again only copies, so the same session is never started twice.
 - `Ctrl+C`: quit and restore the terminal.
 
 ## Slash commands

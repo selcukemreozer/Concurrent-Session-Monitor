@@ -278,7 +278,7 @@ describe("README resume picker (Phase 8)", () => {
       }
     }
     const section = lines.slice(start, end).join("\n");
-    for (const needle of ["OTURUMLAR", "FAZLAR", "`r`", "`Enter`", "`o`", "tab_configs/csm-resume-", "30 seconds", "Ctrl+C"]) {
+    for (const needle of ["OTURUMLAR", "FAZLAR", "`r`", "`Enter`", "`o`", "tab_configs/csm-resume-", "30 seconds", "Ctrl+C", "same folder rule as `Enter`"]) {
       expect(section).toContain(needle);
     }
   });
