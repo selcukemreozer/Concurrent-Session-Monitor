@@ -216,6 +216,59 @@ describe("validLaunchCwd (V1)", () => {
   });
 });
 
+describe("launch folder rule (L1)", () => {
+  it("L1 validLaunchCwd is exactly commandCwd plus an existing-directory check, and never throws (T-08-03)", () => {
+    // U2's full no-usable-cwd list, rebuilt here, plus the usable and boundary cases.
+    const inputs: unknown[] = [
+      undefined,
+      42,
+      "",
+      "rel/path",
+      "/a/../b",
+      "/a/",
+      "/a\nb",
+      "/a\u001bb",
+      "/a\u007fb",
+      "/a\u0085b",
+      "/a‮b",
+      "/a​b",
+      "/a\ud800b",
+      "/a\\b",
+      "/a`b",
+      "/" + "a".repeat(4096),
+      "/",
+      cwd,
+      "/Users/x/Concurrent Session Monitor",
+      "/w/it's",
+      "/a/b",
+      "/a\\b",
+      "/a`b",
+      "/a/",
+      "/" + "a".repeat(4095),
+    ];
+    const always = () => true;
+    const never = () => false;
+    const boom = (): boolean => {
+      throw new Error("boom");
+    };
+    for (const x of inputs) {
+      expect(validLaunchCwd(x, always)).toBe(commandCwd(x));
+      expect(validLaunchCwd(x, never)).toBeUndefined();
+      expect(() => validLaunchCwd(x, boom)).not.toThrow();
+      expect(validLaunchCwd(x, boom)).toBeUndefined();
+    }
+
+    // The verifier's case: a real backslash folder is still refused.
+    const backslash = path.join(home, "a\\b");
+    fs.mkdirSync(backslash);
+    expect(realIsDir(backslash)).toBe(true);
+    expect(validLaunchCwd(backslash, realIsDir)).toBeUndefined();
+    // The trailing-slash form of an existing folder is refused too.
+    expect(realIsDir(cwd + "/")).toBe(true);
+    expect(validLaunchCwd(cwd + "/", realIsDir)).toBeUndefined();
+  });
+});
+
 describe("copyResume (C1-C4)", () => {
   it("C1 copies the cd-prefixed command to pbcopy on stdin with no args", async () => {
     const { deps, calls } = fakeDeps();
@@ -278,7 +331,7 @@ describe("copyResume (C1-C4)", () => {
   });
 });
 
-describe("openResume (O1-O13)", () => {
+describe("openResume (O1-O16)", () => {
   it("O1 live row copies and opens nothing (D-16)", async () => {
     const { deps, calls } = fakeDeps({ termProgram: "Apple_Terminal" });
     const r = await openResume({ id: ID, cwd, live: true }, deps);
@@ -489,6 +542,74 @@ describe("openResume (O1-O13)", () => {
     const r = await openResume({ id: "-rf", cwd, live: false }, deps);
     expect(r).toEqual({ ok: false, copied: false, message: MSG_INVALID_ID });
     expect(calls).toEqual([]);
+  });
+
+  /** Existing folders that commandCwd refuses: the 08-VERIFICATION fish breakout, a backslash, a backtick, a trailing `/`. */
+  function unsafeExistingFolders(): string[] {
+    const fish = path.join(home, "x\\';touch pwned;#");
+    const backslash = path.join(home, "a\\b");
+    const backtick = path.join(home, "a`b");
+    for (const d of [fish, backslash, backtick]) fs.mkdirSync(d);
+    const folders = [fish, backslash, backtick, cwd + "/"];
+    for (const d of folders) {
+      expect(realIsDir(d)).toBe(true);
+      expect(commandCwd(d)).toBeUndefined();
+    }
+    return folders;
+  }
+
+  const NO_FOLDER = {
+    ok: false,
+    copied: true,
+    message: "session folder not found, paste the command · command copied",
+  };
+
+  it("O14 Terminal.app and iTerm2 refuse an existing folder commandCwd rejects, incl. the fish breakout (T-08-03)", async () => {
+    const folders = unsafeExistingFolders();
+    for (const termProgram of ["Apple_Terminal", "iTerm.app"]) {
+      for (const folder of folders) {
+        const { deps, calls } = fakeDeps({ termProgram });
+        const r = await openResume({ id: ID, cwd: folder, live: false }, deps);
+        expect(calls).toEqual([PBCOPY_CALL(CMD)]);
+        expect(r).toEqual(NO_FOLDER);
+      }
+    }
+    expect(fs.existsSync(path.join(home, "pwned"))).toBe(false);
+    expect(fs.existsSync(path.join(process.cwd(), "pwned"))).toBe(false);
+  });
+
+  it("O15 Warp refuses the same folders: no tab config, no open, the no-folder message (T-08-04)", async () => {
+    const folders = unsafeExistingFolders();
+    for (const folder of folders) {
+      const { deps, calls, laters } = fakeDeps({ termProgram: "WarpTerminal" });
+      const r = await openResume({ id: ID, cwd: folder, live: false }, deps);
+      expect(calls).toEqual([PBCOPY_CALL(CMD)]);
+      expect(tabConfigStems()).toEqual([]);
+      expect(laters).toEqual([]);
+      expect(r).toEqual(NO_FOLDER);
+    }
+  });
+
+  it("O16 the copied line and the launched command name the same folder on every route (T-08-47)", async () => {
+    const quoted = path.join(home, "it's here");
+    fs.mkdirSync(quoted);
+    for (const termProgram of ["Apple_Terminal", "iTerm.app"]) {
+      for (const folder of [cwd, quoted]) {
+        const { deps, calls } = fakeDeps({ termProgram });
+        await openResume({ id: ID, cwd: folder, live: false }, deps);
+        expect(calls[0]).toEqual(PBCOPY_CALL(resumeCommand(ID, folder)));
+        expect(resumeCommand(ID, folder)).toBe("cd " + shellSingleQuote(folder) + " && " + CMD);
+        expect(calls[1]!.cmd).toBe("/usr/bin/osascript");
+        expect(calls[1]!.args.slice(-2)).toEqual([commandCwd(folder), ID]);
+      }
+    }
+    // Warp: a `'` folder is WARP_UNSAFE_CWD-refused by design, so only the plain folder.
+    const { deps, calls } = fakeDeps({ termProgram: "WarpTerminal" });
+    await openResume({ id: ID, cwd, live: false }, deps);
+    expect(calls[0]).toEqual(PBCOPY_CALL(resumeCommand(ID, cwd)));
+    const stems = tabConfigStems();
+    expect(stems).toHaveLength(1);
+    expect(fs.readFileSync(tabConfigFile(stems[0]!), "utf8")).toContain("directory = " + tomlBasicString(commandCwd(cwd)!));
   });
 });
 
