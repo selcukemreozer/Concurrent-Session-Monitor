@@ -93,6 +93,8 @@ const OUT_WARP = "opening in Warp…";
 const OUT_WARP_FOLDER = "opened a Warp tab in the folder, paste the command";
 const OUT_UNSUPPORTED = "no new tab for this terminal, paste the command";
 const OUT_NO_FOLDER = "session folder not found, paste the command";
+/** An existing or unknown folder whose name the launch rule refuses (IN-09 / AR-08-11). */
+const OUT_UNSAFE_FOLDER = "folder name not safe to open, paste the command";
 const OUT_LAUNCH_FAILED = "could not open a new tab, paste the command";
 
 /**
@@ -237,6 +239,22 @@ export function validLaunchCwd(cwd: unknown, isDir: (p: string) => boolean): str
     return c !== undefined && isDir(c) ? c : undefined;
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * True when `cwd` is a non-empty string that commandCwd refuses. Classified
+ * WITHOUT a stat: the "not safe to open" message is true whether or not the
+ * folder exists, a relative name would otherwise be stat'ed against the
+ * panel's own cwd, and untrusted refused input never reaches the filesystem.
+ * An undefined / non-string / empty cwd is "unknown" (not-found text).
+ * Never throws.
+ */
+function isRefusedFolderName(cwd: unknown): boolean {
+  try {
+    return typeof cwd === "string" && cwd.length > 0 && commandCwd(cwd) === undefined;
+  } catch {
+    return false;
   }
 }
 
@@ -600,7 +618,10 @@ export async function copyResume(target: ResumeTarget, deps: LaunchDeps = defaul
 /**
  * D-15 `o`: copy first, then open a new terminal window running the resume
  * command in the session's folder. A live row (D-16) is only copied. ok is
- * true only when a launch was dispatched and reported success. Never throws.
+ * true only when a launch was dispatched and reported success. A refused
+ * folder name (commandCwd, or WARP_UNSAFE_CWD on Warp) says "folder name not
+ * safe to open"; an unknown, missing or non-directory folder says "session
+ * folder not found". Never throws.
  */
 export async function openResume(target: ResumeTarget, deps: LaunchDeps = defaultLaunchDeps()): Promise<LaunchResult> {
   let copied = false;
@@ -615,7 +636,7 @@ export async function openResume(target: ResumeTarget, deps: LaunchDeps = defaul
     if (target.live === true) return done(false, OUT_LIVE);
 
     const cwd = validLaunchCwd(target.cwd, (p) => deps.isDir(p));
-    if (cwd === undefined) return done(false, OUT_NO_FOLDER);
+    if (cwd === undefined) return done(false, isRefusedFolderName(target.cwd) ? OUT_UNSAFE_FOLDER : OUT_NO_FOLDER);
     if (deps.platform !== "darwin") return done(false, OUT_UNSUPPORTED);
 
     const term = deps.termProgram;
@@ -627,7 +648,7 @@ export async function openResume(target: ResumeTarget, deps: LaunchDeps = defaul
       return done(true, route === "terminal" ? OUT_TERMINAL : OUT_ITERM);
     }
     if (route === "warp") {
-      if (WARP_UNSAFE_CWD.test(cwd)) return done(false, OUT_UNSUPPORTED);
+      if (WARP_UNSAFE_CWD.test(cwd)) return done(false, OUT_UNSAFE_FOLDER);
       const cfg = writeWarpTabConfig(deps.homedir(), cwd, id);
       if (cfg !== undefined) {
         const ok = await runOk(deps, OPEN_BIN, [`warp://tab_config/${cfg.stem}?new_window=true`], OPEN_TIMEOUT_MS);

@@ -1013,7 +1013,7 @@ export const SESSIONS_TOGGLE_HINT = "[r: fazlar]";
 /** Hint App passes to PhasesPane on a TTY: `r` opens OTURUMLAR (D-14). */
 export const FAZLAR_TOGGLE_HINT = "[r: oturumlar]";
 
-/** Dim neutral marker for a session that is open right now (D-11). */
+/** Pale-green (green + dim) marker for a session that is open right now (D-11; colour per 261014-d54). */
 export const LIVE_MARK = "· live";
 
 /**
@@ -1022,13 +1022,15 @@ export const LIVE_MARK = "· live";
  * The whole row is ONE `<Text wrap="truncate-end">` so a wide (CJK / emoji)
  * label is cut at the pane edge instead of wrapping; the row count — and so the
  * window math — stays fixed (T-08-18, RESEARCH Pitfall 4). Styling is bold and
- * dim only, never a `color` (D-08 reserved palette):
+ * dim only (D-08 reserved palette), except the pale-green `· live` marker
+ * (user decision 261014-d54 overriding D-08 for that marker only):
  *  - labelKind "name"    → bold label (a native /rename or custom title);
  *  - labelKind "derived" → dim label inside curly quotes `“…”`, so an ai-title or
  *    first prompt can never pose as a real name (T-08-19);
  *  - labelKind "unnamed" → dim `(unnamed)`.
  * The age is fmtAge (D-13), the shortid is the roster card's first-8-chars id
- * (dim), and a live row ends in a dim `· live` (D-11; no crashed tag, D-12).
+ * (dim), and a live row ends in a pale-green (green + dim) `· live` (D-11; no
+ * crashed tag, D-12).
  * Every field passes sanitize() again here even though the reducer cleaned it
  * (T-08-01).
  */
@@ -1045,7 +1047,11 @@ function SessionRowLine({ row, selected, now }: { row: ResumeRow; selected: bool
       {labelNode}
       {middle}
       <Text dimColor>{shortId(row.id)}</Text>
-      {row.live ? <Text dimColor>{" " + LIVE_MARK}</Text> : null}
+      {row.live ? (
+        <Text color="green" dimColor>
+          {" " + LIVE_MARK}
+        </Text>
+      ) : null}
     </Text>
   );
 }
@@ -1063,15 +1069,16 @@ function SessionRowLine({ row, selected, now }: { row: ResumeRow; selected: bool
  *     while the first scan runs, D-19); `[]` → a dim `no resumable sessions`;
  *  3. otherwise a RESUME_VISIBLE_ROWS window from the clamped `scrollOffset`, one
  *     SessionRowLine per session (D-18 label · folder · age · shortid, D-08
- *     bold/dim styling, D-11 dim `· live`, D-13 age); the row whose id equals
+ *     bold/dim styling, D-11 pale-green `· live`, D-13 age); the row whose id equals
  *     `cursorId` starts with a bold `▸ `, every other row with two spaces (D-15);
  *  4. a dim `▲N ▼M i–j/total` indicator when the list is longer than the window;
  *  5. a dim sanitized `status` line (e.g. the copy/open result) when set.
  *
  * Deliberately absent: no `(you)` marker (D-05) and no last-prompt text — one
- * line per session (D-07; /csm-resume shows the `↳ last:` line instead). No
- * `color` prop is used anywhere (D-08 reserved palette), and every rendered
- * string passes sanitize() (T-08-01).
+ * line per session (D-07; /csm-resume shows the `↳ last:` line instead). The
+ * only `color` prop is the pale-green `· live` marker (261014-d54); everything
+ * else is bold/dim per D-08 (reserved palette), and every rendered string
+ * passes sanitize() (T-08-01).
  */
 export function SessionsPane({
   rows,
