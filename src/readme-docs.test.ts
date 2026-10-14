@@ -283,6 +283,23 @@ describe("README resume picker (Phase 8)", () => {
     }
   });
 
+  it("the Panel keys section documents the start-up sweep, both folder messages and the pale-green live marker (261014-d54)", () => {
+    const start = lines.findIndex((l) => l === "## Panel keys");
+    expect(start).toBeGreaterThanOrEqual(0);
+    let end = lines.length;
+    for (let i = start + 1; i < lines.length; i++) {
+      if (lines[i].startsWith("## ")) {
+        end = i;
+        break;
+      }
+    }
+    const section = lines.slice(start, end).join("\n");
+    for (const needle of ["next panel start", "folder name not safe to open", "session folder not found", "pale green"]) {
+      expect(section).toContain(needle);
+    }
+    expect(section).not.toMatch(/by hand/);
+  });
+
   it("the env table documents CSM_RESUME_SCAN_MS with its 10000 default", () => {
     const row = lines.find((l) => l.startsWith("| `CSM_RESUME_SCAN_MS`"));
     expect(row).toBeDefined();

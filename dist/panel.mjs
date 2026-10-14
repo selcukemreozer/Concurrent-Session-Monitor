@@ -39766,7 +39766,7 @@ function SessionRowLine({ row, selected, now }) {
     labelNode,
     middle,
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: shortId(row.id) }),
-    row.live ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: " " + LIVE_MARK }) : null
+    row.live ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "green", dimColor: true, children: " " + LIVE_MARK }) : null
   ] });
 }
 function SessionsPane({
@@ -39821,6 +39821,8 @@ var REMOVE_READ_BYTES = 4096;
 var WARP_TAB_CONFIG_NAME = "csm-resume";
 var WARP_TAB_CONFIG_MARKER_PREFIX = "# csm-resume: written by the CSM panel";
 var WARP_TAB_CONFIG_TTL_MS = 3e4;
+var WARP_STEM_PATTERN = /^csm-resume-[0-9a-f]{8}-[1-9][0-9]{0,9}-[0-9a-f]{8}$/;
+var WARP_SWEEP_MAX_ENTRIES = 256;
 var WARP_UNSAFE_CWD = /[`$;|&<>"'\\]/;
 var MSG_COPIED = "copied \u2713";
 var MSG_COPIED_LIVE = "copied \u2713 \xB7 session still open";
@@ -39833,6 +39835,7 @@ var OUT_WARP = "opening in Warp\u2026";
 var OUT_WARP_FOLDER = "opened a Warp tab in the folder, paste the command";
 var OUT_UNSUPPORTED = "no new tab for this terminal, paste the command";
 var OUT_NO_FOLDER = "session folder not found, paste the command";
+var OUT_UNSAFE_FOLDER = "folder name not safe to open, paste the command";
 var OUT_LAUNCH_FAILED = "could not open a new tab, paste the command";
 var TERMINAL_SCRIPT = [
   "on run argv",
@@ -39896,6 +39899,13 @@ function validLaunchCwd(cwd2, isDir) {
     return c !== void 0 && isDir(c) ? c : void 0;
   } catch {
     return void 0;
+  }
+}
+function isRefusedFolderName(cwd2) {
+  try {
+    return typeof cwd2 === "string" && cwd2.length > 0 && commandCwd(cwd2) === void 0;
+  } catch {
+    return false;
   }
 }
 function osascriptArgs(lines, cwd2, id) {
@@ -40003,6 +40013,68 @@ function cleanupWarpTabConfig() {
   }
   return removed;
 }
+function parseWarpStem(stem) {
+  try {
+    if (typeof stem !== "string" || !WARP_STEM_PATTERN.test(stem)) return void 0;
+    const parts = stem.split("-");
+    if (parts.length !== 5) return void 0;
+    const pid = Number(parts[3]);
+    const nonce = parts[4];
+    if (!Number.isSafeInteger(pid) || pid <= 0) return void 0;
+    return { pid, nonce };
+  } catch {
+    return void 0;
+  }
+}
+function pidIsAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e?.code !== "ESRCH";
+  }
+}
+function defaultWarpSweepDeps() {
+  return { homedir: () => os7.homedir(), alive: pidIsAlive };
+}
+function sweepStaleWarpTabConfigs(deps = defaultWarpSweepDeps()) {
+  let removed = 0;
+  try {
+    const dir = warpTabConfigDir(deps.homedir());
+    const names = [];
+    const handle = fs6.opendirSync(dir);
+    try {
+      for (let i = 0; i < WARP_SWEEP_MAX_ENTRIES; i++) {
+        const ent = handle.readSync();
+        if (ent === null) break;
+        names.push(ent.name);
+      }
+    } finally {
+      handle.closeSync();
+    }
+    for (const name of names) {
+      try {
+        let stem;
+        if (name.endsWith(".toml")) stem = name.slice(0, -".toml".length);
+        else if (name.startsWith(".") && name.endsWith(".tmp")) stem = name.slice(1, -".tmp".length);
+        else continue;
+        const parsed = parseWarpStem(stem);
+        if (parsed === void 0 || parsed.pid === process.pid) continue;
+        let alive;
+        try {
+          alive = deps.alive(parsed.pid) !== false;
+        } catch {
+          alive = true;
+        }
+        if (alive) continue;
+        if (removeWarpTabConfig(path7.join(dir, name), warpTabConfigMarker(parsed.pid, parsed.nonce))) removed++;
+      } catch {
+      }
+    }
+  } catch {
+  }
+  return removed;
+}
 function defaultLater(fn, ms) {
   try {
     const t = setTimeout(() => {
@@ -40102,7 +40174,7 @@ async function openResume(target, deps = defaultLaunchDeps()) {
     const done = (ok, outcome) => ({ ok, copied, message: outcome + suffix });
     if (target.live === true) return done(false, OUT_LIVE);
     const cwd2 = validLaunchCwd(target.cwd, (p) => deps.isDir(p));
-    if (cwd2 === void 0) return done(false, OUT_NO_FOLDER);
+    if (cwd2 === void 0) return done(false, isRefusedFolderName(target.cwd) ? OUT_UNSAFE_FOLDER : OUT_NO_FOLDER);
     if (deps.platform !== "darwin") return done(false, OUT_UNSUPPORTED);
     const term = deps.termProgram;
     const route = typeof term === "string" ? LAUNCH_ROUTE_BY_TERM.get(term) : void 0;
@@ -40113,7 +40185,7 @@ async function openResume(target, deps = defaultLaunchDeps()) {
       return done(true, route === "terminal" ? OUT_TERMINAL : OUT_ITERM);
     }
     if (route === "warp") {
-      if (WARP_UNSAFE_CWD.test(cwd2)) return done(false, OUT_UNSUPPORTED);
+      if (WARP_UNSAFE_CWD.test(cwd2)) return done(false, OUT_UNSAFE_FOLDER);
       const cfg = writeWarpTabConfig(deps.homedir(), cwd2, id);
       if (cfg !== void 0) {
         const ok2 = await runOk(deps, OPEN_BIN, [`warp://tab_config/${cfg.stem}?new_window=true`], OPEN_TIMEOUT_MS);
@@ -40870,6 +40942,9 @@ process.on("exit", () => {
 });
 instance = run();
 registerPanel();
+defaultLater(() => {
+  sweepStaleWarpTabConfigs();
+}, 0);
 await instance.waitUntilExit();
 unregisterPanel();
 cleanupWarpTabConfig();

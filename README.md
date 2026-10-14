@@ -109,14 +109,20 @@ Otherwise it shows `⌨ keys off` and stays on FAZLAR.
   iTerm2 are driven through AppleScript (macOS asks once for permission to
   control them). Warp is driven through a one-off tab config written for each
   launch, `~/.warp/tab_configs/csm-resume-<shortid>-<pid>-<nonce>.toml`; the
-  panel deletes it about 30 seconds after Warp opens it, and on exit, and only
-  ever deletes files it wrote itself. A file left behind by a killed panel can
-  be deleted by hand. In any other terminal, or on any failure, `o` just
-  copies. `o` uses the same folder rule as `Enter`: when the folder is
-  unknown, unsafe to print or no longer exists, it only copies. On a `live`
+  panel deletes it about 30 seconds after Warp opens it, and on exit. If a
+  panel is killed before then, the next panel start removes the leftover file
+  once that panel's process is gone, and a file that belongs to a panel that
+  is still open is never touched. The panel only ever deletes CSM's own marked
+  files: its own, and at start the leftovers of a panel that is no longer
+  running. In any other terminal, or on any failure, `o` just copies. `o`
+  uses the same folder rule as `Enter`: when the folder is unknown, unsafe to
+  print or no longer exists, it only copies. The pane says
+  `folder name not safe to open` when the folder's name is refused and
+  `session folder not found` when the folder is unknown or gone. On a `live`
   row `o` never opens a window: it copies and warns that the session is still
-  open. Right after `o` starts a session its row shows `live`, and pressing
-  `o` again only copies, so the same session is never started twice.
+  open; a live row's `· live` is shown in pale green. Right after `o` starts a
+  session its row shows `live`, and pressing `o` again only copies, so the
+  same session is never started twice.
 - `Ctrl+C`: quit and restore the terminal.
 
 ## Slash commands
