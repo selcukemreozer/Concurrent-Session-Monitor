@@ -40,7 +40,11 @@ import path from "node:path";
  * The file is deleted WARP_TAB_CONFIG_TTL_MS after a successful open (unref'd
  * timer), at once after a failed open, and on a clean panel exit (entry.ts →
  * cleanupWarpTabConfig). Only files this process wrote — tracked by exact
- * absolute path and re-checked against the exact marker — are ever deleted.
+ * absolute path and re-checked against the exact marker — are ever deleted,
+ * with one exception: the start-up sweep (sweepStaleWarpTabConfigs, scheduled
+ * by entry.ts) also deletes a leftover of a panel that was killed inside the
+ * TTL, but only when that file's stem pid is dead (`kill(pid, 0)` throws
+ * ESRCH) and its first line is exactly that pid's marker.
  *
  * TTL reasoning: `open` returns as soon as LaunchServices dispatches the URI
  * (RESEARCH Pitfall 5), so Warp reads the file AFTER `open` resolves — about
@@ -72,6 +76,8 @@ export const WARP_TAB_CONFIG_MARKER_PREFIX = "# csm-resume: written by the CSM p
 export const WARP_TAB_CONFIG_TTL_MS = 30_000;
 /** `csm-resume-<8 hex of the id>-<pid>-<8 hex nonce>`. */
 export const WARP_STEM_PATTERN = /^csm-resume-[0-9a-f]{8}-[1-9][0-9]{0,9}-[0-9a-f]{8}$/;
+/** The start-up sweep examines at most this many directory names per run. */
+export const WARP_SWEEP_MAX_ENTRIES = 256;
 /** Characters refused in a folder on the Warp route (RESEARCH A2). */
 export const WARP_UNSAFE_CWD = /[`$;|&<>"'\\]/;
 
@@ -382,6 +388,102 @@ export function cleanupWarpTabConfig(): boolean {
   try {
     for (const file of [...writtenWarpConfigs.keys()]) {
       if (releaseWarpTabConfig(file)) removed = true;
+    }
+  } catch {
+    // never throw
+  }
+  return removed;
+}
+
+/**
+ * The pid and nonce of a per-launch stem, or undefined when the stem does not
+ * match WARP_STEM_PATTERN or the pid is not a positive safe integer. Never throws.
+ */
+export function parseWarpStem(stem: string): { pid: number; nonce: string } | undefined {
+  try {
+    if (typeof stem !== "string" || !WARP_STEM_PATTERN.test(stem)) return undefined;
+    const parts = stem.split("-");
+    if (parts.length !== 5) return undefined;
+    const pid = Number(parts[3]);
+    const nonce = parts[4]!;
+    if (!Number.isSafeInteger(pid) || pid <= 0) return undefined;
+    return { pid, nonce };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Liveness probe via `kill(pid, 0)`. Errs safe: only a definite "no such
+ * process" (ESRCH) is dead; success, EPERM (another user's process) and any
+ * other error count as alive, so a file is deleted only for a gone pid. A
+ * reused pid keeps its file until a later start. Never throws.
+ */
+export function pidIsAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as { code?: unknown } | null)?.code !== "ESRCH";
+  }
+}
+
+/** Injectable deps of the start-up sweep (mirrors LaunchDeps). */
+export interface WarpSweepDeps {
+  homedir(): string;
+  alive(pid: number): boolean;
+}
+
+/** Real sweep deps, read at call time. */
+export function defaultWarpSweepDeps(): WarpSweepDeps {
+  return { homedir: () => os.homedir(), alive: pidIsAlive };
+}
+
+/**
+ * Start-up sweep (WR-01 problem 2 / T-08-34): remove tab configs left behind
+ * by a panel that was killed inside the TTL. Collects at most
+ * WARP_SWEEP_MAX_ENTRIES names first (deleting while a readdir stream is open
+ * can skip entries), then for each `<stem>.toml` or pre-rename `.<stem>.tmp`
+ * whose stem parses, whose pid is not this process and whose pid is dead
+ * (a throwing probe counts as alive), deletes it ONLY through
+ * removeWarpTabConfig with that pid's exact marker — so the O_NOFOLLOW,
+ * regular-file, 4 KiB and exact-first-line checks all still apply. Returns
+ * how many files were removed. Never throws.
+ */
+export function sweepStaleWarpTabConfigs(deps: WarpSweepDeps = defaultWarpSweepDeps()): number {
+  let removed = 0;
+  try {
+    const dir = warpTabConfigDir(deps.homedir());
+    const names: string[] = [];
+    const handle = fs.opendirSync(dir);
+    try {
+      for (let i = 0; i < WARP_SWEEP_MAX_ENTRIES; i++) {
+        const ent = handle.readSync();
+        if (ent === null) break;
+        names.push(ent.name);
+      }
+    } finally {
+      handle.closeSync();
+    }
+    for (const name of names) {
+      try {
+        let stem: string;
+        if (name.endsWith(".toml")) stem = name.slice(0, -".toml".length);
+        else if (name.startsWith(".") && name.endsWith(".tmp")) stem = name.slice(1, -".tmp".length);
+        else continue;
+        const parsed = parseWarpStem(stem);
+        if (parsed === undefined || parsed.pid === process.pid) continue;
+        let alive: boolean;
+        try {
+          alive = deps.alive(parsed.pid) !== false;
+        } catch {
+          alive = true;
+        }
+        if (alive) continue;
+        if (removeWarpTabConfig(path.join(dir, name), warpTabConfigMarker(parsed.pid, parsed.nonce))) removed++;
+      } catch {
+        // per-entry best effort
+      }
     }
   } catch {
     // never throw

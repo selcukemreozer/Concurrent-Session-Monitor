@@ -18,10 +18,18 @@
 // per-launch Warp tab config (~/.warp/tab_configs/csm-resume-<shortid>-<pid>-<nonce>.toml)
 // that THIS panel wrote for an `o` launch and still holds (marker-checked by pid
 // and nonce, never throws), and nothing else.
+//
+// 261014-d54 start-up sweep (WR-01 problem 2 / T-08-34): right after
+// registerPanel() an unref'd defaultLater(…, 0) runs sweepStaleWarpTabConfigs,
+// so a panel killed inside the 30 s TTL has its leftover tab config removed by
+// the next panel start once that panel's pid is gone (ESRCH only; the file's
+// first line must be that pid's exact marker). Deferred so the readdir never
+// delays the first frame and never keeps the process alive; bounded to
+// WARP_SWEEP_MAX_ENTRIES names; never throws.
 import type { Instance } from "ink";
 import { run } from "./main.js"; // the sole rendering call site stays in main.tsx
 import { registerPanel, unregisterPanel } from "./registration.js";
-import { cleanupWarpTabConfig } from "./launch.js";
+import { cleanupWarpTabConfig, defaultLater, sweepStaleWarpTabConfigs } from "./launch.js";
 
 // D-07 reconciliation: as of Phase 04.2 the panel enters raw mode WHEN A TTY IS
 // PRESENT (App's TTY-guarded FAZLAR keyboard via useInput). In that case Ink's
@@ -55,6 +63,9 @@ process.on("exit", () => {
 
 instance = run();
 registerPanel();
+defaultLater(() => {
+  sweepStaleWarpTabConfigs();
+}, 0);
 
 // Keep the process alive until Ink exits (unmount on signal, or an internal exit).
 await instance.waitUntilExit();
