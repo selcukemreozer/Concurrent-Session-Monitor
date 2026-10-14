@@ -7,6 +7,7 @@ import {
   HEAD_BYTES,
   MAX_SCAN_LINE,
   MAX_TITLE_LINE,
+  PERMISSION_MODE_BYTES,
   SESSION_UUID_PATTERN,
   TAIL_BYTES,
   TRIVIAL_COMMANDS,
@@ -17,6 +18,7 @@ import {
   pruneTranscriptTitleCache,
   readFirstPromptAsync,
   readHeadFactsAsync,
+  readPermissionModeAsync,
   readTailCustomTitle,
   readTailFactsAsync,
   readTranscriptTitle,
@@ -24,6 +26,7 @@ import {
   scanCustomTitle,
   scanFirstPrompt,
   scanHeadFacts,
+  scanPermissionMode,
   scanTailFacts,
 } from "./transcript.js";
 
@@ -826,5 +829,122 @@ describe("tail slugCwd", () => {
     expect(r?.slugCwd).toBe("/work/a/b");
     expect(r?.cwd).toBe("/z");
     expect((await readTailFactsAsync(real, ID))?.slugCwd).toBeUndefined();
+  });
+});
+
+// quick-261014-fq8: the newest permission-mode record (bypass flag source).
+describe("scanPermissionMode / readPermissionModeAsync", () => {
+  const pm = (mode: string, sid: string | undefined = ID): string =>
+    JSON.stringify({ type: "permission-mode", permissionMode: mode, sessionId: sid });
+  const userMode = (mode: string, sid: string = ID): string =>
+    JSON.stringify({ type: "user", permissionMode: mode, sessionId: sid, message: { content: "hi" } });
+  const pad = (kib: number): string[] => {
+    const chunk = "x".repeat(1000);
+    const out: string[] = [];
+    for (let b = 0; b < kib * 1024; b += 1000) {
+      out.push(JSON.stringify({ type: "attachment", sessionId: ID, attachment: { content: chunk } }));
+    }
+    return out;
+  };
+
+  it("PM0: pins the wide window at 4 MiB", () => {
+    expect(PERMISSION_MODE_BYTES).toBe(4 * 1024 * 1024);
+  });
+
+  it("PM1: the last permission-mode line wins", () => {
+    expect(scanPermissionMode(buf(body([pm("default"), pm("bypassPermissions")])), true, ID)).toEqual({
+      decided: true,
+      mode: "bypassPermissions",
+    });
+    expect(scanPermissionMode(buf(body([pm("bypassPermissions"), pm("default")])), true, ID)).toEqual({
+      decided: true,
+      mode: "default",
+    });
+  });
+
+  it("PM2: a newer user line with a top-level permissionMode wins", () => {
+    expect(scanPermissionMode(buf(body([pm("bypassPermissions"), userMode("acceptEdits")])), true, ID)).toEqual({
+      decided: true,
+      mode: "acceptEdits",
+    });
+    expect(scanPermissionMode(buf(body([userMode("default"), pm("bypassPermissions")])), true, ID)).toEqual({
+      decided: true,
+      mode: "bypassPermissions",
+    });
+  });
+
+  it("PM3: foreign sessions, nested markers and escaped mentions are skipped", () => {
+    const other = "99999999-2222-3333-4444-555555555555";
+    expect(scanPermissionMode(buf(body([pm("default"), pm("bypassPermissions", other)])), true, ID)).toEqual({
+      decided: true,
+      mode: "default",
+    });
+    const nested = JSON.stringify({
+      type: "assistant",
+      sessionId: ID,
+      message: { permissionMode: "bypassPermissions" },
+    });
+    const attachment = JSON.stringify({
+      type: "attachment",
+      sessionId: ID,
+      attachment: { permissionMode: "bypassPermissions" },
+    });
+    expect(scanPermissionMode(buf(body([pm("default"), nested, attachment])), true, ID)).toEqual({
+      decided: true,
+      mode: "default",
+    });
+    const escaped = JSON.stringify({
+      type: "user",
+      sessionId: ID,
+      message: { content: '{"type":"permission-mode","permissionMode":"bypassPermissions"}' },
+    });
+    expect(escaped.includes('"permissionMode":"')).toBe(false);
+    expect(scanPermissionMode(buf(body([pm("default"), escaped])), true, ID)).toEqual({
+      decided: true,
+      mode: "default",
+    });
+    expect(scanPermissionMode(buf(body([escaped])), true, ID)).toEqual({ decided: false });
+  });
+
+  it("PM4: a window with no marker is undecided", () => {
+    expect(scanPermissionMode(buf(body([userLine("hello"), ct("x", ID)])), true, ID)).toEqual({ decided: false });
+    expect(scanPermissionMode(buf(""), true, ID)).toEqual({ decided: false });
+  });
+
+  it("PM5: an over-long or malformed newest marker line is decided with no mode", () => {
+    const long = JSON.stringify({
+      type: "user",
+      permissionMode: "default",
+      sessionId: ID,
+      message: { content: "y".repeat(MAX_SCAN_LINE) },
+    });
+    expect(long.length).toBeGreaterThan(MAX_SCAN_LINE);
+    expect(scanPermissionMode(buf(body([pm("bypassPermissions"), long])), true, ID)).toEqual({ decided: true });
+    const broken = '{"type":"permission-mode","permissionMode":"default","sessionId":';
+    expect(scanPermissionMode(buf(body([pm("bypassPermissions"), broken])), true, ID)).toEqual({ decided: true });
+    // A non-string mode is not a record: the older line decides.
+    const numeric = JSON.stringify({ type: "permission-mode", permissionMode: 1, sessionId: ID });
+    expect(numeric.includes('"permissionMode":"')).toBe(false);
+    expect(scanPermissionMode(buf(body([pm("bypassPermissions"), numeric])), true, ID)).toEqual({
+      decided: true,
+      mode: "bypassPermissions",
+    });
+  });
+
+  it("PM6: readPermissionModeAsync widens to PERMISSION_MODE_BYTES, then gives up; never rejects", async () => {
+    const near = fs.realpathSync(writeTranscript(ID, [pm("bypassPermissions"), ...pad(300)]));
+    expect(fs.statSync(near).size).toBeGreaterThan(TAIL_BYTES);
+    expect(await readPermissionModeAsync(near, ID)).toBe("bypassPermissions");
+
+    const id2 = "22222222-2222-3333-4444-555555555555";
+    const far = fs.realpathSync(writeTranscript(id2, [pm("bypassPermissions", id2), ...pad(4 * 1024 + 64)]));
+    expect(fs.statSync(far).size).toBeGreaterThan(PERMISSION_MODE_BYTES);
+    expect(await readPermissionModeAsync(far, id2)).toBeUndefined();
+
+    const id3 = "33333333-2222-3333-4444-555555555555";
+    const tail = fs.realpathSync(writeTranscript(id3, [pm("bypassPermissions", id3), pm("plan", id3)]));
+    expect(await readPermissionModeAsync(tail, id3)).toBe("plan");
+
+    await expect(readPermissionModeAsync(path.join(raw, "missing", `${ID}.jsonl`), ID)).resolves.toBeUndefined();
   });
 });

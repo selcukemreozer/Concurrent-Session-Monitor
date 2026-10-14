@@ -7,8 +7,15 @@ import {
   LAST_PROMPT_CAP,
   MIN_RESUME_SCAN_MS,
   RESUME_LIST_N,
+  RESUME_NAME_MAX_CP,
+  RESUME_NAME_SCAN_BUDGET_MS,
+  RESUME_NAME_SCAN_MAX_FILES,
   RESUME_VISIBLE_ROWS,
   discoverSessions,
+  isSafeResumeName,
+  listSlugCandidates,
+  resumeExtras,
+  resumeNameKey,
   fmtAge,
   followOffset,
   reconcileSelection,
@@ -66,6 +73,12 @@ type Spec = {
   mtimeSec?: number;
   padBytes?: number;
   dir?: string;
+  /** quick-261014-fq8: extra custom-title lines appended after customTitle (last wins). */
+  customTitles?: string[];
+  /** quick-261014-fq8: `permission-mode` lines, in order, after the metadata. */
+  permissionModes?: string[];
+  /** quick-261014-fq8: bytes of attachment padding after the mode lines. */
+  padAfter?: number;
 };
 
 function writeSession(slug: string, sessionId: string, spec: Spec = {}): string {
@@ -107,6 +120,18 @@ function writeSession(slug: string, sessionId: string, spec: Spec = {}): string 
   }
   if (spec.lastPrompt !== undefined) {
     lines.push(JSON.stringify({ type: "last-prompt", lastPrompt: spec.lastPrompt, sessionId: sid }));
+  }
+  for (const t of spec.customTitles ?? []) {
+    lines.push(JSON.stringify({ type: "custom-title", customTitle: t, sessionId: sid }));
+  }
+  for (const m of spec.permissionModes ?? []) {
+    lines.push(JSON.stringify({ type: "permission-mode", permissionMode: m, sessionId: sid }));
+  }
+  if (spec.padAfter !== undefined && spec.padAfter > 0) {
+    const chunk = "x".repeat(1000);
+    for (let b = 0; b < spec.padAfter; b += 1000) {
+      lines.push(JSON.stringify({ type: "attachment", sessionId: sid, attachment: { content: chunk } }));
+    }
   }
   const p = path.join(dir, `${sessionId}.jsonl`);
   fs.writeFileSync(p, lines.join(NL) + NL);
@@ -314,8 +339,10 @@ describe("discoverSessions", () => {
     const rows = await scan();
     expect(rows).toHaveLength(1);
     expect(rows[0]!.live).toBe(false);
-    const allowed = new Set(["id", "label", "labelKind", "folder", "cwd", "mtimeMs", "live", "lastPrompt"]);
+    // quick-261014-fq8: rows also carry the candidate slug (deliberate key-set change).
+    const allowed = new Set(["id", "label", "labelKind", "folder", "cwd", "mtimeMs", "live", "lastPrompt", "slug"]);
     for (const k of Object.keys(rows[0]!)) expect(allowed.has(k)).toBe(true);
+    expect(rows[0]!.slug).toBe("p");
     for (const k of ["id", "label", "labelKind", "folder", "mtimeMs", "live"]) {
       expect(Object.keys(rows[0]!)).toContain(k);
     }
@@ -520,5 +547,212 @@ describe("registryDirs", () => {
     expect(registryDirs()).toEqual([path.join(tmp, ".claude", "sessions")]);
     process.env.CLAUDE_CONFIG_DIR = path.join(tmp, "cfg");
     expect(registryDirs()).toEqual([path.join(tmp, ".claude", "sessions"), path.join(tmp, "cfg", "sessions")]);
+  });
+});
+
+// quick-261014-fq8: rule (d) name safety and the rule (c) comparison key.
+describe("isSafeResumeName / resumeNameKey", () => {
+  it("N1 accepts plain names up to RESUME_NAME_MAX_CP code points", () => {
+    expect(RESUME_NAME_MAX_CP).toBe(100);
+    for (const ok of ["My name", "auth-fix_v2", "\u00f6deme ak\u0131\u015f\u0131", "a".repeat(100), "\u00e9t\u00e9 2026"]) {
+      expect(isSafeResumeName(ok)).toBe(true);
+    }
+  });
+
+  it("N2 rejects everything that is not plain, clean, short and paste-safe", () => {
+    const bad: unknown[] = [
+      undefined,
+      null,
+      42,
+      {},
+      "",
+      " lead",
+      "trail ",
+      "double  space",
+      "it's",
+      'say "hi"',
+      "back\\slash",
+      "tick`x",
+      "bang!",
+      "$HOME",
+      "-x",
+      "a\u0001b",
+      "a\u001bb",
+      "a\u007fb",
+      "a\u0085b",
+      "a\u009bb",
+      "a\u200bb",
+      "a\u200db",
+      "a\ufe0fb",
+      "a\u202eb",
+      "a\ufeffb",
+      "a\u00a0b",
+      "a\u2028b",
+      "a\ue000b",
+      "a\ud800b",
+      "e\u0301",
+      "a".repeat(101),
+      "11111111-2222-3333-4444-555555555555",
+      "ABCDEF12-2222-3333-4444-555555555555",
+    ];
+    for (const b of bad) expect(isSafeResumeName(b), JSON.stringify(b)).toBe(false);
+  });
+
+  it("N3 resumeNameKey trims, collapses, NFKC-folds and lower-cases", () => {
+    expect(resumeNameKey("  Auth  Fix ")).toBe(resumeNameKey("auth fix"));
+    expect(resumeNameKey("  Auth  Fix ")).toBe("auth fix");
+    expect(resumeNameKey("\uff21\uff35\uff34\uff28")).toBe(resumeNameKey("auth"));
+    expect(resumeNameKey(undefined)).toBe("");
+    expect(resumeNameKey(7)).toBe("");
+  });
+});
+
+// quick-261014-fq8: on-demand name + bypass facts for the copied resume line.
+describe("resumeExtras", () => {
+  const SLUG = "-work-proj";
+  const CWD = "/work/proj";
+  let root2: string;
+
+  beforeEach(() => {
+    root2 = path.join(tmp, "projects2");
+    fs.mkdirSync(root2, { recursive: true });
+  });
+
+  const extras = (n: number, over: { slug?: string; cwd?: string | undefined } = {}, opts: { now?: () => number } = {}) =>
+    resumeExtras(
+      { id: id(n), slug: "slug" in over ? over.slug : SLUG, cwd: "cwd" in over ? over.cwd : CWD },
+      { roots: [root, root2], ...opts },
+    );
+
+  it("E1 a unique safe custom title gives the FULL name; the latest title wins", async () => {
+    const name = "Session " + "n".repeat(32);
+    expect(Array.from(name)).toHaveLength(40);
+    writeSession(SLUG, id(1), { cwd: CWD, customTitle: name, mtimeSec: 200 });
+    expect(await extras(1)).toEqual({ name, bypass: false });
+    writeSession(SLUG, id(2), { cwd: CWD, customTitle: "Old name", customTitles: ["New name"], mtimeSec: 100 });
+    expect((await extras(2)).name).toBe("New name");
+    const rows = await scan();
+    expect(rows.map((r) => r.slug)).toEqual([SLUG, SLUG]);
+    expect(rows[0]!.label).not.toBe(name); // the panel label is capped; the line uses the full name
+  });
+
+  it("E2 a case/space duplicate in the slug (either root, sdk included) drops the name; another slug does not", async () => {
+    writeSession(SLUG, id(1), { cwd: CWD, customTitle: "Auth fix" });
+    writeSession("-work-other", id(9), { cwd: "/work/other", customTitle: "Auth fix" });
+    expect((await extras(1)).name).toBe("Auth fix");
+
+    writeSession(SLUG, id(2), { cwd: CWD, customTitle: "auth  FIX" });
+    resetSessionsCache();
+    expect((await extras(1)).name).toBeUndefined();
+    expect((await extras(2)).name).toBeUndefined();
+    fs.rmSync(path.join(root, SLUG, `${id(2)}.jsonl`));
+
+    writeSession(SLUG, id(3), { cwd: CWD, customTitle: "AUTH FIX", dir: root2 });
+    expect((await extras(1)).name).toBeUndefined();
+    fs.rmSync(path.join(root2, SLUG, `${id(3)}.jsonl`));
+
+    writeSession(SLUG, id(4), { cwd: CWD, customTitle: "Auth fix", entrypoint: "sdk-cli" });
+    expect((await extras(1)).name).toBeUndefined();
+    fs.rmSync(path.join(root, SLUG, `${id(4)}.jsonl`));
+
+    expect((await extras(1)).name).toBe("Auth fix");
+  });
+
+  it("E3 unsafe titles, ai-title only, no cwd and a slug-mismatched cwd give no name", async () => {
+    writeSession(SLUG, id(1), { cwd: CWD, customTitle: "it's" });
+    writeSession(SLUG, id(2), { cwd: CWD, customTitle: "$HOME" });
+    writeSession(SLUG, id(3), { cwd: CWD, customTitle: "-x" });
+    writeSession(SLUG, id(4), { cwd: CWD, aiTitle: "Derived only" });
+    writeSession(SLUG, id(5), { cwd: CWD, customTitle: "Fine name" });
+    for (const n of [1, 2, 3, 4]) expect(await extras(n)).toEqual({ bypass: false });
+    expect((await extras(5)).name).toBe("Fine name");
+    expect(await extras(5, { cwd: undefined })).toEqual({ bypass: false });
+    expect(await extras(5, { cwd: "/work/elsewhere" })).toEqual({ bypass: false });
+    expect(await extras(5, { cwd: "/work/proj/" })).toEqual({ bypass: false });
+  });
+
+  it("E4 more than RESUME_NAME_SCAN_MAX_FILES siblings or an exhausted budget gives no name", async () => {
+    expect(RESUME_NAME_SCAN_MAX_FILES).toBe(256);
+    expect(RESUME_NAME_SCAN_BUDGET_MS).toBe(1500);
+    writeSession(SLUG, id(1), { cwd: CWD, customTitle: "Crowded" });
+    const dir = path.join(root, SLUG);
+    const tiny = (n: number): void =>
+      fs.writeFileSync(path.join(dir, `${id(n)}.jsonl`), JSON.stringify({ type: "user", sessionId: id(n) }) + NL);
+    for (let i = 0; i < RESUME_NAME_SCAN_MAX_FILES; i++) tiny(1000 + i);
+    expect((await extras(1, {}, { now: () => 0 })).name).toBe("Crowded");
+    tiny(5000);
+    expect((await extras(1, {}, { now: () => 0 })).name).toBeUndefined();
+    fs.rmSync(path.join(dir, `${id(5000)}.jsonl`));
+
+    let calls = 0;
+    const jump = (): number => (calls++ === 0 ? 0 : RESUME_NAME_SCAN_BUDGET_MS + 1);
+    resetSessionsCache();
+    expect((await extras(1, {}, { now: jump })).name).toBeUndefined();
+  });
+
+  it("E5 bypass follows the newest mode record, also behind 300 KiB of padding", async () => {
+    writeSession(SLUG, id(1), { cwd: CWD, permissionModes: ["default", "bypassPermissions"] });
+    writeSession(SLUG, id(2), { cwd: CWD, permissionModes: ["bypassPermissions", "default"] });
+    writeSession(SLUG, id(3), { cwd: CWD });
+    writeSession(SLUG, id(4), { cwd: CWD, permissionModes: ["bypassPermissions"], padAfter: 300 * 1024 });
+    expect(await extras(1)).toEqual({ bypass: true });
+    expect(await extras(2)).toEqual({ bypass: false });
+    expect(await extras(3)).toEqual({ bypass: false });
+    expect(await extras(4)).toEqual({ bypass: true });
+    writeSession(SLUG, id(5), { cwd: CWD, customTitle: "Named bypass", permissionModes: ["bypassPermissions"] });
+    expect(await extras(5)).toEqual({ name: "Named bypass", bypass: true });
+  });
+
+  it("E6 invalid ids, bad slugs, missing transcripts and symlinked slug dirs resolve { bypass: false }", async () => {
+    writeSession(SLUG, id(1), { cwd: CWD, customTitle: "Real", permissionModes: ["bypassPermissions"] });
+    const outside = path.join(tmp, "outside");
+    writeSession("-work-link", id(2), {
+      cwd: "/work/link",
+      customTitle: "Linked",
+      permissionModes: ["bypassPermissions"],
+      dir: outside,
+    });
+    fs.symlinkSync(path.join(outside, "-work-link"), path.join(root, "-work-link"));
+    const opts = { roots: [root, root2] };
+    const cases: Array<{ id: string; slug?: string; cwd?: string }> = [
+      { id: "not-a-uuid", slug: SLUG, cwd: CWD },
+      { id: id(1).toUpperCase(), slug: SLUG, cwd: CWD },
+      { id: id(1), slug: "..", cwd: CWD },
+      { id: id(1), slug: ".", cwd: CWD },
+      { id: id(1), slug: "a/b", cwd: CWD },
+      { id: id(1), slug: "", cwd: CWD },
+      { id: id(1), slug: undefined, cwd: CWD },
+      { id: id(1), slug: "x\u0000y", cwd: CWD },
+      { id: id(1), slug: "x".repeat(256), cwd: CWD },
+      { id: id(7), slug: SLUG, cwd: CWD },
+      { id: id(2), slug: "-work-link", cwd: "/work/link" },
+    ];
+    for (const c of cases) await expect(resumeExtras(c, opts)).resolves.toEqual({ bypass: false });
+    await expect(resumeExtras(undefined as never, opts)).resolves.toEqual({ bypass: false });
+    expect(await resumeExtras({ id: id(1), slug: SLUG, cwd: CWD }, opts)).toEqual({ name: "Real", bypass: true });
+  });
+
+  it("E7 a second call on unchanged siblings reuses the cached title keys", async () => {
+    writeSession(SLUG, id(1), { cwd: CWD, customTitle: "Cached" });
+    const sib = writeSession(SLUG, id(2), { cwd: CWD, customTitle: "Other" });
+    expect((await extras(1)).name).toBe("Cached");
+    fs.chmodSync(sib, 0o000);
+    try {
+      expect((await extras(1)).name).toBe("Cached"); // cache hit: the unreadable sibling is never opened
+      resetSessionsCache();
+      expect((await extras(1)).name).toBeUndefined(); // a miss must read it, fails, and drops the name
+    } finally {
+      fs.chmodSync(sib, 0o644);
+    }
+  });
+
+  it("E8 listSlugCandidates lists the slug's regular <uuid>.jsonl files only", async () => {
+    writeSession(SLUG, id(1), { cwd: CWD });
+    fs.writeFileSync(path.join(root, SLUG, "notes.jsonl"), "x\n");
+    fs.mkdirSync(path.join(root, SLUG, id(1)), { recursive: true });
+    const list = await listSlugCandidates(root, SLUG);
+    expect(list.map((c) => c.id)).toEqual([id(1)]);
+    expect(list[0]!.slug).toBe(SLUG);
+    expect(await listSlugCandidates(root, "-missing")).toEqual([]);
   });
 });

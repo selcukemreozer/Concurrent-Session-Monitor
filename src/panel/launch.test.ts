@@ -34,6 +34,10 @@ import {
   openResume,
   MSG_COPIED,
   MSG_COPIED_LIVE,
+  MSG_COPIED_BYPASS,
+  MSG_COPIED_LIVE_BYPASS,
+  MSG_BYPASS_WARNING,
+  RESUME_BYPASS_FLAG,
   MSG_INVALID_ID,
   type LaunchDeps,
   type RunOptions,
@@ -953,5 +957,91 @@ describe("defaultRun real spawn against node only (R1-R3)", () => {
 
   it("R3 a missing binary resolves ok false without rejecting", async () => {
     await expect(defaultRun("/nonexistent/csm-bin", [], { timeoutMs: 500 })).resolves.toEqual({ ok: false });
+  });
+});
+
+// quick-261014-fq8: the unique-name target and the bypass flag on the copied line.
+describe("resume name and bypass flag (fq8 L1-L5)", () => {
+  const FLAG = " --dangerously-skip-permissions";
+
+  it("L1 no opts keeps every U2 line byte-identical", () => {
+    expect(resumeCommand(ID, undefined, undefined)).toBe("claude --resume " + ID);
+    expect(resumeCommand(ID, "/w/a", {})).toBe("cd '/w/a' && claude --resume " + ID);
+    expect(resumeCommand(ID, "/w/it's", { name: undefined, bypass: false })).toBe(
+      "cd '/w/it'\\''s' && claude --resume " + ID,
+    );
+  });
+
+  it("L2 a safe name needs a usable cwd; an unsafe name falls back to the id", () => {
+    expect(resumeCommand(ID, "/w/a", { name: "My name" })).toBe("cd '/w/a' && claude --resume 'My name'");
+    expect(resumeCommand(ID, undefined, { name: "My name" })).toBe("claude --resume " + ID);
+    expect(resumeCommand(ID, "rel/a", { name: "My name" })).toBe("claude --resume " + ID);
+    expect(resumeCommand(ID, "/w/a", { name: "it's" })).toBe("cd '/w/a' && claude --resume " + ID);
+    expect(resumeCommand(ID, "/w/a", { name: "-x" })).toBe("cd '/w/a' && claude --resume " + ID);
+    expect(resumeCommand(ID, "/w/a", { name: 42 })).toBe("cd '/w/a' && claude --resume " + ID);
+  });
+
+  it("L3 only bypass === true appends the constant flag, on every form", () => {
+    expect(RESUME_BYPASS_FLAG).toBe("--dangerously-skip-permissions");
+    expect(resumeCommand(ID, "/w/a", { bypass: true })).toBe("cd '/w/a' && claude --resume " + ID + FLAG);
+    expect(resumeCommand(ID, "/w/a", { name: "My name", bypass: true })).toBe(
+      "cd '/w/a' && claude --resume 'My name'" + FLAG,
+    );
+    expect(resumeCommand(ID, undefined, { name: "My name", bypass: true })).toBe("claude --resume " + ID + FLAG);
+    for (const b of ["yes", 1, "true", {}]) {
+      expect(resumeCommand(ID, "/w/a", { bypass: b })).toBe("cd '/w/a' && claude --resume " + ID);
+    }
+  });
+
+  it("L4 copyResume copies the flagged line and warns; plain messages are unchanged", async () => {
+    expect(MSG_BYPASS_WARNING).toBe("⚠ bypasses permission checks");
+    expect(MSG_COPIED_BYPASS).toBe("copied ✓ · ⚠ bypasses permission checks");
+    expect(MSG_COPIED_LIVE_BYPASS).toBe("copied ✓ · session still open · ⚠ bypasses permission checks");
+    const nameLine = "cd '" + cwd + "' && claude --resume 'My name'" + FLAG;
+
+    const a = fakeDeps();
+    expect(await copyResume({ id: ID, cwd, live: false, name: "My name", bypass: true }, a.deps)).toEqual({
+      ok: true,
+      copied: true,
+      message: MSG_COPIED_BYPASS,
+    });
+    expect(a.calls).toEqual([PBCOPY_CALL(nameLine)]);
+
+    const b = fakeDeps();
+    expect(await copyResume({ id: ID, cwd, live: true, name: "My name", bypass: true }, b.deps)).toEqual({
+      ok: true,
+      copied: true,
+      message: MSG_COPIED_LIVE_BYPASS,
+    });
+
+    const f = fakeDeps({ results: { "/usr/bin/pbcopy": false } });
+    expect(await copyResume({ id: ID, cwd, live: false, name: "My name", bypass: true }, f.deps)).toEqual({
+      ok: false,
+      copied: false,
+      message: MSG_COPY_FAILED_PREFIX + nameLine,
+    });
+    expect(await copyResume({ id: ID, cwd, live: true, name: "My name", bypass: true }, f.deps)).toEqual({
+      ok: false,
+      copied: false,
+      message: MSG_COPY_FAILED_PREFIX + nameLine + " · session still open",
+    });
+
+    const n = fakeDeps();
+    expect((await copyResume({ id: ID, cwd, live: false, name: "My name" }, n.deps)).message).toBe(MSG_COPIED);
+    expect(n.calls).toEqual([PBCOPY_CALL("cd '" + cwd + "' && claude --resume 'My name'")]);
+    expect((await copyResume({ id: ID, cwd, live: true, bypass: false }, n.deps)).message).toBe(MSG_COPIED_LIVE);
+    const truthy = fakeDeps();
+    const t = await copyResume({ id: ID, cwd, live: false, bypass: "yes" as unknown as boolean }, truthy.deps);
+    expect(t.message).toBe(MSG_COPIED);
+    expect(truthy.calls).toEqual([PBCOPY_CALL(cdLine(cwd))]);
+  });
+
+  it("L5 openResume ignores name and bypass: id line, unchanged osascript argv", async () => {
+    const { deps, calls } = fakeDeps({ termProgram: "Apple_Terminal" });
+    const r = await openResume({ id: ID, cwd, live: false, name: "My name", bypass: true }, deps);
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toEqual(PBCOPY_CALL(cdLine(cwd)));
+    expect(calls[1]!.args).toEqual(osascriptArgs(TERMINAL_SCRIPT, cwd, ID));
+    expect(r.message).toBe("opened a new Terminal window · command copied");
   });
 });
