@@ -23,7 +23,7 @@ function readRel(rel: string): string {
 
 const README = readRel("../README.md");
 
-/** The 15 live, user-facing CSM_* env knobs (source-verified). */
+/** The 16 live, user-facing CSM_* env knobs (source-verified). */
 const ENV_KNOBS = [
   "CSM_STORE_DIR",
   "CSM_STALE_MS",
@@ -40,6 +40,7 @@ const ENV_KNOBS = [
   "CSM_BRANCH_SCAN_MS",
   "CSM_RESUME_SCAN_MS",
   "CSM_GSD_TOOLS",
+  "CSM_UPDATE_CHECK",
 ] as const;
 
 /** Reserved knobs: documented as inert, never as a row of the active table. */
@@ -306,5 +307,48 @@ describe("README resume picker (Phase 8)", () => {
     expect(row).toContain("`10000`");
     expect(row).toContain("OTURUMLAR");
     expect(row).toContain("below `1000`");
+  });
+});
+
+// Quick task 261014-e2u: the README documents how to update the plugin (the
+// doc-verified Claude Code commands + /csm-setup + restarts) and the panel's
+// update notice, its network behaviour and its CSM_UPDATE_CHECK opt-out.
+describe("README updating + update notice (261014-e2u)", () => {
+  const lines = README.split("\n");
+  const start = lines.findIndex((l) => l === "## Updating");
+  let end = lines.length;
+  for (let i = start + 1; start >= 0 && i < lines.length; i++) {
+    if (lines[i].startsWith("## ")) {
+      end = i;
+      break;
+    }
+  }
+  const section = start >= 0 ? lines.slice(start, end).join("\n") : "";
+
+  it("has an Updating section", () => {
+    expect(start).toBeGreaterThanOrEqual(0);
+  });
+
+  it.each([
+    "claude plugin update concurrent-session-monitor@concurrent-session-monitor",
+    "**Update now**",
+    "**Update marketplace**",
+    "/csm-setup",
+    "/reload-plugins",
+    "CHANGELOG.md",
+    "### Update notice",
+    "6 hours",
+    "raw.githubusercontent.com",
+    "no session data",
+    "CSM_UPDATE_CHECK=0",
+    "never installs",
+  ])("the Updating section contains %s", (needle) => {
+    expect(section).toContain(needle);
+  });
+
+  it("the env table has a CSM_UPDATE_CHECK row mentioning `0`", () => {
+    const row = lines.find((l) => l.startsWith("| `CSM_UPDATE_CHECK`"));
+    expect(row).toBeDefined();
+    expect(row).toContain("`0`");
   });
 });

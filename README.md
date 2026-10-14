@@ -10,7 +10,7 @@
   <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-2f5d3f?style=flat-square">
   <img alt="platform: macOS" src="https://img.shields.io/badge/platform-macOS-2f5d3f?style=flat-square">
   <img alt="node &gt;= 22" src="https://img.shields.io/badge/node-%3E%3D22-2f5d3f?style=flat-square">
-  <img alt="version 1.4.0" src="https://img.shields.io/badge/version-1.4.0-2f5d3f?style=flat-square">
+  <img alt="version 1.6.0" src="https://img.shields.io/badge/version-1.6.0-2f5d3f?style=flat-square">
   <img alt="license: MIT" src="https://img.shields.io/badge/license-MIT-2f5d3f?style=flat-square">
 </p>
 
@@ -87,6 +87,46 @@ This opens a live, full-screen panel that redraws as sessions come and go. Press
 
 Keep the panel running in its own terminal while you work in one or more Claude
 Code sessions elsewhere.
+
+## Updating
+
+Third-party marketplaces like this one do not auto-update by default, so new
+releases reach you only when you update. Inside Claude Code, run `/plugin`, open
+the **Installed** tab, select `concurrent-session-monitor` and choose
+**Update now**. From your shell you can do the same with:
+
+```
+claude plugin update concurrent-session-monitor@concurrent-session-monitor
+```
+
+Another way: run `/plugin`, open the **Marketplaces** tab, select
+`concurrent-session-monitor` and choose **Update marketplace**. That refreshes
+the listing and updates the plugin installed from it. On the same Marketplaces
+entry you can choose **Enable auto-update** if you want future releases to
+arrive automatically.
+
+After updating:
+
+1. Run `/csm-setup` again so the global `csm` command points at the new version.
+2. Restart the panel (`Ctrl+C`, then `csm`). A running panel keeps the old code.
+3. Restart Claude Code sessions that were started before the update, or run
+   `/reload-plugins` in them. A running session keeps the plugin version it
+   loaded; new sessions pick up the new version on their own.
+
+See [CHANGELOG.md](CHANGELOG.md) for what changed in each release.
+
+### Update notice
+
+When a newer version is published on GitHub, the panel's title row shows
+`⬆ vX.Y.Z available` just left of the clock. It is left out when the terminal
+is too narrow to fit it on that line. The panel checks once shortly after it
+starts and then every 6 hours. Each check is a single anonymous HTTPS GET of
+the public `.claude-plugin/plugin.json` on raw.githubusercontent.com. It reads
+only that file's `version` field and sends no session data. The panel
+never installs anything; updating stays the manual step described above. The
+check is skipped when the panel is not attached to a terminal. Set
+`CSM_UPDATE_CHECK=0` to turn it off with no network request at all (`false`
+and `off` also work).
 
 ## Panel keys
 
@@ -190,6 +230,7 @@ back to the default. Times are in milliseconds.
 | `CSM_BRANCH_SCAN_MS` | `1500` (1.5 s) | Cadence of the live current-branch scan that derives each session's checked-out branch from its working directory. |
 | `CSM_RESUME_SCAN_MS` | `10000` (10 s) | Cadence of the recent-sessions scan feeding the OTURUMLAR pane. It runs only while OTURUMLAR is visible (press `r`). Values below `1000` (1 s) are raised to `1000`. |
 | `CSM_GSD_TOOLS` | auto-detected | Absolute path to the `gsd-tools` binary used by the phases pane. Set it to override auto-detection. |
+| `CSM_UPDATE_CHECK` | on | Set to `0` (or `false`/`off`) to disable the panel's update check; no network request is made. See [Update notice](#update-notice). |
 
 ### Reserved (not yet wired)
 
