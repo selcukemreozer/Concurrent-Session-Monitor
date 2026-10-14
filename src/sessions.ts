@@ -7,8 +7,12 @@ import {
   TAIL_BYTES,
   isAllowedTranscriptPath,
   projectRoots,
+  projectSlug,
   readHeadFactsAsync,
+  readPermissionModeAsync,
   readTailFactsAsync,
+  readWindowAsync,
+  scanCustomTitle,
   type HeadFacts,
   type TailFacts,
 } from "./transcript.js";
@@ -50,6 +54,15 @@ import { clampOffset } from "./phases.js";
  *     The tail's last-wins cwd drifts with in-session `cd`s and is never used.
  *     Per changed transcript at most one bounded tail and one bounded head
  *     window are read; the head is re-read only while its facts are not final.
+ *   - quick-261014-fq8: resumeExtras resolves, ON DEMAND (panel Enter only,
+ *     never in the discoverSessions scan, so the 10 s cadence does no new IO
+ *     and the facts are the freshest at copy time), two facts for the copied
+ *     resume line: the session's full `/rename` name when it is safe
+ *     (isSafeResumeName), the row cwd's project slug equals the transcript's
+ *     `<projects>/<dir>` name, and no other transcript in that slug folder
+ *     under any projects root carries the same resumeNameKey; and `bypass`,
+ *     true only when the newest permission-mode record is exactly
+ *     bypassPermissions. Every uncertain case gives no name and no bypass.
  *
  * Contract: this module only READS. It writes nothing anywhere and installs no
  * hook. The CC registry dir also holds `<pid>.<hash>.key` peer-secret files;
@@ -58,8 +71,9 @@ import { clampOffset } from "./phases.js";
  *
  * LOCKSTEP: scripts/csm-resume.mjs is a self-contained stdlib script that
  * cannot import src/; it mirrors this reducer (label chain, filters, caps,
- * liveness, and - from 08-10 - the sessionCwd chain). Any change here must be
- * made there too.
+ * liveness, and - from 08-10 - the sessionCwd chain; from quick-261014-fq8
+ * also isSafeResumeName, resumeNameKey, the uniqueness rule and the
+ * RESUME_NAME_* constants). Any change here must be made there too.
  */
 
 /** D-03: rows kept per scan. */
@@ -80,6 +94,21 @@ const MAX_REGISTRY_BYTES = 65536;
 /** Only `<digits>.json` registry names are opened (never `*.key`). */
 const REGISTRY_NAME = /^(\d+)\.json$/;
 
+/** quick-261014-fq8 rule (d): longest name (in code points) the resume line may carry. */
+export const RESUME_NAME_MAX_CP = 100;
+
+/** quick-261014-fq8 rule (c): more sibling transcripts than this in the slug means "not unique". */
+export const RESUME_NAME_SCAN_MAX_FILES = 256;
+
+/** quick-261014-fq8 rule (c): the uniqueness check gives up (not unique) after this long. */
+export const RESUME_NAME_SCAN_BUDGET_MS = 1500;
+
+/** The sibling title-key cache is cleared once it holds more entries than this. */
+const TITLE_KEY_CACHE_MAX = 4096;
+
+/** Longest accepted slug (one path component). */
+const MAX_SLUG_LEN = 255;
+
 export type LabelKind = "name" | "derived" | "unnamed";
 
 export type ResumeRow = {
@@ -95,11 +124,19 @@ export type ResumeRow = {
    * validLaunchCwd for `o`.
    */
   cwd?: string;
+  /**
+   * quick-261014-fq8: the transcript's `<projects>/<dir>` name, raw. Always
+   * set by discovery; resumeExtras re-validates it as one path component.
+   */
+  slug?: string;
   mtimeMs: number;
   live: boolean;
   /** Cleaned and capped at LAST_PROMPT_CAP (the pane never shows it, D-07). */
   lastPrompt?: string;
 };
+
+/** quick-261014-fq8: the extra facts of the copied resume line. */
+export type ResumeExtras = { name?: string; bypass: boolean };
 
 export type Candidate = { id: string; path: string; slug: string; size: number; mtimeMs: number };
 
@@ -266,26 +303,68 @@ export async function listCandidates(root: string): Promise<Candidate[]> {
   }
   for (const slug of slugs) {
     if (!slug.isDirectory()) continue;
-    const dir = path.join(root, slug.name);
-    let entries;
+    await collectSlugFiles(path.join(root, slug.name), slug.name, out);
+  }
+  return out;
+}
+
+/**
+ * The one transcript-file filter shared by discovery (listCandidates) and the
+ * resume-name uniqueness check (listSlugCandidates), so they can never drift:
+ * dirent isFile, `.jsonl`, a SESSION_UUID_PATTERN stem, and lstat isFile.
+ * Every failure contributes nothing.
+ */
+async function collectSlugFiles(dir: string, slug: string, out: Candidate[]): Promise<void> {
+  let entries;
+  try {
+    entries = await fsp.readdir(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const e of entries) {
+    if (!e.isFile() || !e.name.endsWith(".jsonl")) continue;
+    const id = e.name.slice(0, -".jsonl".length);
+    if (!SESSION_UUID_PATTERN.test(id)) continue;
+    const p = path.join(dir, e.name);
     try {
-      entries = await fsp.readdir(dir, { withFileTypes: true });
+      const st = await fsp.lstat(p);
+      if (!st.isFile()) continue;
+      out.push({ id, path: p, slug, size: st.size, mtimeMs: st.mtimeMs });
     } catch {
-      continue;
+      // vanished between readdir and lstat: skip
     }
-    for (const e of entries) {
-      if (!e.isFile() || !e.name.endsWith(".jsonl")) continue;
-      const id = e.name.slice(0, -".jsonl".length);
-      if (!SESSION_UUID_PATTERN.test(id)) continue;
-      const p = path.join(dir, e.name);
-      try {
-        const st = await fsp.lstat(p);
-        if (!st.isFile()) continue;
-        out.push({ id, path: p, slug: slug.name, size: st.size, mtimeMs: st.mtimeMs });
-      } catch {
-        // vanished between readdir and lstat: skip
-      }
-    }
+  }
+}
+
+/** True when `slug` is one safe path component (no separator, no NUL, not `.` / `..`). */
+function isSlugComponent(slug: unknown): slug is string {
+  return (
+    typeof slug === "string" &&
+    slug.length > 0 &&
+    slug.length <= MAX_SLUG_LEN &&
+    !slug.includes("/") &&
+    !slug.includes(path.sep) &&
+    !slug.includes("\0") &&
+    slug !== "." &&
+    slug !== ".."
+  );
+}
+
+/**
+ * quick-261014-fq8: the `<root>/<slug>/<uuid>.jsonl` files of ONE slug folder,
+ * with exactly the listCandidates filter. The slug dir must lstat as a real
+ * directory (a symlinked slug contributes nothing). Never rejects.
+ */
+export async function listSlugCandidates(root: string, slug: string): Promise<Candidate[]> {
+  const out: Candidate[] = [];
+  try {
+    if (!isSlugComponent(slug)) return out;
+    const dir = path.join(root, slug);
+    const st = await fsp.lstat(dir);
+    if (!st.isDirectory()) return out;
+    await collectSlugFiles(dir, slug, out);
+  } catch {
+    // absent or unreadable: nothing
   }
   return out;
 }
@@ -307,9 +386,13 @@ type CacheEntry = {
 /** Per candidate path; survives pane toggles so a reopen is a warm scan. */
 const cache = new Map<string, CacheEntry>();
 
+/** quick-261014-fq8: sibling path -> (size, mtimeMs, resumeNameKey of its latest custom title). */
+const titleKeyCache = new Map<string, { size: number; mtimeMs: number; key: string }>();
+
 /** Drop every cached verdict (tests; also lifts the sticky sdk verdict). */
 export function resetSessionsCache(): void {
   cache.clear();
+  titleKeyCache.clear();
 }
 
 /** Folder = capped basename of the WR-04 session cwd, else the capped slug. */
@@ -383,6 +466,7 @@ async function rowFor(
     labelKind,
     folder: folderOf(cwd, c.slug),
     cwd,
+    slug: c.slug,
     mtimeMs: c.mtimeMs,
     live: live.has(c.id),
     lastPrompt: lp.length > 0 ? truncateLabel(lp, LAST_PROMPT_CAP) : undefined,
@@ -427,6 +511,168 @@ export async function discoverSessions(opts: DiscoverOptions = {}): Promise<Resu
     // resolve what was gathered so far
   }
   return rows;
+}
+
+/** quick-261014-fq8 rule (d): characters a shell or Claude Code could read specially. */
+const RESUME_NAME_FORBIDDEN = /['"\\`!$]/;
+
+/**
+ * Code points never allowed in a resume name: format, default-ignorable (this
+ * also rejects the ZWJ and FE0E/FE0F that cleanTitle keeps), private-use,
+ * unassigned, surrogate, and the line / paragraph separators.
+ */
+const RESUME_NAME_BAD_CP = /[\p{Cf}\p{Default_Ignorable_Code_Point}\p{Co}\p{Cn}\p{Cs}\p{Zl}\p{Zp}]/u;
+
+/** A name shaped like a session id (any case) is never used as a name. */
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * quick-261014-fq8 rule (d): true only for a name that is safe to single-quote
+ * into the copied resume line as-is: a string already equal to its cleanTitle
+ * (trimmed, single ASCII spaces, no controls), NFC, 1..RESUME_NAME_MAX_CP code
+ * points, none of `'` `"` backslash backtick `!` `$`, no leading `-`, no
+ * RESUME_NAME_BAD_CP code point, no whitespace other than U+0020, and not
+ * UUID-shaped. Never throws (false on any error).
+ */
+export function isSafeResumeName(raw: unknown): raw is string {
+  try {
+    if (typeof raw !== "string" || raw.length === 0) return false;
+    if (raw !== cleanTitle(raw)) return false;
+    if (raw !== raw.normalize("NFC")) return false;
+    const cps = Array.from(raw);
+    if (cps.length < 1 || cps.length > RESUME_NAME_MAX_CP) return false;
+    if (RESUME_NAME_FORBIDDEN.test(raw)) return false;
+    if (raw.startsWith("-")) return false;
+    for (const ch of cps) {
+      if (RESUME_NAME_BAD_CP.test(ch)) return false;
+      if (ch !== " " && /\s/u.test(ch)) return false;
+    }
+    if (UUID_SHAPE.test(raw)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * quick-261014-fq8 rule (c): the uniqueness comparison key, cleanTitle of the
+ * NFKC form, lower-cased. Deliberately conservative (trim, space collapse,
+ * compatibility fold and case-insensitive), so a near-duplicate counts as a
+ * duplicate. Non-strings give "". Never throws.
+ */
+export function resumeNameKey(raw: unknown): string {
+  try {
+    if (typeof raw !== "string") return "";
+    return cleanTitle(raw.normalize("NFKC")).toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * The resumeNameKey of one sibling's latest custom title (TAIL_BYTES tail),
+ * cached by path while the listed (size, mtimeMs) still equal the read's
+ * fstat. undefined when the guard rejects the path or the read fails.
+ */
+async function siblingTitleKey(c: Candidate, roots: readonly string[]): Promise<string | undefined> {
+  const hit = titleKeyCache.get(c.path);
+  if (hit !== undefined && hit.size === c.size && hit.mtimeMs === c.mtimeMs) return hit.key;
+  const real = isAllowedTranscriptPath(c.id, c.path, roots);
+  if (real === undefined) return undefined;
+  const w = await readWindowAsync(real, "tail", TAIL_BYTES);
+  if (w === undefined) return undefined;
+  const key = resumeNameKey(scanCustomTitle(w.buf, w.atBoundary, c.id));
+  if (titleKeyCache.size >= TITLE_KEY_CACHE_MAX) titleKeyCache.clear();
+  titleKeyCache.set(c.path, { size: w.size, mtimeMs: w.mtimeMs, key });
+  return key;
+}
+
+/**
+ * The full custom title when rules (a)-(d) hold, else undefined. Never throws.
+ * The cwd must also pass launch.ts commandCwd; resumeCommand enforces that
+ * when it builds the line (it never uses a name without the cd prefix).
+ */
+async function uniqueResumeName(
+  id: string,
+  slug: string,
+  cwd: unknown,
+  realPath: string,
+  gathered: readonly Candidate[],
+  roots: readonly string[],
+  now: () => number,
+): Promise<string | undefined> {
+  try {
+    const w = await readWindowAsync(realPath, "tail", TAIL_BYTES);
+    if (w === undefined) return undefined;
+    const title = scanCustomTitle(w.buf, w.atBoundary, id);
+    if (!isSafeResumeName(title)) return undefined;
+    if (typeof cwd !== "string" || projectSlug(cwd) !== slug) return undefined;
+    const key = resumeNameKey(title);
+    if (key.length === 0) return undefined;
+    const siblings = gathered.filter((c) => c.id !== id);
+    if (siblings.length > RESUME_NAME_SCAN_MAX_FILES) return undefined;
+    const start = now();
+    for (const sib of siblings) {
+      if (now() - start > RESUME_NAME_SCAN_BUDGET_MS) return undefined;
+      const k = await siblingTitleKey(sib, roots);
+      if (k === undefined) return undefined;
+      if (k.length > 0 && k === key) return undefined;
+    }
+    return title;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * quick-261014-fq8: the name and bypass facts of the copied resume line for
+ * one row, resolved on demand (panel Enter; never in discoverSessions).
+ *
+ *   - Inputs: the id must be a lowercase UUID and the slug one path
+ *     component, else `{ bypass: false }`.
+ *   - The own transcript is the newest-mtime `<slug>/<id>.jsonl` across every
+ *     root (first root on ties, as discoverSessions), validated by
+ *     isAllowedTranscriptPath.
+ *   - bypass: the newest permission-mode record is exactly bypassPermissions
+ *     (readPermissionModeAsync).
+ *   - name (rules a-d): the LATEST custom title of the TAIL_BYTES tail (never
+ *     the ai-title, the first prompt or the capped label) when it passes
+ *     isSafeResumeName, the row cwd's projectSlug equals the slug, and no
+ *     other `<uuid>.jsonl` of that slug under ANY root carries the same
+ *     resumeNameKey. More than RESUME_NAME_SCAN_MAX_FILES siblings, a guard
+ *     rejection or read failure, or RESUME_NAME_SCAN_BUDGET_MS running out
+ *     means not unique. Discretion: sdk-* and observer transcripts COUNT for
+ *     uniqueness (conservative; Claude Code's name lookup is not known to
+ *     skip them).
+ *
+ * Never rejects: any failure resolves `{ bypass: false }`.
+ */
+export async function resumeExtras(
+  row: { id: string; slug?: string; cwd?: string },
+  opts: { roots?: readonly string[]; now?: () => number } = {},
+): Promise<ResumeExtras> {
+  try {
+    const id = row?.id;
+    const slug = row?.slug;
+    if (typeof id !== "string" || !SESSION_UUID_PATTERN.test(id)) return { bypass: false };
+    if (!isSlugComponent(slug)) return { bypass: false };
+    const roots = opts?.roots ?? projectRoots();
+    const gathered: Candidate[] = [];
+    for (const root of roots) gathered.push(...(await listSlugCandidates(root, slug)));
+    let own: Candidate | undefined;
+    for (const c of gathered) {
+      if (c.id === id && (own === undefined || c.mtimeMs > own.mtimeMs)) own = c;
+    }
+    if (own === undefined) return { bypass: false };
+    const realPath = isAllowedTranscriptPath(id, own.path, roots);
+    if (realPath === undefined) return { bypass: false };
+    const bypass = (await readPermissionModeAsync(realPath, id)) === "bypassPermissions";
+    const now = typeof opts?.now === "function" ? opts.now : Date.now;
+    const name = await uniqueResumeName(id, slug, row.cwd, realPath, gathered, roots, now);
+    return name !== undefined ? { name, bypass } : { bypass };
+  } catch {
+    return { bypass: false };
+  }
 }
 
 /**

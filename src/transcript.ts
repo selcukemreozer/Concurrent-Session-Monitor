@@ -71,6 +71,15 @@ import * as path from "node:path";
  * last-prompt are read only for the resume picker (CONTEXT D-06 / D-07).
  * Extracted strings are raw and untrusted: every consumer must run
  * cleanTitle, then truncateLabel, then sanitize before display.
+ *
+ * quick-261014-fq8: scanPermissionMode / readPermissionModeAsync read the
+ * session's NEWEST permission-mode record (a compact `permission-mode` line or
+ * a `user` line with a top-level string permissionMode), walking complete
+ * lines from last to first: the TAIL_BYTES tail first, then, only when that
+ * is undecided and the file is larger, a PERMISSION_MODE_BYTES tail window.
+ * An over-long or malformed newest record is "decided, unknown" (no mode), so
+ * the copied resume line never gains the bypass flag on a guess.
+ * LOCKSTEP: scripts/csm-resume.mjs mirrors the mode scan.
  */
 
 /** Default tail budget: the last 256 KiB of the transcript. */
@@ -84,6 +93,12 @@ export const HEAD_BYTES = 256 * 1024;
 
 /** Carrier / user / assistant lines longer than this are never parsed. */
 export const MAX_SCAN_LINE = 64 * 1024;
+
+/**
+ * quick-261014-fq8: the widest tail window searched for the newest
+ * permission-mode record when the TAIL_BYTES tail holds none (4 MiB).
+ */
+export const PERMISSION_MODE_BYTES = 4 * 1024 * 1024;
 
 /** A Claude Code session id as accepted by `--resume` (lowercase UUID). */
 export const SESSION_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -150,6 +165,9 @@ const CARRIER_MARKER = '"entrypoint":"';
 const ASSISTANT_MARKER = '"type":"assistant"';
 const USER_MARKER = '"type":"user"';
 const CWD_MARKER = '"cwd":"';
+/** Compact permission-mode marker; an escaped mention has backslashes and never matches. */
+const MODE_MARKER = '"permissionMode":"';
+const MODE_MARKER_BYTES = Buffer.from(MODE_MARKER, "utf8");
 
 /**
  * Claude Code's projects-dir slug for a cwd (WR-04 / D-10 REVISED): every
@@ -256,6 +274,70 @@ export function scanTailFacts(buf: Buffer, atBoundary: boolean, sessionId: strin
     }
   }
   return f;
+}
+
+/**
+ * quick-261014-fq8: the session's newest permission-mode record in one
+ * window, walking complete lines from LAST to FIRST. Only lines carrying the
+ * compact marker are considered:
+ *   - longer than MAX_SCAN_LINE, or not a parseable JSON object: decided,
+ *     mode unknown (conservative: never guess past a newer unreadable record);
+ *   - a different sessionId: skipped;
+ *   - top-level type "permission-mode" or "user" with a top-level string
+ *     permissionMode: decided with that mode;
+ *   - anything else (the marker only nested, e.g. assistant / attachment): skipped.
+ * No marker line at all gives `{ decided: false }`. Never throws.
+ */
+export function scanPermissionMode(
+  buf: Buffer,
+  atBoundary: boolean,
+  sessionId: string,
+): { decided: boolean; mode?: string } {
+  try {
+    if (buf.lastIndexOf(MODE_MARKER_BYTES) < 0) return { decided: false };
+    const lines = windowLines(buf, atBoundary);
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i]!;
+      if (!line.includes(MODE_MARKER)) continue;
+      if (line.length > MAX_SCAN_LINE) return { decided: true };
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(line);
+      } catch {
+        return { decided: true };
+      }
+      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return { decided: true };
+      const o = parsed as { type?: unknown; sessionId?: unknown; permissionMode?: unknown };
+      if (o.sessionId !== undefined && o.sessionId !== sessionId) continue;
+      if ((o.type === "permission-mode" || o.type === "user") && typeof o.permissionMode === "string") {
+        return { decided: true, mode: o.permissionMode };
+      }
+    }
+    return { decided: false };
+  } catch {
+    return { decided: true };
+  }
+}
+
+/**
+ * quick-261014-fq8: the newest permission mode of a validated transcript, or
+ * undefined. Scans the TAIL_BYTES tail; only when that is undecided and the
+ * file is larger than TAIL_BYTES, scans a PERMISSION_MODE_BYTES tail window.
+ * Never rejects.
+ */
+export async function readPermissionModeAsync(realPath: string, sessionId: string): Promise<string | undefined> {
+  try {
+    const w = await readWindowAsync(realPath, "tail", TAIL_BYTES);
+    if (w === undefined) return undefined;
+    const first = scanPermissionMode(w.buf, w.atBoundary, sessionId);
+    if (first.decided) return first.mode;
+    if (w.size <= TAIL_BYTES) return undefined;
+    const wide = await readWindowAsync(realPath, "tail", PERMISSION_MODE_BYTES);
+    if (wide === undefined) return undefined;
+    return scanPermissionMode(wide.buf, wide.atBoundary, sessionId).mode;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Leading wrappers that are tool / command output, never a user prompt. */

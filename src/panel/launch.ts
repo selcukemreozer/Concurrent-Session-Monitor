@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { isSafeResumeName } from "../sessions.js";
 
 /**
  * Resume launcher (Phase 8, CONTEXT D-15/D-16, RESEARCH Patterns 7 and 8).
@@ -11,9 +12,14 @@ import path from "node:path";
  *   - Enter → copyResume: put `cd '<session cwd>' && claude --resume <id>`
  *             on the clipboard (D-10 REVISED), or the plain
  *             `claude --resume <id>` when the session has no usable cwd.
- *   - `o`   → openResume: copy the same line first, then best-effort open a
- *             new Terminal / iTerm2 / Warp window in the session's folder
- *             that runs the resume command there.
+ *             quick-261014-fq8: the target is the session's unique, safe
+ *             `/rename` name (`'<name>'`) when the caller passes one and the
+ *             cwd is usable, and the line ends with the constant
+ *             ` --dangerously-skip-permissions` (plus a status warning) when
+ *             the caller passes bypass === true.
+ *   - `o`   → openResume: copy the id line first (never the name, never
+ *             the flag), then best-effort open a new Terminal / iTerm2 / Warp
+ *             window in the session's folder that runs the resume command there.
  *
  * Contract:
  *   - User-initiated only (D-15/D-16). Nothing here runs on a timer or a poll.
@@ -85,6 +91,16 @@ export const MSG_COPIED = "copied ✓";
 export const MSG_COPIED_LIVE = "copied ✓ · session still open";
 export const MSG_INVALID_ID = "refused: not a resumable session id";
 export const MSG_COPY_FAILED_PREFIX = "copy failed · run: ";
+
+/**
+ * quick-261014-fq8: appended to the copied line only when the session's newest
+ * permission mode was bypassPermissions (Claude Code does not restore that
+ * mode on resume). A constant literal, never built from transcript text.
+ */
+export const RESUME_BYPASS_FLAG = "--dangerously-skip-permissions";
+export const MSG_BYPASS_WARNING = "⚠ bypasses permission checks";
+export const MSG_COPIED_BYPASS = MSG_COPIED + " · " + MSG_BYPASS_WARNING;
+export const MSG_COPIED_LIVE_BYPASS = MSG_COPIED_LIVE + " · " + MSG_BYPASS_WARNING;
 
 const OUT_LIVE = "session still open, no new tab opened";
 const OUT_TERMINAL = "opened a new Terminal window";
@@ -159,6 +175,10 @@ export interface ResumeTarget {
   id: string;
   cwd?: string;
   live: boolean;
+  /** quick-261014-fq8: unique safe `/rename` name (copyResume only; `o` ignores it). */
+  name?: string;
+  /** quick-261014-fq8: true when the session last ran in bypassPermissions (copyResume only). */
+  bypass?: boolean;
 }
 
 export function isResumableId(id: unknown): id is string {
@@ -214,12 +234,23 @@ export function shellSingleQuote(s: string): string {
  * undefined: missing, not a string, empty, too long, relative, unnormalized,
  * control/format code point, backslash or backtick) the line is the plain
  * `claude --resume <id>`. `id` must already be isResumableId-gated.
+ *
+ * quick-261014-fq8 opts (absent opts keep the line byte-identical):
+ *   - name: used as the single-quoted resume target only when the cwd is
+ *     usable AND isSafeResumeName(name) holds (defense in depth: the caller
+ *     already checked it). Claude Code resolves names per project folder, so
+ *     a name is never used without the cd prefix.
+ *   - bypass: only `=== true` appends ` ` + RESUME_BYPASS_FLAG, on the id,
+ *     name and plain forms alike.
  * LOCKSTEP: scripts/csm-resume.mjs mirrors this byte-for-byte.
  */
-export function resumeCommand(id: string, cwd?: unknown): string {
+export function resumeCommand(id: string, cwd?: unknown, opts?: { name?: unknown; bypass?: unknown }): string {
   const c = commandCwd(cwd);
-  if (c === undefined) return "claude --resume " + id;
-  return "cd " + shellSingleQuote(c) + " && claude --resume " + id;
+  const suffix = opts?.bypass === true ? " " + RESUME_BYPASS_FLAG : "";
+  if (c === undefined) return "claude --resume " + id + suffix;
+  const name = opts?.name;
+  const target = isSafeResumeName(name) ? shellSingleQuote(name) : id;
+  return "cd " + shellSingleQuote(c) + " && claude --resume " + target + suffix;
 }
 
 /**
@@ -577,9 +608,9 @@ export function defaultLaunchDeps(): LaunchDeps {
   };
 }
 
-async function copyCommand(id: string, cwd: unknown, deps: LaunchDeps): Promise<boolean> {
+async function copyCommand(line: string, deps: LaunchDeps): Promise<boolean> {
   try {
-    const r = await deps.run(PBCOPY_BIN, [], { input: resumeCommand(id, cwd), timeoutMs: PBCOPY_TIMEOUT_MS });
+    const r = await deps.run(PBCOPY_BIN, [], { input: line, timeoutMs: PBCOPY_TIMEOUT_MS });
     return r?.ok === true;
   } catch {
     return false;
@@ -595,22 +626,31 @@ async function runOk(deps: LaunchDeps, cmd: string, args: string[], timeoutMs: n
   }
 }
 
-/** D-15 Enter: copy the resume command. ok === copied. Never throws. */
+/**
+ * D-15 Enter: copy the resume command. ok === copied. Never throws.
+ * quick-261014-fq8: the line is built ONCE from (id, cwd, { name, bypass })
+ * and that same line is copied, shown on a copy failure and shown by the
+ * IN-05 catch path. bypass === true picks MSG_COPIED_BYPASS /
+ * MSG_COPIED_LIVE_BYPASS; without it every message is unchanged.
+ */
 export async function copyResume(target: ResumeTarget, deps: LaunchDeps = defaultLaunchDeps()): Promise<LaunchResult> {
-  let id: unknown;
-  let cwd: unknown;
+  let line: string | undefined;
   try {
-    id = target?.id;
-    cwd = target?.cwd;
+    const id = target?.id;
     if (!isResumableId(id)) return { ok: false, copied: false, message: MSG_INVALID_ID };
+    const bypass = target.bypass === true;
+    line = resumeCommand(id, target.cwd, { name: target.name, bypass });
     const live = target.live === true;
-    const copied = await copyCommand(id, cwd, deps);
-    if (copied) return { ok: true, copied: true, message: live ? MSG_COPIED_LIVE : MSG_COPIED };
-    const msg = MSG_COPY_FAILED_PREFIX + resumeCommand(id, cwd) + (live ? " · session still open" : "");
+    const copied = await copyCommand(line, deps);
+    if (copied) {
+      if (bypass) return { ok: true, copied: true, message: live ? MSG_COPIED_LIVE_BYPASS : MSG_COPIED_BYPASS };
+      return { ok: true, copied: true, message: live ? MSG_COPIED_LIVE : MSG_COPIED };
+    }
+    const msg = MSG_COPY_FAILED_PREFIX + line + (live ? " · session still open" : "");
     return { ok: false, copied: false, message: msg };
   } catch {
     // IN-05: an unexpected throw for a resumable id still shows the command.
-    if (isResumableId(id)) return { ok: false, copied: false, message: MSG_COPY_FAILED_PREFIX + resumeCommand(id, cwd) };
+    if (line !== undefined) return { ok: false, copied: false, message: MSG_COPY_FAILED_PREFIX + line };
     return { ok: false, copied: false, message: MSG_INVALID_ID };
   }
 }
@@ -629,7 +669,8 @@ export async function openResume(target: ResumeTarget, deps: LaunchDeps = defaul
   try {
     const id = target?.id;
     if (!isResumableId(id)) return { ok: false, copied: false, message: MSG_INVALID_ID };
-    copied = await copyCommand(id, target.cwd, deps);
+    // quick-261014-fq8: the `o` route always copies the id line (no name, no flag).
+    copied = await copyCommand(resumeCommand(id, target.cwd), deps);
     suffix = copied ? " · command copied" : " · copy failed, run: " + resumeCommand(id, target.cwd);
     const done = (ok: boolean, outcome: string): LaunchResult => ({ ok, copied, message: outcome + suffix });
 
