@@ -1,5 +1,5 @@
 import React from "react";
-import { Box, Text, useWindowSize, useInput, useStdin } from "ink";
+import { Box, Text, useWindowSize, useInput, useStdin, useStdout } from "ink";
 import { readAll, type SessionRow } from "../aggregate.js";
 import { pruneSession } from "../prune.js";
 import { sanitize } from "../sanitize.js";
@@ -48,6 +48,15 @@ import {
   FAZLAR_VISIBLE_ROWS,
   type Progress,
 } from "../phases.js";
+import {
+  startUpdateCheck,
+  installedVersion,
+  updateLabel,
+  updateLabelFits,
+} from "../update.js";
+
+/** The title-row brand; also the width budget input for the update label. */
+const BRAND = "◆ Concurrent Session Monitor";
 
 /** Poll cadence (Claude's Discretion): ~750ms comfortably meets criterion #1
  * ("a touch appears within about a second") without a file watcher. */
@@ -353,6 +362,26 @@ export function App() {
     const t = setInterval(tick, branchScanMs());
     return () => { alive = false; clearInterval(t); };
   }, []);
+
+  // Newer published version (or null) from the update check.
+  const [updateTo, setUpdateTo] = React.useState<string | null>(null);
+  const { stdout } = useStdout();
+
+  // FOURTH, slowest effect (261014-e2u): the "⬆ vX available" update check.
+  // Runs once right after the first render, then every 6 h, off the render
+  // thread. startUpdateCheck owns the overlap guard, the unref'd timers and the
+  // stopped flag, so its stop function IS this effect's cleanup. It schedules
+  // nothing when CSM_UPDATE_CHECK=0/false/off, when stdout is not a TTY, or when
+  // the installed version is unknown. It only reads a version; it never installs.
+  React.useEffect(
+    () =>
+      startUpdateCheck({
+        installed: installedVersion(),
+        isTTY: stdout.isTTY === true,
+        onResult: setUpdateTo,
+      }),
+    [],
+  );
 
   const { rows: termRows, columns: termCols } = useWindowSize();
   const capacity = Math.max(1, termRows - HEADER_LINES - PORTS_LINES);
@@ -727,6 +756,10 @@ export function App() {
   const nSubagent = state.display.filter((d) => !d.ended && d.row.subagent).length;
   const subagentLabel = sanitize(`${nSubagent} subagent`);
   const clock = sanitize(fmtClock(Date.now()));
+  // Update label (261014-e2u): shown left of the clock only when brand + label +
+  // " · " + clock fit on the one title line; otherwise dropped, never wrapped.
+  const updLabel = updateLabel(updateTo);
+  const showUpdate = updLabel !== null && updateLabelFits(termCols, BRAND, updLabel, clock);
   // OTURUMLAR display rows: held ids read as live at once (D-11, D-16). Cursor,
   // scroll and selection stay on the RAW resumeRows; the ids are identical.
   const shownRows = applyHolds(resumeRows, launchHolds.current);
@@ -763,9 +796,19 @@ export function App() {
       >
         <Box justifyContent="space-between">
           <Text bold color="green">
-            {"◆ Concurrent Session Monitor"}
+            {BRAND}
           </Text>
-          <Text dimColor>{clock}</Text>
+          {showUpdate ? (
+            <Text dimColor>
+              <Text bold dimColor>
+                {updLabel}
+              </Text>
+              {" · "}
+              {clock}
+            </Text>
+          ) : (
+            <Text dimColor>{clock}</Text>
+          )}
         </Box>
         <Text>
           {summaryLead}

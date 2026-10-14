@@ -40338,8 +40338,124 @@ function liveBranch(row, branches) {
   return typeof live === "string" && live.length > 0 ? live : row.branch;
 }
 
+// src/update.ts
+var UPDATE_URL = "https://raw.githubusercontent.com/selcukemreozer/Concurrent-Session-Monitor/main/.claude-plugin/plugin.json";
+var UPDATE_CHECK_MS = 6 * 60 * 60 * 1e3;
+var FETCH_TIMEOUT_MS = 5e3;
+var MAX_BODY_BYTES = 16 * 1024;
+var MAX_VERSION_LEN = 32;
+var VERSION_RE = /^(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})$/;
+function normalizeVersion(v) {
+  if (typeof v !== "string" || v.length > MAX_VERSION_LEN) return null;
+  return VERSION_RE.test(v) ? v : null;
+}
+function isNewer(remote, installed) {
+  const r = normalizeVersion(remote);
+  const i = normalizeVersion(installed);
+  if (r === null || i === null) return false;
+  const a = r.split(".").map(Number);
+  const b = i.split(".").map(Number);
+  for (let k = 0; k < 3; k++) {
+    if (a[k] !== b[k]) return a[k] > b[k];
+  }
+  return false;
+}
+function installedVersion() {
+  return true ? normalizeVersion("1.5.0") : null;
+}
+function updateCheckEnabled(opts) {
+  const flag = (opts.env.CSM_UPDATE_CHECK ?? "").trim().toLowerCase();
+  if (flag === "0" || flag === "false" || flag === "off") return false;
+  if (!opts.isTTY) return false;
+  return opts.installed !== null;
+}
+function updateLabel(remote) {
+  const v = normalizeVersion(remote);
+  return v === null ? null : sanitize("\u2B06 v" + v + " available");
+}
+function updateLabelFits(cols, brand, label2, clock) {
+  const len = (s) => [...s].length;
+  return len(brand) + len(label2) + 3 + len(clock) + 2 + 1 <= cols;
+}
+async function fetchLatestVersion(opts) {
+  const timeoutMs = opts?.timeoutMs ?? FETCH_TIMEOUT_MS;
+  const maxBytes = opts?.maxBytes ?? MAX_BODY_BYTES;
+  try {
+    const f = opts?.fetchImpl ?? globalThis.fetch;
+    if (typeof f !== "function") return null;
+    const res = await f(UPDATE_URL, {
+      method: "GET",
+      redirect: "error",
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+    if (!res || !res.ok || res.status !== 200 || !res.body) return null;
+    const declared = Number(res.headers?.get?.("content-length") ?? NaN);
+    if (Number.isFinite(declared) && declared > maxBytes) {
+      await res.body.cancel?.().catch(() => void 0);
+      return null;
+    }
+    const reader = res.body.getReader();
+    const chunks = [];
+    let total = 0;
+    for (; ; ) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => void 0);
+        return null;
+      }
+      chunks.push(value);
+    }
+    const buf = new Uint8Array(total);
+    let off = 0;
+    for (const c of chunks) {
+      buf.set(c, off);
+      off += c.byteLength;
+    }
+    const obj = JSON.parse(new TextDecoder().decode(buf));
+    if (obj === null || typeof obj !== "object" || Array.isArray(obj)) return null;
+    return normalizeVersion(obj.version);
+  } catch {
+    return null;
+  }
+}
+function startUpdateCheck(opts) {
+  const installed = opts.installed;
+  if (installed === null || !updateCheckEnabled({ env: opts.env ?? process.env, isTTY: opts.isTTY, installed })) {
+    return () => {
+    };
+  }
+  let inFlight = false;
+  let stopped = false;
+  const tick = async () => {
+    if (inFlight || stopped) return;
+    inFlight = true;
+    try {
+      const remote = await fetchLatestVersion({ fetchImpl: opts.fetchImpl });
+      if (!stopped && remote !== null) {
+        opts.onResult(isNewer(remote, installed) ? remote : null);
+      }
+    } catch {
+    } finally {
+      inFlight = false;
+    }
+  };
+  const first = setTimeout(() => void tick(), 0);
+  const every = setInterval(() => void tick(), opts.intervalMs ?? UPDATE_CHECK_MS);
+  first.unref?.();
+  every.unref?.();
+  return () => {
+    stopped = true;
+    clearTimeout(first);
+    clearInterval(every);
+  };
+}
+
 // src/panel/App.tsx
 var import_jsx_runtime2 = __toESM(require_jsx_runtime(), 1);
+var BRAND = "\u25C6 Concurrent Session Monitor";
 var POLL_MS = 750;
 var RESUME_FLASH_MS = 3e3;
 var CARD_LINES = 4;
@@ -40465,6 +40581,16 @@ function App2() {
       clearInterval(t);
     };
   }, []);
+  const [updateTo, setUpdateTo] = import_react35.default.useState(null);
+  const { stdout } = use_stdout_default();
+  import_react35.default.useEffect(
+    () => startUpdateCheck({
+      installed: installedVersion(),
+      isTTY: stdout.isTTY === true,
+      onResult: setUpdateTo
+    }),
+    []
+  );
   const { rows: termRows, columns: termCols } = use_window_size_default();
   const capacity = Math.max(1, termRows - HEADER_LINES - PORTS_LINES);
   const compact = state.display.length * CARD_LINES > capacity;
@@ -40704,6 +40830,8 @@ function App2() {
   const nSubagent = state.display.filter((d) => !d.ended && d.row.subagent).length;
   const subagentLabel = sanitize(`${nSubagent} subagent`);
   const clock = sanitize(fmtClock(Date.now()));
+  const updLabel = updateLabel(updateTo);
+  const showUpdate = updLabel !== null && updateLabelFits(termCols, BRAND, updLabel, clock);
   const shownRows = applyHolds(resumeRows, launchHolds.current);
   const withLiveBranch = (row) => {
     const b = liveBranch(row, branches);
@@ -40729,8 +40857,12 @@ function App2() {
         width: termCols,
         children: [
           /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Box_default, { justifyContent: "space-between", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { bold: true, color: "green", children: "\u25C6 Concurrent Session Monitor" }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { dimColor: true, children: clock })
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { bold: true, color: "green", children: BRAND }),
+            showUpdate ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Text, { dimColor: true, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { bold: true, dimColor: true, children: updLabel }),
+              " \xB7 ",
+              clock
+            ] }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Text, { dimColor: true, children: clock })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Text, { children: [
             summaryLead,
