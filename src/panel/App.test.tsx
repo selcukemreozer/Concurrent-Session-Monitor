@@ -120,6 +120,20 @@ vi.mock("./launch.js", async (importOriginal) => {
     })),
   };
 });
+// RED (261014-e2u): App owns the update-check effect. Mock ONLY the scheduler
+// and the build-time installed version so NO App test can ever reach the
+// network; the pure label helpers (updateLabel / updateLabelFits) stay real so
+// the title-row rendering is exercised for real.
+const { UPDATE_STOP } = vi.hoisted(() => ({ UPDATE_STOP: vi.fn() }));
+vi.mock("../update.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../update.js")>();
+  return {
+    ...actual,
+    startUpdateCheck: vi.fn(() => UPDATE_STOP),
+    installedVersion: vi.fn(() => "1.6.0"),
+  };
+});
+import { startUpdateCheck, installedVersion } from "../update.js";
 import { readAll } from "../aggregate.js";
 import { pruneSession } from "../prune.js";
 import {
@@ -274,6 +288,10 @@ beforeEach(() => {
     copied: true,
     message: "opened a new Terminal window · command copied",
   });
+  // 261014-e2u: re-arm the update-check mocks (restoreAllMocks may strip them)
+  // so App's mount effect always hits the stub, never the real network check.
+  vi.mocked(startUpdateCheck).mockImplementation(() => UPDATE_STOP);
+  vi.mocked(installedVersion).mockReturnValue("1.6.0");
 });
 
 describe("App poll loop (PANEL-05 live refresh, Pitfall 4 full re-read)", () => {
@@ -1490,5 +1508,124 @@ describe("App OTURUMLAR pane (Phase 8, D-14..D-19)", () => {
     expect(cap.frame()).not.toContain("beta-sess");
     expect(maxInFlight).toBe(1);
     cap.inst.unmount();
+  });
+});
+
+describe("App title-row update notice (261014-e2u)", () => {
+  const CLOCK_RE = /\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/;
+
+  beforeEach(() => {
+    (readAll as unknown as { mockReset: () => void }).mockReset();
+    (readAll as unknown as { mockReturnValue: (v: unknown) => unknown }).mockReturnValue([]);
+    vi.mocked(startUpdateCheck).mockClear();
+    UPDATE_STOP.mockClear();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.mocked(startUpdateCheck).mockImplementation(() => UPDATE_STOP);
+    vi.mocked(installedVersion).mockReturnValue("1.6.0");
+  });
+
+  /** Render into a resizable captured stdout (columns can change + emit resize). */
+  function renderResizable(columns: number) {
+    let buf = "";
+    const out = new Writable({ write(c, _e, cb) { buf += c.toString(); cb(); } }) as unknown as NodeJS.WriteStream;
+    (out as unknown as { columns: number }).columns = columns;
+    (out as unknown as { rows: number }).rows = 24;
+    const inst = render(React.createElement(App), {
+      stdout: out,
+      debug: true,
+      patchConsole: false,
+      exitOnCtrlC: false,
+    });
+    return {
+      inst,
+      frame: () => buf,
+      clear: () => { buf = ""; },
+      resize: (cols: number) => {
+        (out as unknown as { columns: number }).columns = cols;
+        (out as unknown as { emit: (e: string) => void }).emit("resize");
+      },
+    };
+  }
+
+  /** The onResult callback App handed to the (mocked) startUpdateCheck. */
+  function capturedOnResult(): (v: string | null) => void {
+    const calls = vi.mocked(startUpdateCheck).mock.calls;
+    expect(calls.length).toBeGreaterThan(0);
+    return calls[calls.length - 1][0].onResult;
+  }
+
+  it("U1: calls startUpdateCheck once on mount with the installed version, a boolean isTTY and onResult", () => {
+    const { inst } = renderCapture();
+    expect(startUpdateCheck).toHaveBeenCalledTimes(1);
+    const opts = vi.mocked(startUpdateCheck).mock.calls[0][0];
+    expect(opts.installed).toBe("1.6.0");
+    expect(typeof opts.isTTY).toBe("boolean");
+    expect(typeof opts.onResult).toBe("function");
+    inst.unmount();
+  });
+
+  it("U2: no 'available' text before any result", () => {
+    const { inst, frame } = renderCapture();
+    expect(frame()).toContain("◆ Concurrent Session Monitor");
+    expect(frame()).not.toContain("available");
+    inst.unmount();
+  });
+
+  it("U3: at 80 columns brand, label and clock share ONE line, in that order", async () => {
+    const { inst, frame } = renderCapture(24, 80);
+    capturedOnResult()("9.9.9");
+    await vi.waitFor(() => expect(frame()).toContain("⬆ v9.9.9 available"));
+    const line = stripAnsi(frame())
+      .split("\n")
+      .find((l) => l.includes("⬆ v9.9.9 available"));
+    expect(line).toBeDefined();
+    const iBrand = line!.indexOf("◆ Concurrent Session Monitor");
+    const iLabel = line!.indexOf("⬆ v9.9.9 available");
+    const m = CLOCK_RE.exec(line!);
+    expect(iBrand).toBeGreaterThanOrEqual(0);
+    expect(m).not.toBeNull();
+    expect(iBrand).toBeLessThan(iLabel);
+    expect(iLabel).toBeLessThan(m!.index);
+    expect(line).toContain("available · ");
+    inst.unmount();
+  });
+
+  it("U4: at 60 columns the label is dropped (not wrapped) and the clock stays on the brand line", async () => {
+    const { inst, frame, clear, resize } = renderResizable(60);
+    capturedOnResult()("9.9.9");
+    // Let the state update + a poll re-render land, then inspect a fresh frame.
+    await new Promise((r) => setTimeout(r, 900));
+    clear();
+    await vi.waitFor(() => expect(frame()).toContain("◆ Concurrent Session Monitor"), { timeout: 2000 });
+    const out = stripAnsi(frame());
+    expect(out).not.toContain("available");
+    const brandLine = out.split("\n").find((l) => l.includes("◆ Concurrent Session Monitor"));
+    expect(brandLine).toMatch(CLOCK_RE);
+    // Widening proves the result was held in state and only dropped for width.
+    resize(80);
+    await vi.waitFor(() => expect(frame()).toContain("⬆ v9.9.9 available"));
+    inst.unmount();
+  });
+
+  it("U5: onResult(null) after a newer result removes the label", async () => {
+    const { inst, frame, clear } = renderCapture(24, 80);
+    const onResult = capturedOnResult();
+    onResult("9.9.9");
+    await vi.waitFor(() => expect(frame()).toContain("⬆ v9.9.9 available"));
+    onResult(null);
+    await new Promise((r) => setTimeout(r, 50));
+    clear();
+    await vi.waitFor(() => expect(frame()).toContain("◆ Concurrent Session Monitor"), { timeout: 2000 });
+    expect(frame()).not.toContain("available");
+    inst.unmount();
+  });
+
+  it("U6: unmount invokes the stop function returned by startUpdateCheck", () => {
+    const { inst } = renderCapture();
+    expect(UPDATE_STOP).not.toHaveBeenCalled();
+    inst.unmount();
+    expect(UPDATE_STOP).toHaveBeenCalledTimes(1);
   });
 });
