@@ -20,7 +20,7 @@
 // and nonce, never throws), and nothing else.
 //
 // 261014-d54 start-up sweep (WR-01 problem 2 / T-08-34): right after
-// registerPanel() an unref'd defaultLater(…, 0) runs sweepStaleWarpTabConfigs,
+// the registerPanel call an unref'd defaultLater(…, 0) runs sweepStaleWarpTabConfigs,
 // so a panel killed inside the 30 s TTL has its leftover tab config removed by
 // the next panel start once that panel's pid is gone (ESRCH only; the file's
 // first line must be that pid's exact marker). Deferred so the readdir never
