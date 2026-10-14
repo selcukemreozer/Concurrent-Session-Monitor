@@ -104,6 +104,9 @@ vi.mock("../sessions.js", async (importOriginal) => {
     // 08-07 (D-16): `o` re-checks liveness from the CC registry right before
     // launching. registryDirs stays real (importOriginal spread).
     readLiveRegistry: vi.fn(async () => new Set<string>()),
+    // quick-261014-fq8: Enter resolves the name/bypass facts first. Mocked so
+    // no App test ever reads the developer's real ~/.claude tree.
+    resumeExtras: vi.fn(async () => ({ bypass: false })),
   };
 });
 // Mock the launcher's two side-effecting entry points so no test ever runs
@@ -141,6 +144,7 @@ import {
   resumeScanMs,
   readLiveRegistry,
   registryDirs,
+  resumeExtras,
   RESUME_LIST_N,
   type ResumeRow,
 } from "../sessions.js";
@@ -282,6 +286,7 @@ beforeEach(() => {
   vi.mocked(discoverSessions).mockResolvedValue([]);
   vi.mocked(resumeScanMs).mockReturnValue(RESUME_CADENCE);
   vi.mocked(readLiveRegistry).mockResolvedValue(new Set<string>());
+  vi.mocked(resumeExtras).mockResolvedValue({ bypass: false });
   vi.mocked(copyResume).mockResolvedValue({ ok: true, copied: true, message: "copied ✓" });
   vi.mocked(openResume).mockResolvedValue({
     ok: true,
@@ -1507,6 +1512,83 @@ describe("App OTURUMLAR pane (Phase 8, D-14..D-19)", () => {
     await vi.waitFor(() => expect(latest(cap.frame())).toContain("alpha-sess"));
     expect(cap.frame()).not.toContain("beta-sess");
     expect(maxInFlight).toBe(1);
+    cap.inst.unmount();
+  });
+
+  // ── quick-261014-fq8: Enter resolves the name/bypass facts, newest press wins ──
+  const BS: ResumeRow = { ...B, slug: "-w-b" };
+
+  it("A1 Enter resolves resumeExtras for the selected row and passes name + bypass to copyResume", async () => {
+    vi.mocked(resumeScanMs).mockReturnValue(60000);
+    vi.mocked(discoverSessions).mockResolvedValue([A, BS, C]);
+    vi.mocked(resumeExtras).mockClear();
+    vi.mocked(resumeExtras).mockResolvedValueOnce({ name: "N", bypass: true });
+    vi.mocked(copyResume).mockResolvedValueOnce({
+      ok: true,
+      copied: true,
+      message: "copied ✓ · ⚠ bypasses permission checks",
+    });
+    const { stdin, cap } = await selectB();
+
+    press(stdin, KEYS.enter);
+    await vi.waitFor(() => expect(copyResume).toHaveBeenCalledTimes(1));
+    expect(resumeExtras).toHaveBeenCalledWith(expect.objectContaining({ id: B_ID, slug: "-w-b", cwd: "/w/b" }));
+    expect(copyResume).toHaveBeenCalledWith(
+      expect.objectContaining({ id: B_ID, cwd: "/w/b", live: false, name: "N", bypass: true }),
+    );
+    await vi.waitFor(() => expect(latest(cap.frame())).toContain("⚠ bypasses permission checks"));
+    cap.inst.unmount();
+  });
+
+  it("A2 a newer Enter or an `o` press drops a still-pending Enter (one clipboard write)", async () => {
+    vi.mocked(resumeScanMs).mockReturnValue(60000);
+    vi.mocked(discoverSessions).mockResolvedValue([A, BS, C]);
+    vi.mocked(resumeExtras).mockClear();
+    let releaseFirst: (v: { name?: string; bypass: boolean }) => void = () => {};
+    vi.mocked(resumeExtras).mockImplementationOnce(
+      () => new Promise((r) => {
+        releaseFirst = r;
+      }),
+    );
+    vi.mocked(resumeExtras).mockResolvedValueOnce({ name: "Second", bypass: false });
+    const { stdin, cap } = await selectB();
+
+    press(stdin, KEYS.enter);
+    await vi.waitFor(() => expect(resumeExtras).toHaveBeenCalledTimes(1));
+    press(stdin, KEYS.enter);
+    await vi.waitFor(() => expect(copyResume).toHaveBeenCalledTimes(1));
+    expect(copyResume).toHaveBeenCalledWith(expect.objectContaining({ id: B_ID, name: "Second" }));
+    releaseFirst({ name: "First", bypass: true });
+    await sleep(50);
+    expect(copyResume).toHaveBeenCalledTimes(1);
+
+    // An `o` press supersedes a pending Enter too.
+    let releaseThird: (v: { name?: string; bypass: boolean }) => void = () => {};
+    vi.mocked(resumeExtras).mockImplementationOnce(
+      () => new Promise((r) => {
+        releaseThird = r;
+      }),
+    );
+    press(stdin, KEYS.enter);
+    await vi.waitFor(() => expect(resumeExtras).toHaveBeenCalledTimes(3));
+    press(stdin, KEYS.o);
+    await vi.waitFor(() => expect(openResume).toHaveBeenCalledTimes(1));
+    releaseThird({ name: "Third", bypass: true });
+    await sleep(50);
+    expect(copyResume).toHaveBeenCalledTimes(1);
+    cap.inst.unmount();
+  });
+
+  it("A3 `o` never resolves extras and passes only { id, cwd, live } to openResume", async () => {
+    vi.mocked(resumeScanMs).mockReturnValue(60000);
+    vi.mocked(discoverSessions).mockResolvedValue([A, BS, C]);
+    vi.mocked(resumeExtras).mockClear();
+    const { stdin, cap } = await selectB();
+
+    press(stdin, KEYS.o);
+    await vi.waitFor(() => expect(openResume).toHaveBeenCalledTimes(1));
+    expect(openResume).toHaveBeenCalledWith({ id: B_ID, cwd: "/w/b", live: false });
+    expect(resumeExtras).not.toHaveBeenCalled();
     cap.inst.unmount();
   });
 });

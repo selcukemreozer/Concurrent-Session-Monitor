@@ -5,7 +5,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 // P1/P2 parity only: the panel reducer and resume line, compared against the /csm-resume script.
-import { discoverSessions, resetSessionsCache } from "./sessions.js";
+import { RESUME_NAME_SCAN_MAX_FILES, discoverSessions, resetSessionsCache, resumeExtras } from "./sessions.js";
 import { resumeCommand } from "./panel/launch.js";
 
 // 08-04: spawnSync integration tests for scripts/csm-resume.mjs (RESUME-01..03).
@@ -93,6 +93,12 @@ type Spec = {
   lastPrompt?: string;
   mtimeSec?: number;
   padBytes?: number;
+  /** quick-261014-fq8: `permission-mode` lines, in order, after the metadata. */
+  permissionModes?: string[];
+  /** quick-261014-fq8: a top-level permissionMode on the first user carrier line. */
+  userMode?: string;
+  /** quick-261014-fq8: attachment padding after the mode lines, then one trailing assistant line. */
+  padAfter?: number;
 };
 
 /** Same shape as the 08-03 sessions.test.ts helper; `root` is the projects root. */
@@ -113,9 +119,9 @@ function writeSession(root: string, slug: string, sessionId: string, spec: Spec 
     if (cwd !== null) out.cwd = cwd;
     return out;
   };
-  lines.push(
-    JSON.stringify(carrier({ type: "user", message: { role: "user", content: spec.firstPrompt ?? CLEAR_WRAPPER } })),
-  );
+  const userCarrier = carrier({ type: "user", message: { role: "user", content: spec.firstPrompt ?? CLEAR_WRAPPER } });
+  if (spec.userMode !== undefined) userCarrier.permissionMode = spec.userMode;
+  lines.push(JSON.stringify(userCarrier));
   if (spec.assistant !== false) {
     lines.push(
       JSON.stringify(
@@ -131,6 +137,18 @@ function writeSession(root: string, slug: string, sessionId: string, spec: Spec 
   }
   if (spec.lastPrompt !== undefined) {
     lines.push(JSON.stringify({ type: "last-prompt", lastPrompt: spec.lastPrompt, sessionId }));
+  }
+  for (const m of spec.permissionModes ?? []) {
+    lines.push(JSON.stringify({ type: "permission-mode", permissionMode: m, sessionId }));
+  }
+  if (spec.padAfter !== undefined && spec.padAfter > 0) {
+    const chunk = "x".repeat(1000);
+    for (let b = 0; b < spec.padAfter; b += 1000) {
+      lines.push(JSON.stringify({ type: "attachment", sessionId, attachment: { content: chunk } }));
+    }
+    lines.push(
+      JSON.stringify(carrier({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "ok" }] } })),
+    );
   }
   const p = path.join(dir, `${sessionId}.jsonl`);
   fs.writeFileSync(p, lines.join(NL) + NL);
@@ -184,11 +202,26 @@ function writeDrift(
 /**
  * D-10 REVISED resume line: `  cd '<cwd>' && claude --resume <uuid>` (each `'`
  * written as `'\''`) or the plain `  claude --resume <uuid>`. Group 1 = id.
+ * quick-261014-fq8: the target may also be a single-quoted name (group 1 is
+ * then undefined), and the line may end with ` --dangerously-skip-permissions`.
  */
 const RESUME_LINE =
-  /^ {2}(?:cd '(?:[^']|'\\'')*' && )?claude --resume ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
+  /^ {2}(?:cd '(?:[^']|'\\'')*' && )?claude --resume (?:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})|'[^']+')(?: --dangerously-skip-permissions)?$/;
 
-type Block = { line1: string; last?: string; id?: string; cmd?: string; lastIdx?: number; line1Idx: number };
+/** quick-261014-fq8: the constant warning printed under every flagged line. */
+const BYPASS_WARNING = "  ⚠ --dangerously-skip-permissions: the session ran with permission checks bypassed";
+
+type Block = {
+  line1: string;
+  last?: string;
+  id?: string;
+  cmd?: string;
+  lastIdx?: number;
+  line1Idx: number;
+  cmdIdx?: number;
+  warning?: string;
+  warningIdx?: number;
+};
 
 /** Split stdout into the header and per-session blocks. */
 function parse(stdout: string): { header: string; blocks: Block[]; lines: string[] } {
@@ -212,10 +245,19 @@ function parse(stdout: string): { header: string; blocks: Block[]; lines: string
       if (m !== null) {
         b.id = m[1];
         b.cmd = l.slice(2);
+        b.cmdIdx = i;
+      } else if (l === BYPASS_WARNING) {
+        b.warning = l;
+        b.warningIdx = i;
       }
     }
   }
   return { header, blocks, lines };
+}
+
+/** quick-261014-fq8: the block whose line 1 carries ` · <first 8 of sid>` (name-form lines carry no id). */
+function blockByShort(stdout: string, sid: string): Block | undefined {
+  return parse(stdout).blocks.find((b) => b.line1.includes(` · ${sid.slice(0, 8)}`));
 }
 
 function blockOf(stdout: string, sid: string): Block | undefined {
@@ -226,7 +268,7 @@ function resumeIds(stdout: string): string[] {
   const out: string[] = [];
   for (const l of stdout.split(NL)) {
     const m = RESUME_LINE.exec(l);
-    if (m !== null) out.push(m[1]!);
+    if (m !== null && m[1] !== undefined) out.push(m[1]);
   }
   return out;
 }
@@ -491,5 +533,129 @@ describe("scripts/csm-resume.mjs", () => {
     expect(blockOf(r.stdout, id(7))!.cmd).toBe(`cd '/work/real' && claude --resume ${id(7)}`);
     expect(blockOf(r.stdout, id(8))!.cmd).toBe(`claude --resume ${id(8)}`);
     expect(blockOf(r.stdout, id(1))!.line1).toContain(" · alpha · ");
+  });
+  // ── quick-261014-fq8: unique-name target and bypass flag ──────────────────
+  it("S17: a unique safe name in its own slug folder prints the name form", () => {
+    writeSession(rootA, "-work-proj", id(1), { cwd: "/work/proj", customTitle: "Auth fix" });
+    const r = run();
+    expect(r.status).toBe(0);
+    const b = blockByShort(r.stdout, id(1))!;
+    expect(b.cmd).toBe("cd '/work/proj' && claude --resume 'Auth fix'");
+    expect(b.id).toBeUndefined();
+    expect(b.warning).toBeUndefined();
+  });
+
+  it("S18: a case/space duplicate in the slug (either root) gives both the id form; another slug keeps the name", () => {
+    writeSession(rootA, "-work-proj", id(1), { cwd: "/work/proj", customTitle: "Auth fix", mtimeSec: T0 + 5 });
+    writeSession(rootA, "-work-proj", id(2), { cwd: "/work/proj", customTitle: "auth  FIX", mtimeSec: T0 + 4 });
+    writeSession(rootA, "-work-other", id(3), { cwd: "/work/other", customTitle: "Auth fix", mtimeSec: T0 + 3 });
+    writeSession(rootB, "-work-dup", id(4), { cwd: "/work/dup", customTitle: "Dup name", mtimeSec: T0 + 2 });
+    writeSession(rootA, "-work-dup", id(5), { cwd: "/work/dup", customTitle: "DUP NAME", mtimeSec: T0 + 1 });
+    const r = run();
+    expect(blockByShort(r.stdout, id(1))!.cmd).toBe(`cd '/work/proj' && claude --resume ${id(1)}`);
+    expect(blockByShort(r.stdout, id(2))!.cmd).toBe(`cd '/work/proj' && claude --resume ${id(2)}`);
+    expect(blockByShort(r.stdout, id(3))!.cmd).toBe("cd '/work/other' && claude --resume 'Auth fix'");
+    expect(blockByShort(r.stdout, id(4))!.cmd).toBe(`cd '/work/dup' && claude --resume ${id(4)}`);
+    expect(blockByShort(r.stdout, id(5))!.cmd).toBe(`cd '/work/dup' && claude --resume ${id(5)}`);
+  });
+
+  it("S19: unsafe names give the id form; a cwd-less named session gives the plain line", () => {
+    const unsafe = ["it's", "$HOME", "-x", `a${RLO}b`];
+    unsafe.forEach((t, i) => {
+      writeSession(rootA, `-work-u${i}`, id(i + 1), { cwd: `/work/u${i}`, customTitle: t, mtimeSec: T0 + 10 - i });
+    });
+    writeSession(rootA, "-work-lonely", id(9), { cwd: null, customTitle: "Lonely", mtimeSec: T0 + 1 });
+    const r = run();
+    expect(r.status).toBe(0);
+    unsafe.forEach((_, i) => {
+      expect(blockByShort(r.stdout, id(i + 1))!.cmd).toBe(`cd '/work/u${i}' && claude --resume ${id(i + 1)}`);
+    });
+    expect(blockByShort(r.stdout, id(9))!.cmd).toBe(`claude --resume ${id(9)}`);
+  });
+
+  it("S20: the newest bypass mode adds the flag and the warning line; default, none or older bypass do not", () => {
+    writeSession(rootA, "-work-a", id(1), { aiTitle: "A", permissionModes: ["bypassPermissions"], mtimeSec: T0 + 6 });
+    writeSession(rootA, "-work-b", id(2), { aiTitle: "B", permissionModes: ["bypassPermissions", "default"], mtimeSec: T0 + 5 });
+    writeSession(rootA, "-work-c", id(3), { aiTitle: "C", mtimeSec: T0 + 4 });
+    writeSession(rootA, "-work-d", id(4), {
+      aiTitle: "D",
+      permissionModes: ["bypassPermissions"],
+      padAfter: 300 * 1024,
+      mtimeSec: T0 + 3,
+    });
+    writeSession(rootA, "-work-e", id(5), { aiTitle: "E", userMode: "bypassPermissions", mtimeSec: T0 + 2 });
+    writeSession(rootA, "-work-f", id(6), { cwd: "/work/f", customTitle: "Fast lane", permissionModes: ["bypassPermissions"], mtimeSec: T0 + 1 });
+    const r = run();
+    expect(r.status).toBe(0);
+    const flagged = (n: number): Block => blockByShort(r.stdout, id(n))!;
+    for (const n of [1, 4, 5]) {
+      const b = flagged(n);
+      expect(b.cmd).toBe(`cd '/work/-work-${"abcde"[n - 1]}' && claude --resume ${id(n)} --dangerously-skip-permissions`);
+      expect(b.warning).toBe(BYPASS_WARNING);
+      expect(b.warningIdx).toBe(b.cmdIdx! + 1);
+    }
+    for (const n of [2, 3]) {
+      expect(flagged(n).cmd).toBe(`cd '/work/-work-${"abcde"[n - 1]}' && claude --resume ${id(n)}`);
+      expect(flagged(n).warning).toBeUndefined();
+    }
+    expect(flagged(6).cmd).toBe("cd '/work/f' && claude --resume 'Fast lane' --dangerously-skip-permissions");
+    expect(flagged(6).warning).toBe(BYPASS_WARNING);
+    expect(r.stdout.split(NL).filter((l) => l === BYPASS_WARNING)).toHaveLength(4);
+    expect(r.stdout).not.toContain("`");
+  });
+
+  it("S21: more than RESUME_NAME_SCAN_MAX_FILES siblings in the slug give the id form", () => {
+    writeSession(rootA, "-work-proj", id(1), { cwd: "/work/proj", customTitle: "Crowded" });
+    const dir = path.join(rootA, "-work-proj");
+    for (let i = 0; i <= RESUME_NAME_SCAN_MAX_FILES; i++) {
+      const sid = id(1000 + i);
+      fs.writeFileSync(path.join(dir, `${sid}.jsonl`), JSON.stringify({ type: "user", sessionId: sid }) + NL);
+    }
+    const r = run();
+    expect(r.status).toBe(0);
+    expect(blockByShort(r.stdout, id(1))!.cmd).toBe(`cd '/work/proj' && claude --resume ${id(1)}`);
+  });
+
+  it("P3: every printed line equals resumeCommand(id, cwd, resumeExtras(...)); the warning follows exactly the flagged lines", async () => {
+    writeSession(rootA, "-work-proj", id(1), { cwd: "/work/proj", customTitle: "Auth fix", mtimeSec: T0 + 9 });
+    writeSession(rootA, "-work-dup", id(2), { cwd: "/work/dup", customTitle: "Dup", mtimeSec: T0 + 8 });
+    writeSession(rootB, "-work-dup", id(3), { cwd: "/work/dup", customTitle: "dup", mtimeSec: T0 + 7 });
+    writeSession(rootA, "-work-unsafe", id(4), { cwd: "/work/unsafe", customTitle: "it's", mtimeSec: T0 + 6 });
+    writeSession(rootA, "-work-fast", id(5), {
+      cwd: "/work/fast",
+      customTitle: "Fast lane",
+      permissionModes: ["default", "bypassPermissions"],
+      mtimeSec: T0 + 5,
+    });
+    writeSession(rootB, "-work-six", id(6), { aiTitle: "Six", permissionModes: ["bypassPermissions"], mtimeSec: T0 + 4 });
+    writeSession(rootA, "-work-nocwd", id(7), {
+      cwd: null,
+      customTitle: "No folder",
+      permissionModes: ["bypassPermissions"],
+      mtimeSec: T0 + 3,
+    });
+    writeSession(rootA, "-work-plain", id(8), { aiTitle: "Plain", mtimeSec: T0 + 2 });
+
+    const r = run();
+    expect(r.status).toBe(0);
+    resetSessionsCache();
+    const rows = await discoverSessions({ roots: [rootA, rootB], registryDirs: [reg], n: 20 });
+    expect(rows.map((x) => x.id)).toEqual([id(1), id(2), id(3), id(4), id(5), id(6), id(7), id(8)]);
+    const seen = { name: 0, bypass: 0 };
+    for (const row of rows) {
+      const ex = await resumeExtras({ id: row.id, slug: row.slug, cwd: row.cwd }, { roots: [rootA, rootB] });
+      const b = blockByShort(r.stdout, row.id)!;
+      expect(b.cmd).toBe(resumeCommand(row.id, row.cwd, ex));
+      expect(b.warning !== undefined).toBe(ex.bypass);
+      if (ex.bypass) expect(b.warningIdx).toBe(b.cmdIdx! + 1);
+      if (ex.name !== undefined) seen.name++;
+      if (ex.bypass) seen.bypass++;
+    }
+    expect(seen).toEqual({ name: 2, bypass: 3 });
+    expect(blockByShort(r.stdout, id(1))!.cmd).toBe("cd '/work/proj' && claude --resume 'Auth fix'");
+    expect(blockByShort(r.stdout, id(5))!.cmd).toBe(
+      "cd '/work/fast' && claude --resume 'Fast lane' --dangerously-skip-permissions",
+    );
+    expect(blockByShort(r.stdout, id(7))!.cmd).toBe(`claude --resume ${id(7)} --dangerously-skip-permissions`);
   });
 });
