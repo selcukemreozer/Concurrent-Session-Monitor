@@ -40361,7 +40361,7 @@ function isNewer(remote, installed) {
   return false;
 }
 function installedVersion() {
-  return true ? normalizeVersion("1.5.0") : null;
+  return true ? normalizeVersion("1.6.0") : null;
 }
 function updateCheckEnabled(opts) {
   const flag = (opts.env.CSM_UPDATE_CHECK ?? "").trim().toLowerCase();
