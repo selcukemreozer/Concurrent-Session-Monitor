@@ -336,7 +336,7 @@ describe("copyResume (C1-C4)", () => {
   });
 });
 
-describe("openResume (O1-O16)", () => {
+describe("openResume (O1-O19)", () => {
   it("O1 live row copies and opens nothing (D-16)", async () => {
     const { deps, calls } = fakeDeps({ termProgram: "Apple_Terminal" });
     const r = await openResume({ id: ID, cwd, live: true }, deps);
@@ -465,18 +465,17 @@ describe("openResume (O1-O16)", () => {
     expect(cleanupWarpTabConfig()).toBe(false);
   });
 
-  it("O7 a Warp-unsafe folder is refused and only copied", async () => {
-    const unsafe = path.join(home, "x$y");
-    fs.mkdirSync(unsafe);
-    const { deps, calls } = fakeDeps({ termProgram: "WarpTerminal" });
-    const r = await openResume({ id: ID, cwd: unsafe, live: false }, deps);
-    expect(tabConfigStems()).toEqual([]);
-    expect(calls).toEqual([PBCOPY_CALL(cdLine(unsafe))]);
-    expect(r).toEqual({
-      ok: false,
-      copied: true,
-      message: "no new tab for this terminal, paste the command · command copied",
-    });
+  it("O7 a Warp-unsafe folder is refused with the unsafe-name message and only copied", async () => {
+    for (const name of ["x$y", "a;b", "it's here"]) {
+      const unsafe = path.join(home, name);
+      fs.mkdirSync(unsafe);
+      const { deps, calls, laters } = fakeDeps({ termProgram: "WarpTerminal" });
+      const r = await openResume({ id: ID, cwd: unsafe, live: false }, deps);
+      expect(tabConfigStems()).toEqual([]);
+      expect(laters).toEqual([]);
+      expect(calls).toEqual([PBCOPY_CALL(resumeCommand(ID, unsafe))]);
+      expect(r).toEqual(UNSAFE_FOLDER);
+    }
   });
 
   it("O8 a Warp write failure opens a plain tab in the folder", async () => {
@@ -569,21 +568,27 @@ describe("openResume (O1-O16)", () => {
     message: "session folder not found, paste the command · command copied",
   };
 
-  it("O14 Terminal.app and iTerm2 refuse an existing folder commandCwd rejects, incl. the fish breakout (T-08-03)", async () => {
+  const UNSAFE_FOLDER = {
+    ok: false,
+    copied: true,
+    message: "folder name not safe to open, paste the command · command copied",
+  };
+
+  it("O14 Terminal.app and iTerm2 refuse an existing folder commandCwd rejects with the unsafe-name message, incl. the fish breakout (T-08-03)", async () => {
     const folders = unsafeExistingFolders();
     for (const termProgram of ["Apple_Terminal", "iTerm.app"]) {
       for (const folder of folders) {
         const { deps, calls } = fakeDeps({ termProgram });
         const r = await openResume({ id: ID, cwd: folder, live: false }, deps);
         expect(calls).toEqual([PBCOPY_CALL(CMD)]);
-        expect(r).toEqual(NO_FOLDER);
+        expect(r).toEqual(UNSAFE_FOLDER);
       }
     }
     expect(fs.existsSync(path.join(home, "pwned"))).toBe(false);
     expect(fs.existsSync(path.join(process.cwd(), "pwned"))).toBe(false);
   });
 
-  it("O15 Warp refuses the same folders: no tab config, no open, the no-folder message (T-08-04)", async () => {
+  it("O15 Warp refuses the same folders: no tab config, no open, the unsafe-name message (T-08-04)", async () => {
     const folders = unsafeExistingFolders();
     for (const folder of folders) {
       const { deps, calls, laters } = fakeDeps({ termProgram: "WarpTerminal" });
@@ -591,8 +596,52 @@ describe("openResume (O1-O16)", () => {
       expect(calls).toEqual([PBCOPY_CALL(CMD)]);
       expect(tabConfigStems()).toEqual([]);
       expect(laters).toEqual([]);
+      expect(r).toEqual(UNSAFE_FOLDER);
+    }
+  });
+
+  it("O17 a missing, unknown or non-directory cwd keeps the not-found message", async () => {
+    for (const unknownCwd of [undefined, "", 42 as unknown as string]) {
+      const { deps, calls } = fakeDeps({ termProgram: "Apple_Terminal" });
+      const r = await openResume({ id: ID, cwd: unknownCwd, live: false }, deps);
+      expect(calls).toEqual([PBCOPY_CALL(CMD)]);
       expect(r).toEqual(NO_FOLDER);
     }
+    const file = path.join(home, "plain-file");
+    fs.writeFileSync(file, "x");
+    expect(commandCwd(file)).toBe(file);
+    const { deps, calls } = fakeDeps({ termProgram: "Apple_Terminal" });
+    const r = await openResume({ id: ID, cwd: file, live: false }, deps);
+    expect(calls).toEqual([PBCOPY_CALL(cdLine(file))]);
+    expect(r).toEqual(NO_FOLDER);
+  });
+
+  it("O18 a refused name is classified unsafe without ever being stat'ed, on any platform", async () => {
+    for (const platform of ["darwin", "linux"]) {
+      for (const refused of ["proj", home + "/a\u0007b", "/" + "a".repeat(5000)]) {
+        expect(commandCwd(refused)).toBeUndefined();
+        const { deps, calls } = fakeDeps({ termProgram: "Apple_Terminal", platform });
+        const statted: string[] = [];
+        deps.isDir = (p) => {
+          statted.push(p);
+          return true;
+        };
+        const r = await openResume({ id: ID, cwd: refused, live: false }, deps);
+        expect(statted).toEqual([]);
+        expect(calls).toEqual([PBCOPY_CALL(CMD)]);
+        expect(r).toEqual(UNSAFE_FOLDER);
+      }
+    }
+  });
+
+  it("O19 an unsafe name with a failed copy keeps the copy-failed suffix", async () => {
+    const { deps } = fakeDeps({ termProgram: "Apple_Terminal", results: { "/usr/bin/pbcopy": false } });
+    const r = await openResume({ id: ID, cwd: "proj", live: false }, deps);
+    expect(r).toEqual({
+      ok: false,
+      copied: false,
+      message: "folder name not safe to open, paste the command · copy failed, run: " + CMD,
+    });
   });
 
   it("O16 the copied line and the launched command name the same folder on every route (T-08-47)", async () => {

@@ -1820,19 +1820,42 @@ describe("SessionsPane (OTURUMLAR, Phase 8)", () => {
     expect(unnamed).toContain(ESC + "[2m(unnamed)");
   });
 
-  it("P5: the pane sets no foreground colour at all, at any chalk level (D-08 reserved palette)", () => {
-    const rows = [
+  it("P5: the pane's only foreground colour is the pale-green · live marker (D-08 + 261014-d54)", () => {
+    const FG = new RegExp(ESC + "\\[(?:3[0-8]|9[0-7])(?:;|m)", "g");
+    const base = [
       makeResume({ id: rid(1) }),
       makeResume({ id: rid(2), label: "derived one", labelKind: "derived" }),
       makeResume({ id: rid(3), label: "(unnamed)", labelKind: "unnamed" }),
-      makeResume({ id: rid(4), live: true }),
     ];
-    const raw = renderAtLevel(
-      <SessionsPane rows={rows} cursorId={rid(2)} scrollOffset={0} status="copied ✓" now={NOW} />,
-      3,
+    const render = (rows: ResumeRow[]) =>
+      renderAtLevel(<SessionsPane rows={rows} cursorId={rid(2)} scrollOffset={0} status="copied ✓" now={NOW} />, 3);
+
+    const noLive = render(base);
+    expect(noLive).toContain(ESC + "["); // sanity: styling is actually emitted at level 3
+    expect(noLive.match(FG)).toBeNull();
+
+    const withLive = render([...base, makeResume({ id: rid(4), live: true })]);
+    const matches = withLive.match(FG) ?? [];
+    expect(matches.length).toBeGreaterThan(0);
+    for (const m of matches) expect(m).toBe(ESC + "[32m");
+    const start = withLive.indexOf(ESC + "[32m");
+    const end = withLive.indexOf(ESC + "[39m", start);
+    expect(end).toBeGreaterThan(start);
+    expect(stripAnsi(withLive.slice(start, end))).toBe(" · live");
+  });
+
+  it("P5b: at chalk level 1 a live row's marker is green and dim; a non-live row has no green", () => {
+    const live = renderAtLevel(
+      <SessionsPane rows={[makeResume({ live: true })]} cursorId={null} scrollOffset={0} now={NOW} />,
+      1,
     );
-    expect(raw).toContain(ESC + "["); // sanity: styling is actually emitted at level 3
-    expect(raw).not.toMatch(new RegExp(ESC + "\\[(?:3[0-8]|9[0-7])(?:;|m)"));
+    expect(live).toContain(ESC + "[32m");
+    expect(live).toContain(ESC + "[2m");
+    const nonLive = renderAtLevel(
+      <SessionsPane rows={[makeResume()]} cursorId={null} scrollOffset={0} now={NOW} />,
+      1,
+    );
+    expect(nonLive).not.toContain(ESC + "[32m");
   });
 
   it("P6: the cursor row starts with `▸ `, every other row with two spaces; no cursor → no ▸ (D-15)", () => {
