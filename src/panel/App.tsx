@@ -24,6 +24,7 @@ import {
   RESUME_VISIBLE_ROWS,
   readLiveRegistry,
   registryDirs,
+  resumeExtras,
   type ResumeRow,
 } from "../sessions.js";
 import { copyResume, openResume, type LaunchResult } from "./launch.js";
@@ -647,6 +648,9 @@ export function App() {
   // A row counts as live when the last scan said so OR this panel holds it
   // (launching or just launched, D-16).
   const isLive = (row: ResumeRow): boolean => row.live || launchHolds.current.has(row.id);
+  // quick-261014-fq8: bumped by every Enter and every `o`, so a still-pending
+  // Enter whose extras resolve after a newer press never touches the clipboard.
+  const enterSeq = React.useRef(0);
 
   const onToggle = () => {
     const next: RightPane = rightPaneRef.current === "fazlar" ? "oturumlar" : "fazlar";
@@ -683,11 +687,27 @@ export function App() {
   };
   // Enter: copy the resume line for the selected row (D-15). The row's cwd is
   // passed so launch.ts can build the session-cwd form (D-10 REVISED), and the
-  // live flag (scan OR launch hold) so launch.ts warns on a live session (D-16).
+  // live flag (scan OR launch hold, taken at press time) so launch.ts warns on
+  // a live session (D-16). quick-261014-fq8: resumeExtras first resolves, on
+  // demand, the session's unique safe `/rename` name (the line then resumes
+  // by name) and whether it last ran in bypassPermissions (the line then ends
+  // with --dangerously-skip-permissions and the status warns). A rejection
+  // counts as no name and no bypass. A newer Enter or an `o` press supersedes
+  // this one: its copy is dropped, so it can never overwrite the clipboard.
   const onEnter = () => {
     const row = selectedRow();
     if (row === null) return;
-    copyResume({ id: row.id, cwd: row.cwd, live: isLive(row) }).then(showResult, () => {});
+    const live = isLive(row);
+    const seq = ++enterSeq.current;
+    resumeExtras({ id: row.id, slug: row.slug, cwd: row.cwd })
+      .catch(() => ({ bypass: false }) as { name?: string; bypass: boolean })
+      .then((extras) => {
+        if (seq !== enterSeq.current) return undefined;
+        return copyResume({ id: row.id, cwd: row.cwd, live, name: extras.name, bypass: extras.bypass === true }).then(
+          showResult,
+        );
+      })
+      .catch(() => {});
   };
   // `o`: open the selected session in a new terminal window/tab. A live row is
   // never opened — launch.ts copies and warns instead (D-16, T-08-09). To keep
@@ -700,6 +720,7 @@ export function App() {
   const onOpen = () => {
     const row = selectedRow();
     if (row === null) return;
+    enterSeq.current++; // quick-261014-fq8: an `o` press drops a pending Enter
     // `row` is a const snapshot of an immutable scan row, so a later cursor
     // move cannot change what this in-flight press launches (T-08-11).
     const id = row.id;

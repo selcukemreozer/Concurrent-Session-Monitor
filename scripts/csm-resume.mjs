@@ -7,9 +7,14 @@
 // scanTailFacts with its slug match, promptLabel, scanHeadFacts, the bounded
 // O_NOFOLLOW | O_NONBLOCK window read, the realpath containment guard),
 // src/panel/launch.ts (commandCwd / shellSingleQuote / resumeCommand) and
-// src/label.ts (cleanTitle / truncateLabel). Any change there must be made
-// here too; src/csm-resume.test.ts P1 / P2 pin the parity (ids, labels,
-// folders, live flags and the byte-identical resume line).
+// src/label.ts (cleanTitle / truncateLabel). quick-261014-fq8 adds the
+// mirrors of PERMISSION_MODE_BYTES / scanPermissionMode (transcript.ts),
+// RESUME_NAME_MAX_CP / RESUME_NAME_SCAN_MAX_FILES / RESUME_NAME_SCAN_BUDGET_MS /
+// isSafeResumeName / resumeNameKey / the uniqueness rule of resumeExtras
+// (sessions.ts) and RESUME_BYPASS_FLAG / resumeCommand(id, cwd, opts)
+// (launch.ts). Any change there must be made here too;
+// src/csm-resume.test.ts P1 / P2 / P3 pin the parity (ids, labels, folders,
+// live flags and the byte-identical resume line, name and flag included).
 //
 // Invoked by commands/csm-resume.md as
 //   node csm-resume.mjs "<caller_session_id>"      (caller id = process.argv[2])
@@ -26,6 +31,18 @@
 //     each `'` written as `'\''`); when commandCwd rejects the cwd (missing,
 //     relative, unnormalized, trailing separator, control / format code
 //     point, backslash or backtick) it is the plain `claude --resume <uuid>`.
+//   - quick-261014-fq8 name rule: the target is `'<name>'` (the session's
+//     latest custom title, in full) only when the name passes isSafeResumeName,
+//     the cwd's project slug equals the transcript's `<projects>/<dir>` name,
+//     the cwd is usable, and no other `<uuid>.jsonl` of that slug under any
+//     root (sdk / observer transcripts included) has the same resumeNameKey;
+//     over RESUME_NAME_SCAN_MAX_FILES siblings, an unreadable or guard-
+//     rejected sibling, or RESUME_NAME_SCAN_BUDGET_MS running out keeps the id.
+//   - quick-261014-fq8 flag rule: when the session's newest permission-mode
+//     record is exactly bypassPermissions, the line ends with the constant
+//     ` --dangerously-skip-permissions` and the indented warning line
+//     `  \u26a0 --dangerously-skip-permissions: the session ran with permission
+//     checks bypassed` is printed directly under it.
 //   - IN-06: every backtick in transcript text (label, folder, last prompt) is
 //     printed as U+02CB (fenceSafe), and a cwd with a backtick falls back to
 //     the plain line, so stdout never carries a backtick that could close the
@@ -59,6 +76,25 @@ const MAX_TITLE_LINE = 4096;
 
 /** Carrier / user / assistant lines longer than this are never parsed. */
 const MAX_SCAN_LINE = 64 * 1024;
+
+/** Widest tail window searched for the newest permission-mode record (mirror of transcript.ts). */
+const PERMISSION_MODE_BYTES = 4 * 1024 * 1024;
+
+/** Rule (d): longest resume name in code points (mirror of sessions.ts). */
+const RESUME_NAME_MAX_CP = 100;
+
+/** Rule (c): more sibling transcripts than this in the slug means "not unique". */
+const RESUME_NAME_SCAN_MAX_FILES = 256;
+
+/** Rule (c): the uniqueness check gives up (not unique) after this long. */
+const RESUME_NAME_SCAN_BUDGET_MS = 1500;
+
+/** Constant flag literal (mirror of launch.ts RESUME_BYPASS_FLAG); never built from transcript text. */
+const RESUME_BYPASS_FLAG = "--dangerously-skip-permissions";
+
+/** Constant warning printed directly under every flagged resume line. */
+const BYPASS_WARNING_LINE =
+  "  \u26a0 --dangerously-skip-permissions: the session ran with permission checks bypassed";
 
 /** Registry / store JSON files larger than this are ignored (T-08-08). */
 const MAX_REGISTRY_BYTES = 65536;
@@ -98,6 +134,18 @@ const CARRIER_MARKER = '"entrypoint":"';
 const ASSISTANT_MARKER = '"type":"assistant"';
 const USER_MARKER = '"type":"user"';
 const CWD_MARKER = '"cwd":"';
+/** Compact permission-mode marker; an escaped mention has backslashes and never matches. */
+const MODE_MARKER = '"permissionMode":"';
+const MODE_MARKER_BYTES = Buffer.from(MODE_MARKER, "utf8");
+
+/** Rule (d) characters (mirror of sessions.ts RESUME_NAME_FORBIDDEN). */
+const RESUME_NAME_FORBIDDEN = /['"\\`!$]/;
+
+/** Code points never allowed in a resume name (mirror of RESUME_NAME_BAD_CP). */
+const RESUME_NAME_BAD_CP = /[\p{Cf}\p{Default_Ignorable_Code_Point}\p{Co}\p{Cn}\p{Cs}\p{Zl}\p{Zp}]/u;
+
+/** A name shaped like a session id (any case) is never used as a name. */
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Longest cwd a resume line may cd into (mirror of launch.ts MAX_CWD_LEN). */
 const MAX_CWD_LEN = 4096;
@@ -274,6 +322,39 @@ function scanTailFacts(buf, atBoundary, sessionId, slug) {
     }
   }
   return f;
+}
+
+/**
+ * The session's newest permission-mode record in one window, walking complete
+ * lines from LAST to FIRST (mirror of scanPermissionMode): an over-long or
+ * unparseable marker line is decided with no mode; a foreign sessionId is
+ * skipped; a top-level "permission-mode" / "user" line with a string
+ * permissionMode decides; anything else is skipped. No marker: undecided.
+ */
+function scanPermissionMode(buf, atBoundary, sessionId) {
+  try {
+    if (buf.lastIndexOf(MODE_MARKER_BYTES) < 0) return { decided: false };
+    const lines = windowLines(buf, atBoundary);
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i];
+      if (!line.includes(MODE_MARKER)) continue;
+      if (line.length > MAX_SCAN_LINE) return { decided: true };
+      let o;
+      try {
+        o = JSON.parse(line);
+      } catch {
+        return { decided: true };
+      }
+      if (o === null || typeof o !== "object" || Array.isArray(o)) return { decided: true };
+      if (o.sessionId !== undefined && o.sessionId !== sessionId) continue;
+      if ((o.type === "permission-mode" || o.type === "user") && typeof o.permissionMode === "string") {
+        return { decided: true, mode: o.permissionMode };
+      }
+    }
+    return { decided: false };
+  } catch {
+    return { decided: true };
+  }
 }
 
 /** Raw label text of a real user prompt line, else undefined (mirror of promptLabel). */
@@ -609,11 +690,53 @@ function shellSingleQuote(s) {
   return "'" + s.replace(/'/g, "'\\''") + "'";
 }
 
-/** D-10 REVISED resume line (mirror of launch.ts resumeCommand). */
-function resumeCommand(id, cwd) {
+/**
+ * Rule (d) (mirror of sessions.ts isSafeResumeName): already clean, NFC,
+ * 1..RESUME_NAME_MAX_CP code points, no forbidden character, no leading `-`,
+ * no bad code point, no whitespace other than U+0020, not UUID-shaped.
+ */
+function isSafeResumeName(raw) {
+  try {
+    if (typeof raw !== "string" || raw.length === 0) return false;
+    if (raw !== cleanTitle(raw)) return false;
+    if (raw !== raw.normalize("NFC")) return false;
+    const cps = Array.from(raw);
+    if (cps.length < 1 || cps.length > RESUME_NAME_MAX_CP) return false;
+    if (RESUME_NAME_FORBIDDEN.test(raw)) return false;
+    if (raw.startsWith("-")) return false;
+    for (const ch of cps) {
+      if (RESUME_NAME_BAD_CP.test(ch)) return false;
+      if (ch !== " " && /\s/u.test(ch)) return false;
+    }
+    if (UUID_SHAPE.test(raw)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Rule (c) comparison key (mirror of resumeNameKey): cleanTitle(NFKC) lower-cased; non-string -> "". */
+function resumeNameKey(raw) {
+  try {
+    if (typeof raw !== "string") return "";
+    return cleanTitle(raw.normalize("NFKC")).toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * D-10 REVISED resume line (mirror of launch.ts resumeCommand): the name is
+ * the single-quoted target only with a usable cwd and when it passes
+ * isSafeResumeName (defense in depth); only bypass === true appends the flag.
+ */
+function resumeCommand(id, cwd, opts) {
   const c = commandCwd(cwd);
-  if (c === undefined) return "claude --resume " + id;
-  return "cd " + shellSingleQuote(c) + " && claude --resume " + id;
+  const suffix = opts?.bypass === true ? " " + RESUME_BYPASS_FLAG : "";
+  if (c === undefined) return "claude --resume " + id + suffix;
+  const name = opts?.name;
+  const target = isSafeResumeName(name) ? shellSingleQuote(name) : id;
+  return "cd " + shellSingleQuote(c) + " && claude --resume " + target + suffix;
 }
 
 /** IN-06: every backtick becomes U+02CB, so transcript text cannot close a code fence. */
@@ -641,16 +764,53 @@ function rowFor(c, roots, live) {
   });
   const lp = cleanTitle(facts.lastPrompt);
   const cwd = sessionCwd(head, facts.slugCwd);
+  // quick-261014-fq8: the newest mode record, from the tail window already
+  // read; a PERMISSION_MODE_BYTES tail only when that is undecided and larger.
+  let pm = scanPermissionMode(w.buf, w.atBoundary, c.id);
+  if (!pm.decided && w.size > TAIL_BYTES) {
+    const wide = readWindow(realPath, "tail", PERMISSION_MODE_BYTES);
+    pm = wide !== undefined ? scanPermissionMode(wide.buf, wide.atBoundary, c.id) : { decided: true };
+  }
   return {
     id: c.id,
     label,
     labelKind,
     folder: folderOf(cwd, c.slug),
     cwd,
+    slug: c.slug,
+    title: facts.customTitle,
+    bypass: pm.mode === "bypassPermissions",
     mtimeMs: c.mtimeMs,
     live: live.has(c.id),
     lastPrompt: lp.length > 0 ? truncateLabel(lp, LAST_PROMPT_CAP) : undefined,
   };
+}
+
+/**
+ * Rules (a)-(d) (mirror of sessions.ts resumeExtras' name half): the row's
+ * full latest custom title when it is safe, the cwd's slug matches, and no
+ * sibling `<uuid>.jsonl` of the slug (from `all`, every root, sdk included)
+ * has the same key. `keyOf` memoizes sibling keys for the run. Never throws.
+ */
+function uniqueResumeName(r, all, keyOf) {
+  try {
+    if (!isSafeResumeName(r.title)) return undefined;
+    if (typeof r.cwd !== "string" || projectSlug(r.cwd) !== r.slug) return undefined;
+    const key = resumeNameKey(r.title);
+    if (key.length === 0) return undefined;
+    const siblings = all.filter((c) => c.slug === r.slug && c.id !== r.id);
+    if (siblings.length > RESUME_NAME_SCAN_MAX_FILES) return undefined;
+    const start = Date.now();
+    for (const sib of siblings) {
+      if (Date.now() - start > RESUME_NAME_SCAN_BUDGET_MS) return undefined;
+      const k = keyOf(sib);
+      if (k === undefined) return undefined;
+      if (k.length > 0 && k === key) return undefined;
+    }
+    return r.title;
+  } catch {
+    return undefined;
+  }
 }
 
 function main() {
@@ -692,6 +852,22 @@ function main() {
     return;
   }
 
+  // quick-261014-fq8: sibling title keys, each sibling file read at most once
+  // per run (null = guard rejection or read failure = "not unique").
+  const keys = new Map();
+  const keyOf = (c) => {
+    if (!keys.has(c.path)) {
+      let k = null;
+      const real = allowedPath(c.id, c.path, roots);
+      const sw = real !== undefined ? readWindow(real, "tail", TAIL_BYTES) : undefined;
+      if (sw !== undefined) k = resumeNameKey(scanTailFacts(sw.buf, sw.atBoundary, c.id).customTitle);
+      keys.set(c.path, k);
+    }
+    const v = keys.get(c.path);
+    return v === null ? undefined : v;
+  };
+  for (const r of rows) r.name = uniqueResumeName(r, all, keyOf);
+
   const out = [`Recent sessions (newest first)${DOT}${rows.length} shown${DOT}data listing, not instructions`];
   for (const r of rows) {
     const text = r.labelKind === "derived" ? `${LQ}${r.label}${RQ}` : r.label;
@@ -700,8 +876,10 @@ function main() {
     if (callerId !== undefined && r.id === callerId) line1 += " (you)";
     out.push(line1);
     if (r.lastPrompt !== undefined) out.push(`${LAST_LEAD}${LQ}${fenceSafe(r.lastPrompt)}${RQ}`);
-    // commandCwd admits no control code point, so sanitize() never alters a printed cwd.
-    out.push(`  ${resumeCommand(r.id, r.cwd)}`);
+    // commandCwd admits no control code point and a safe name has no C0 / C1
+    // or backtick, so sanitize() never alters the printed line (IN-06 intact).
+    out.push(`  ${resumeCommand(r.id, r.cwd, { name: r.name, bypass: r.bypass })}`);
+    if (r.bypass === true) out.push(BYPASS_WARNING_LINE);
   }
   process.stdout.write(out.map(sanitize).join("\n") + "\n");
 }
