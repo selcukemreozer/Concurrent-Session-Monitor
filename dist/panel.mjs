@@ -38005,6 +38005,7 @@ var TAIL_BYTES = 256 * 1024;
 var MAX_TITLE_LINE = 4096;
 var HEAD_BYTES = 256 * 1024;
 var MAX_SCAN_LINE = 64 * 1024;
+var PERMISSION_MODE_BYTES = 4 * 1024 * 1024;
 var SESSION_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 var TRIVIAL_COMMANDS = /* @__PURE__ */ new Set([
   "clear",
@@ -38030,6 +38031,8 @@ var CARRIER_MARKER = '"entrypoint":"';
 var ASSISTANT_MARKER = '"type":"assistant"';
 var USER_MARKER = '"type":"user"';
 var CWD_MARKER = '"cwd":"';
+var MODE_MARKER = '"permissionMode":"';
+var MODE_MARKER_BYTES = Buffer.from(MODE_MARKER, "utf8");
 function projectSlug(cwd2) {
   return cwd2.replace(/[^a-zA-Z0-9]/g, "-");
 }
@@ -38098,6 +38101,46 @@ function scanTailFacts(buf, atBoundary, sessionId, slug) {
     }
   }
   return f;
+}
+function scanPermissionMode(buf, atBoundary, sessionId) {
+  try {
+    if (buf.lastIndexOf(MODE_MARKER_BYTES) < 0) return { decided: false };
+    const lines = windowLines(buf, atBoundary);
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i];
+      if (!line.includes(MODE_MARKER)) continue;
+      if (line.length > MAX_SCAN_LINE) return { decided: true };
+      let parsed;
+      try {
+        parsed = JSON.parse(line);
+      } catch {
+        return { decided: true };
+      }
+      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return { decided: true };
+      const o = parsed;
+      if (o.sessionId !== void 0 && o.sessionId !== sessionId) continue;
+      if ((o.type === "permission-mode" || o.type === "user") && typeof o.permissionMode === "string") {
+        return { decided: true, mode: o.permissionMode };
+      }
+    }
+    return { decided: false };
+  } catch {
+    return { decided: true };
+  }
+}
+async function readPermissionModeAsync(realPath, sessionId) {
+  try {
+    const w = await readWindowAsync(realPath, "tail", TAIL_BYTES);
+    if (w === void 0) return void 0;
+    const first = scanPermissionMode(w.buf, w.atBoundary, sessionId);
+    if (first.decided) return first.mode;
+    if (w.size <= TAIL_BYTES) return void 0;
+    const wide = await readWindowAsync(realPath, "tail", PERMISSION_MODE_BYTES);
+    if (wide === void 0) return void 0;
+    return scanPermissionMode(wide.buf, wide.atBoundary, sessionId).mode;
+  } catch {
+    return void 0;
+  }
 }
 var NOISE = /^<(local-command-(stdout|stderr)|command-caveat|system-reminder|bash-(input|stdout|stderr))>/;
 var COMMAND_NAME = /<command-name>\/?([^<]{1,80})<\/command-name>/;
@@ -39161,6 +39204,11 @@ var FOLDER_CAP = 16;
 var LAST_PROMPT_CAP = 48;
 var MAX_REGISTRY_BYTES = 65536;
 var REGISTRY_NAME = /^(\d+)\.json$/;
+var RESUME_NAME_MAX_CP = 100;
+var RESUME_NAME_SCAN_MAX_FILES = 256;
+var RESUME_NAME_SCAN_BUDGET_MS = 1500;
+var TITLE_KEY_CACHE_MAX = 4096;
+var MAX_SLUG_LEN = 255;
 function fmtAge(thenMs, now) {
   const s = Math.max(0, Math.floor((now - thenMs) / 1e3));
   if (s < 60) return `${s}s`;
@@ -39259,29 +39307,47 @@ async function listCandidates(root) {
   }
   for (const slug of slugs) {
     if (!slug.isDirectory()) continue;
-    const dir = path6.join(root, slug.name);
-    let entries;
+    await collectSlugFiles(path6.join(root, slug.name), slug.name, out);
+  }
+  return out;
+}
+async function collectSlugFiles(dir, slug, out) {
+  let entries;
+  try {
+    entries = await fsp2.readdir(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const e of entries) {
+    if (!e.isFile() || !e.name.endsWith(".jsonl")) continue;
+    const id = e.name.slice(0, -".jsonl".length);
+    if (!SESSION_UUID_PATTERN.test(id)) continue;
+    const p = path6.join(dir, e.name);
     try {
-      entries = await fsp2.readdir(dir, { withFileTypes: true });
+      const st = await fsp2.lstat(p);
+      if (!st.isFile()) continue;
+      out.push({ id, path: p, slug, size: st.size, mtimeMs: st.mtimeMs });
     } catch {
-      continue;
     }
-    for (const e of entries) {
-      if (!e.isFile() || !e.name.endsWith(".jsonl")) continue;
-      const id = e.name.slice(0, -".jsonl".length);
-      if (!SESSION_UUID_PATTERN.test(id)) continue;
-      const p = path6.join(dir, e.name);
-      try {
-        const st = await fsp2.lstat(p);
-        if (!st.isFile()) continue;
-        out.push({ id, path: p, slug: slug.name, size: st.size, mtimeMs: st.mtimeMs });
-      } catch {
-      }
-    }
+  }
+}
+function isSlugComponent(slug) {
+  return typeof slug === "string" && slug.length > 0 && slug.length <= MAX_SLUG_LEN && !slug.includes("/") && !slug.includes(path6.sep) && !slug.includes("\0") && slug !== "." && slug !== "..";
+}
+async function listSlugCandidates(root, slug) {
+  const out = [];
+  try {
+    if (!isSlugComponent(slug)) return out;
+    const dir = path6.join(root, slug);
+    const st = await fsp2.lstat(dir);
+    if (!st.isDirectory()) return out;
+    await collectSlugFiles(dir, slug, out);
+  } catch {
   }
   return out;
 }
 var cache4 = /* @__PURE__ */ new Map();
+var titleKeyCache = /* @__PURE__ */ new Map();
 function folderOf(cwd2, slug) {
   if (typeof cwd2 === "string" && cwd2.length > 0) {
     const base = cleanTitle(path6.basename(cwd2));
@@ -39344,6 +39410,7 @@ async function rowFor(c, roots, live) {
     labelKind,
     folder: folderOf(cwd2, c.slug),
     cwd: cwd2,
+    slug: c.slug,
     mtimeMs: c.mtimeMs,
     live: live.has(c.id),
     lastPrompt: lp.length > 0 ? truncateLabel(lp, LAST_PROMPT_CAP) : void 0
@@ -39380,6 +39447,95 @@ async function discoverSessions(opts = {}) {
   } catch {
   }
   return rows;
+}
+var RESUME_NAME_FORBIDDEN = /['"\\`!$]/;
+var RESUME_NAME_BAD_CP = /[\p{Cf}\p{Default_Ignorable_Code_Point}\p{Co}\p{Cn}\p{Cs}\p{Zl}\p{Zp}]/u;
+var UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isSafeResumeName(raw) {
+  try {
+    if (typeof raw !== "string" || raw.length === 0) return false;
+    if (raw !== cleanTitle(raw)) return false;
+    if (raw !== raw.normalize("NFC")) return false;
+    const cps = Array.from(raw);
+    if (cps.length < 1 || cps.length > RESUME_NAME_MAX_CP) return false;
+    if (RESUME_NAME_FORBIDDEN.test(raw)) return false;
+    if (raw.startsWith("-")) return false;
+    for (const ch of cps) {
+      if (RESUME_NAME_BAD_CP.test(ch)) return false;
+      if (ch !== " " && /\s/u.test(ch)) return false;
+    }
+    if (UUID_SHAPE.test(raw)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+function resumeNameKey(raw) {
+  try {
+    if (typeof raw !== "string") return "";
+    return cleanTitle(raw.normalize("NFKC")).toLowerCase();
+  } catch {
+    return "";
+  }
+}
+async function siblingTitleKey(c, roots) {
+  const hit = titleKeyCache.get(c.path);
+  if (hit !== void 0 && hit.size === c.size && hit.mtimeMs === c.mtimeMs) return hit.key;
+  const real = isAllowedTranscriptPath(c.id, c.path, roots);
+  if (real === void 0) return void 0;
+  const w = await readWindowAsync(real, "tail", TAIL_BYTES);
+  if (w === void 0) return void 0;
+  const key = resumeNameKey(scanCustomTitle(w.buf, w.atBoundary, c.id));
+  if (titleKeyCache.size >= TITLE_KEY_CACHE_MAX) titleKeyCache.clear();
+  titleKeyCache.set(c.path, { size: w.size, mtimeMs: w.mtimeMs, key });
+  return key;
+}
+async function uniqueResumeName(id, slug, cwd2, realPath, gathered, roots, now) {
+  try {
+    const w = await readWindowAsync(realPath, "tail", TAIL_BYTES);
+    if (w === void 0) return void 0;
+    const title = scanCustomTitle(w.buf, w.atBoundary, id);
+    if (!isSafeResumeName(title)) return void 0;
+    if (typeof cwd2 !== "string" || projectSlug(cwd2) !== slug) return void 0;
+    const key = resumeNameKey(title);
+    if (key.length === 0) return void 0;
+    const siblings = gathered.filter((c) => c.id !== id);
+    if (siblings.length > RESUME_NAME_SCAN_MAX_FILES) return void 0;
+    const start = now();
+    for (const sib of siblings) {
+      if (now() - start > RESUME_NAME_SCAN_BUDGET_MS) return void 0;
+      const k = await siblingTitleKey(sib, roots);
+      if (k === void 0) return void 0;
+      if (k.length > 0 && k === key) return void 0;
+    }
+    return title;
+  } catch {
+    return void 0;
+  }
+}
+async function resumeExtras(row, opts = {}) {
+  try {
+    const id = row?.id;
+    const slug = row?.slug;
+    if (typeof id !== "string" || !SESSION_UUID_PATTERN.test(id)) return { bypass: false };
+    if (!isSlugComponent(slug)) return { bypass: false };
+    const roots = opts?.roots ?? projectRoots();
+    const gathered = [];
+    for (const root of roots) gathered.push(...await listSlugCandidates(root, slug));
+    let own;
+    for (const c of gathered) {
+      if (c.id === id && (own === void 0 || c.mtimeMs > own.mtimeMs)) own = c;
+    }
+    if (own === void 0) return { bypass: false };
+    const realPath = isAllowedTranscriptPath(id, own.path, roots);
+    if (realPath === void 0) return { bypass: false };
+    const bypass = await readPermissionModeAsync(realPath, id) === "bypassPermissions";
+    const now = typeof opts?.now === "function" ? opts.now : Date.now;
+    const name = await uniqueResumeName(id, slug, row.cwd, realPath, gathered, roots, now);
+    return name !== void 0 ? { name, bypass } : { bypass };
+  } catch {
+    return { bypass: false };
+  }
 }
 function reconcileSelection(rows, selId, prevIdx) {
   if (rows.length === 0) return { selId: null, idx: -1 };
@@ -39828,6 +39984,10 @@ var MSG_COPIED = "copied \u2713";
 var MSG_COPIED_LIVE = "copied \u2713 \xB7 session still open";
 var MSG_INVALID_ID = "refused: not a resumable session id";
 var MSG_COPY_FAILED_PREFIX = "copy failed \xB7 run: ";
+var RESUME_BYPASS_FLAG = "--dangerously-skip-permissions";
+var MSG_BYPASS_WARNING = "\u26A0 bypasses permission checks";
+var MSG_COPIED_BYPASS = MSG_COPIED + " \xB7 " + MSG_BYPASS_WARNING;
+var MSG_COPIED_LIVE_BYPASS = MSG_COPIED_LIVE + " \xB7 " + MSG_BYPASS_WARNING;
 var OUT_LIVE = "session still open, no new tab opened";
 var OUT_TERMINAL = "opened a new Terminal window";
 var OUT_ITERM = "opened a new iTerm2 window";
@@ -39888,10 +40048,13 @@ function commandCwd(cwd2) {
 function shellSingleQuote(s) {
   return "'" + s.replace(/'/g, "'\\''") + "'";
 }
-function resumeCommand(id, cwd2) {
+function resumeCommand(id, cwd2, opts) {
   const c = commandCwd(cwd2);
-  if (c === void 0) return "claude --resume " + id;
-  return "cd " + shellSingleQuote(c) + " && claude --resume " + id;
+  const suffix = opts?.bypass === true ? " " + RESUME_BYPASS_FLAG : "";
+  if (c === void 0) return "claude --resume " + id + suffix;
+  const name = opts?.name;
+  const target = isSafeResumeName(name) ? shellSingleQuote(name) : id;
+  return "cd " + shellSingleQuote(c) + " && claude --resume " + target + suffix;
 }
 function validLaunchCwd(cwd2, isDir) {
   try {
@@ -40130,9 +40293,9 @@ function defaultLaunchDeps() {
     later: defaultLater
   };
 }
-async function copyCommand(id, cwd2, deps) {
+async function copyCommand(line, deps) {
   try {
-    const r = await deps.run(PBCOPY_BIN, [], { input: resumeCommand(id, cwd2), timeoutMs: PBCOPY_TIMEOUT_MS });
+    const r = await deps.run(PBCOPY_BIN, [], { input: line, timeoutMs: PBCOPY_TIMEOUT_MS });
     return r?.ok === true;
   } catch {
     return false;
@@ -40147,19 +40310,22 @@ async function runOk(deps, cmd, args, timeoutMs) {
   }
 }
 async function copyResume(target, deps = defaultLaunchDeps()) {
-  let id;
-  let cwd2;
+  let line;
   try {
-    id = target?.id;
-    cwd2 = target?.cwd;
+    const id = target?.id;
     if (!isResumableId(id)) return { ok: false, copied: false, message: MSG_INVALID_ID };
+    const bypass = target.bypass === true;
+    line = resumeCommand(id, target.cwd, { name: target.name, bypass });
     const live = target.live === true;
-    const copied = await copyCommand(id, cwd2, deps);
-    if (copied) return { ok: true, copied: true, message: live ? MSG_COPIED_LIVE : MSG_COPIED };
-    const msg = MSG_COPY_FAILED_PREFIX + resumeCommand(id, cwd2) + (live ? " \xB7 session still open" : "");
+    const copied = await copyCommand(line, deps);
+    if (copied) {
+      if (bypass) return { ok: true, copied: true, message: live ? MSG_COPIED_LIVE_BYPASS : MSG_COPIED_BYPASS };
+      return { ok: true, copied: true, message: live ? MSG_COPIED_LIVE : MSG_COPIED };
+    }
+    const msg = MSG_COPY_FAILED_PREFIX + line + (live ? " \xB7 session still open" : "");
     return { ok: false, copied: false, message: msg };
   } catch {
-    if (isResumableId(id)) return { ok: false, copied: false, message: MSG_COPY_FAILED_PREFIX + resumeCommand(id, cwd2) };
+    if (line !== void 0) return { ok: false, copied: false, message: MSG_COPY_FAILED_PREFIX + line };
     return { ok: false, copied: false, message: MSG_INVALID_ID };
   }
 }
@@ -40169,7 +40335,7 @@ async function openResume(target, deps = defaultLaunchDeps()) {
   try {
     const id = target?.id;
     if (!isResumableId(id)) return { ok: false, copied: false, message: MSG_INVALID_ID };
-    copied = await copyCommand(id, target.cwd, deps);
+    copied = await copyCommand(resumeCommand(id, target.cwd), deps);
     suffix = copied ? " \xB7 command copied" : " \xB7 copy failed, run: " + resumeCommand(id, target.cwd);
     const done = (ok, outcome) => ({ ok, copied, message: outcome + suffix });
     if (target.live === true) return done(false, OUT_LIVE);
@@ -40361,7 +40527,7 @@ function isNewer(remote, installed) {
   return false;
 }
 function installedVersion() {
-  return true ? normalizeVersion("1.6.0") : null;
+  return true ? normalizeVersion("1.6.1") : null;
 }
 function updateCheckEnabled(opts) {
   const flag = (opts.env.CSM_UPDATE_CHECK ?? "").trim().toLowerCase();
@@ -40750,6 +40916,7 @@ function App2() {
     return rows.find((r) => r.id === id) ?? null;
   };
   const isLive = (row) => row.live || launchHolds.current.has(row.id);
+  const enterSeq = import_react35.default.useRef(0);
   const onToggle = () => {
     const next = rightPaneRef.current === "fazlar" ? "oturumlar" : "fazlar";
     rightPaneRef.current = next;
@@ -40784,12 +40951,20 @@ function App2() {
   const onEnter = () => {
     const row = selectedRow();
     if (row === null) return;
-    copyResume({ id: row.id, cwd: row.cwd, live: isLive(row) }).then(showResult, () => {
+    const live = isLive(row);
+    const seq = ++enterSeq.current;
+    resumeExtras({ id: row.id, slug: row.slug, cwd: row.cwd }).catch(() => ({ bypass: false })).then((extras) => {
+      if (seq !== enterSeq.current) return void 0;
+      return copyResume({ id: row.id, cwd: row.cwd, live, name: extras.name, bypass: extras.bypass === true }).then(
+        showResult
+      );
+    }).catch(() => {
     });
   };
   const onOpen = () => {
     const row = selectedRow();
     if (row === null) return;
+    enterSeq.current++;
     const id = row.id;
     if (flashTimer.current) clearTimeout(flashTimer.current);
     flashTimer.current = null;

@@ -13,6 +13,11 @@ disable-model-invocation: true
   session is still open, and a copy-paste
   `cd '<session folder>' && claude --resume <id>` line (the plain
   `claude --resume <id>` when the folder is unknown or unsafe to print).
+  quick-261014-fq8: the target is the session's full `/rename` name,
+  `claude --resume '<name>'`, when that name is unique in its project folder
+  and safe to paste (otherwise the id), and the line ends with
+  `--dangerously-skip-permissions` when the session last ran in
+  bypassPermissions, followed by an indented constant warning line.
   Crashed and frozen sessions are listed too.
   Substitution resolves first:
     argv[2] = ${CLAUDE_SESSION_ID}  (caller session id - re-gated by SAFE_ID; marks (you))

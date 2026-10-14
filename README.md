@@ -10,7 +10,7 @@
   <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-2f5d3f?style=flat-square">
   <img alt="platform: macOS" src="https://img.shields.io/badge/platform-macOS-2f5d3f?style=flat-square">
   <img alt="node &gt;= 22" src="https://img.shields.io/badge/node-%3E%3D22-2f5d3f?style=flat-square">
-  <img alt="version 1.6.0" src="https://img.shields.io/badge/version-1.6.0-2f5d3f?style=flat-square">
+  <img alt="version 1.6.1" src="https://img.shields.io/badge/version-1.6.1-2f5d3f?style=flat-square">
   <img alt="license: MIT" src="https://img.shields.io/badge/license-MIT-2f5d3f?style=flat-square">
 </p>
 
@@ -142,8 +142,15 @@ Otherwise it shows `⌨ keys off` and stays on FAZLAR.
   `CSM_RESUME_SCAN_MS`.
 - `Enter` (OTURUMLAR): copy `cd '<session folder>' && claude --resume <id>` for
   the selected session to the clipboard (the plain `claude --resume <id>` when
-  the folder is unknown or unsafe to print). If the copy fails, the panel shows
-  the command instead.
+  the folder is unknown or unsafe to print). When the session has a `/rename`
+  (or `claude -n`) name that no other session in its project folder uses and
+  that is plain enough to paste safely, the line resumes by that full name
+  instead: `cd '<session folder>' && claude --resume '<name>'`. Otherwise it
+  uses the `<id>`. When the session last ran with permission checks bypassed
+  (`bypassPermissions`), the line ends with `--dangerously-skip-permissions`,
+  because Claude Code does not restore that mode on resume, and the pane warns
+  `⚠ bypasses permission checks`. If the copy fails, the panel shows the
+  command instead.
 - `o` (OTURUMLAR): open a new terminal window in the session's folder that runs
   `claude --resume <id>`. The command is always copied first. Terminal and
   iTerm2 are driven through AppleScript (macOS asks once for permission to
@@ -155,7 +162,8 @@ Otherwise it shows `⌨ keys off` and stays on FAZLAR.
   is still open is never touched. The panel only ever deletes CSM's own marked
   files: its own, and at start the leftovers of a panel that is no longer
   running. In any other terminal, or on any failure, `o` just copies. `o`
-  uses the same folder rule as `Enter`: when the folder is unknown, unsafe to
+  always uses the session id and never adds `--dangerously-skip-permissions`.
+  `o` uses the same folder rule as `Enter`: when the folder is unknown, unsafe to
   print or no longer exists, it only copies. The pane says
   `folder name not safe to open` when the folder's name is refused and
   `session folder not found` when the folder is unknown or gone. On a `live`
@@ -204,8 +212,13 @@ Use these from inside any Claude Code session:
   folder no longer exists, `cd` fails and nothing starts. When the folder is
   unknown or cannot be printed safely, the line is the plain
   `claude --resume <id>`, which Claude Code 2.1.223 or newer finds from any
-  folder but resumes in the current one. Only you can run it; Claude does not
-  invoke it on its own.
+  folder but resumes in the current one. Like the panel's `Enter`, the line
+  resumes by the session's `/rename` name (`claude --resume '<name>'`) when no
+  other session in its project folder uses that name and it is safe to paste,
+  and otherwise by `<id>`. When the session last ran with permission checks
+  bypassed, the line ends with `--dangerously-skip-permissions` and an
+  indented `⚠ --dangerously-skip-permissions` warning line follows it. Only
+  you can run it; Claude does not invoke it on its own.
 
 ## Configuration
 

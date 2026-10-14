@@ -301,6 +301,29 @@ describe("README resume picker (Phase 8)", () => {
     expect(section).not.toMatch(/by hand/);
   });
 
+  it("Panel keys and /csm-resume document the /rename name form and the bypass flag (quick-261014-fq8)", () => {
+    const start = lines.findIndex((l) => l === "## Panel keys");
+    expect(start).toBeGreaterThanOrEqual(0);
+    let end = lines.length;
+    for (let i = start + 1; i < lines.length; i++) {
+      if (lines[i].startsWith("## ")) {
+        end = i;
+        break;
+      }
+    }
+    const section = lines.slice(start, end).join("\n");
+    const idx = lines.findIndex((l) => l.startsWith("- `/csm-resume`:"));
+    expect(idx).toBeGreaterThanOrEqual(0);
+    const parts = [lines[idx]];
+    for (let i = idx + 1; i < lines.length && lines[i].startsWith("  "); i++) parts.push(lines[i]);
+    const block = parts.join(" ").replace(/\s+/g, " ");
+    for (const text of [section, block]) {
+      expect(text).toContain("--dangerously-skip-permissions");
+      expect(text).toContain("/rename");
+    }
+    expect(section).toContain("⚠ bypasses permission checks");
+  });
+
   it("the env table documents CSM_RESUME_SCAN_MS with its 10000 default", () => {
     const row = lines.find((l) => l.startsWith("| `CSM_RESUME_SCAN_MS`"));
     expect(row).toBeDefined();

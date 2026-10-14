@@ -2,6 +2,16 @@
 
 Notable changes to Concurrent Session Monitor, newest release first.
 
+## v1.6.1 (2026-10-14)
+
+### Improvements
+
+- The copied resume line uses the session's `/rename` name when it is unique in
+  its project folder; otherwise the session id.
+- The copied resume line adds `--dangerously-skip-permissions` when the session
+  ran in bypass-permissions mode (Claude Code does not restore that mode on
+  resume), with a warning.
+
 ## v1.6.0 (2026-10-14)
 
 ### New
