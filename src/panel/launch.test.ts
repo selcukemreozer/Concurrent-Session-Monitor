@@ -24,6 +24,11 @@ import {
   writeWarpTabConfig,
   removeWarpTabConfig,
   cleanupWarpTabConfig,
+  sweepStaleWarpTabConfigs,
+  pidIsAlive,
+  parseWarpStem,
+  WARP_SWEEP_MAX_ENTRIES,
+  type WarpSweepDeps,
   defaultRun,
   copyResume,
   openResume,
@@ -700,6 +705,180 @@ describe("Warp tab config ownership (W1-W3)", () => {
     expect(warpTabConfigStem(ID, 42, "0123abcd")).toBe("csm-resume-11111111-42-0123abcd");
     expect(cleanupWarpTabConfig()).toBe(true);
     expect(tabConfigStems()).toEqual([]);
+  });
+});
+
+describe("Warp tab config startup sweep (S1-S10)", () => {
+  const DEAD = 4242;
+  const NONCE = "0badc0de";
+  const STEM = `csm-resume-11111111-${DEAD}-${NONCE}`;
+
+  function plant(name: string, first: string): string {
+    fs.mkdirSync(tabConfigDir(), { recursive: true });
+    const file = path.join(tabConfigDir(), name);
+    fs.writeFileSync(file, first + '\nname = "CSM resume"\n');
+    return file;
+  }
+
+  /** Fake liveness probe: records every pid it is asked about. */
+  function probe(alive: boolean | ((pid: number) => boolean)): { deps: WarpSweepDeps; asked: number[] } {
+    const asked: number[] = [];
+    const deps: WarpSweepDeps = {
+      homedir: () => home,
+      alive: (pid) => {
+        asked.push(pid);
+        return typeof alive === "function" ? alive(pid) : alive;
+      },
+    };
+    return { deps, asked };
+  }
+
+  it("S1 a dead panel's exactly-marked config is removed", () => {
+    const file = plant(STEM + ".toml", warpTabConfigMarker(DEAD, NONCE));
+    const { deps, asked } = probe(false);
+    expect(sweepStaleWarpTabConfigs(deps)).toBe(1);
+    expect(fs.existsSync(file)).toBe(false);
+    expect(asked).toContain(DEAD);
+  });
+
+  it("S2 a running panel's config is kept", () => {
+    const file = plant(STEM + ".toml", warpTabConfigMarker(DEAD, NONCE));
+    const { deps } = probe(true);
+    expect(sweepStaleWarpTabConfigs(deps)).toBe(0);
+    expect(fs.existsSync(file)).toBe(true);
+  });
+
+  it("S3 this process's own files are never swept and its pid is never probed", () => {
+    const own = plant(`csm-resume-11111111-${process.pid}-aaaaaaaa.toml`, warpTabConfigMarker(process.pid, "aaaaaaaa"));
+    const cfg = writeWarpTabConfig(home, cwd, ID);
+    expect(cfg).toBeDefined();
+    const { deps, asked } = probe(false);
+    expect(sweepStaleWarpTabConfigs(deps)).toBe(0);
+    expect(fs.existsSync(own)).toBe(true);
+    expect(fs.existsSync(cfg!.file)).toBe(true);
+    expect(asked).not.toContain(process.pid);
+  });
+
+  it("S4 a dead pid with a mismatched, foreign or empty first line is kept", () => {
+    const { deps } = probe(false);
+    for (const first of [
+      warpTabConfigMarker(DEAD, "ffffffff"),
+      warpTabConfigMarker(DEAD + 1, NONCE),
+      "# someone else's config",
+    ]) {
+      const file = plant(STEM + ".toml", first);
+      expect(sweepStaleWarpTabConfigs(deps)).toBe(0);
+      expect(fs.existsSync(file)).toBe(true);
+    }
+    const file = path.join(tabConfigDir(), STEM + ".toml");
+    fs.writeFileSync(file, "");
+    expect(sweepStaleWarpTabConfigs(deps)).toBe(0);
+    expect(fs.existsSync(file)).toBe(true);
+  });
+
+  it("S5 names outside WARP_STEM_PATTERN are kept and never probed", () => {
+    const marker = warpTabConfigMarker(DEAD, NONCE);
+    const names = [
+      STEM + ".toml.bak",
+      `csm-resume-1111111-${DEAD}-${NONCE}.toml`,
+      `csm-resume-11111111-0-${NONCE}.toml`,
+      `csm-resume-11111111-${DEAD}-0BADC0DE.toml`,
+      // another id so it can never case-fold onto the uppercase-nonce name on APFS
+      `CSM-resume-22222222-${DEAD}-${NONCE}.toml`,
+      "other.toml",
+      STEM + ".tmp",
+    ];
+    const files = names.map((n) => plant(n, marker));
+    const { deps, asked } = probe(false);
+    expect(sweepStaleWarpTabConfigs(deps)).toBe(0);
+    for (const f of files) expect(fs.existsSync(f)).toBe(true);
+    expect(asked).toEqual([]);
+  });
+
+  it("S6 a symlink or a directory named like a config is kept and nothing throws", () => {
+    const target = path.join(home, "elsewhere.toml");
+    fs.writeFileSync(target, warpTabConfigMarker(DEAD, NONCE) + "\n");
+    fs.mkdirSync(tabConfigDir(), { recursive: true });
+    const link = path.join(tabConfigDir(), STEM + ".toml");
+    fs.symlinkSync(target, link);
+    const dirEntry = path.join(tabConfigDir(), `csm-resume-11111111-${DEAD}-cafebabe.toml`);
+    fs.mkdirSync(dirEntry);
+    const { deps } = probe(false);
+    let n = -1;
+    expect(() => {
+      n = sweepStaleWarpTabConfigs(deps);
+    }).not.toThrow();
+    expect(n).toBe(0);
+    expect(fs.lstatSync(link).isSymbolicLink()).toBe(true);
+    expect(fs.existsSync(target)).toBe(true);
+    expect(fs.statSync(dirEntry).isDirectory()).toBe(true);
+  });
+
+  it("S7 a leftover pre-rename temp is removed only for a dead foreign pid", () => {
+    const deadTmp = plant(`.${STEM}.tmp`, warpTabConfigMarker(DEAD, NONCE));
+    expect(sweepStaleWarpTabConfigs(probe(true).deps)).toBe(0);
+    expect(fs.existsSync(deadTmp)).toBe(true);
+    expect(sweepStaleWarpTabConfigs(probe(false).deps)).toBe(1);
+    expect(fs.existsSync(deadTmp)).toBe(false);
+
+    const ownTmp = plant(`.csm-resume-11111111-${process.pid}-${NONCE}.tmp`, warpTabConfigMarker(process.pid, NONCE));
+    expect(sweepStaleWarpTabConfigs(probe(false).deps)).toBe(0);
+    expect(fs.existsSync(ownTmp)).toBe(true);
+  });
+
+  it("S8 never throws and returns 0 on a missing dir, a file at .warp, a throwing homedir or a throwing probe", () => {
+    expect(sweepStaleWarpTabConfigs(probe(false).deps)).toBe(0);
+
+    fs.writeFileSync(path.join(home, ".warp"), "not a dir");
+    expect(sweepStaleWarpTabConfigs(probe(false).deps)).toBe(0);
+    fs.rmSync(path.join(home, ".warp"));
+
+    const throwingHome: WarpSweepDeps = {
+      homedir: () => {
+        throw new Error("no home");
+      },
+      alive: () => false,
+    };
+    expect(sweepStaleWarpTabConfigs(throwingHome)).toBe(0);
+
+    const file = plant(STEM + ".toml", warpTabConfigMarker(DEAD, NONCE));
+    const throwingProbe: WarpSweepDeps = {
+      homedir: () => home,
+      alive: () => {
+        throw new Error("probe failed");
+      },
+    };
+    expect(sweepStaleWarpTabConfigs(throwingProbe)).toBe(0);
+    expect(fs.existsSync(file)).toBe(true);
+  });
+
+  it("S9 one run examines at most WARP_SWEEP_MAX_ENTRIES names; the next run removes the rest", () => {
+    const total = WARP_SWEEP_MAX_ENTRIES + 20;
+    for (let i = 1; i <= total; i++) {
+      const nonce = i.toString(16).padStart(8, "0");
+      plant(`csm-resume-11111111-${DEAD}-${nonce}.toml`, warpTabConfigMarker(DEAD, nonce));
+    }
+    expect(tabConfigStems()).toHaveLength(total);
+    const first = sweepStaleWarpTabConfigs(probe(false).deps);
+    expect(first).toBeGreaterThan(0);
+    expect(first).toBeLessThanOrEqual(WARP_SWEEP_MAX_ENTRIES);
+    const second = sweepStaleWarpTabConfigs(probe(false).deps);
+    expect(first + second).toBe(total);
+    expect(tabConfigStems()).toEqual([]);
+  });
+
+  it("S10 pidIsAlive errs safe (only ESRCH is dead) and parseWarpStem reads pid and nonce", () => {
+    expect(pidIsAlive(process.pid)).toBe(true);
+    expect(pidIsAlive(1)).toBe(true);
+    const child = spawnSync(process.execPath, ["-e", "0"]);
+    expect(typeof child.pid).toBe("number");
+    expect(pidIsAlive(child.pid!)).toBe(false);
+    expect(pidIsAlive(2 ** 40)).toBe(true);
+
+    expect(parseWarpStem("csm-resume-11111111-42-0123abcd")).toEqual({ pid: 42, nonce: "0123abcd" });
+    expect(parseWarpStem("csm-resume-11111111-0-0123abcd")).toBeUndefined();
+    expect(parseWarpStem("csm-resume-11111111-42-0123ABCD")).toBeUndefined();
+    expect(parseWarpStem("other")).toBeUndefined();
   });
 });
 
