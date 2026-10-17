@@ -5,6 +5,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { HEX32, WARP_URL_FIXTURES } from "../src/warp-url.fixtures.js";
+
 // /csm-goto (scripts/csm-goto.mjs) — 260927-59z: takes NO arguments and brings
 // the terminal running the CSM panel to the front, using the panel.json the
 // panel writes at the store root on start. The CSM_OPEN_CMD test seam points
@@ -17,6 +19,7 @@ const commandMd = path.join(repoRoot, "commands", "csm-goto.md");
 
 const ESC = String.fromCharCode(0x1b);
 const BEL = String.fromCharCode(0x07);
+const FOCUS_URL = "warp://session/" + HEX32;
 
 let tmp: string;
 let openStub: string;
@@ -77,7 +80,7 @@ const WARP_PANEL = {
   pid: LIVE,
   started: "2026-09-27T10:00:00.000Z",
   term_program: "WarpTerminal",
-  warp_focus_url: "warp://session/p1",
+  warp_focus_url: FOCUS_URL,
   tty: "ttys003",
 };
 
@@ -96,7 +99,7 @@ describe("csm-goto focuses the CSM panel's terminal (260927-59z)", () => {
   });
 
   it("G2 dead pid → no-panel message, nothing opened", () => {
-    writePanel({ pid: DEAD, term_program: "WarpTerminal", warp_focus_url: "warp://session/p1" });
+    writePanel({ pid: DEAD, term_program: "WarpTerminal", warp_focus_url: FOCUS_URL });
     const res = runGoto();
     expect(res.status).toBe(0);
     expect(res.stdout).toContain("No CSM panel is running");
@@ -107,7 +110,7 @@ describe("csm-goto focuses the CSM panel's terminal (260927-59z)", () => {
     writePanel(WARP_PANEL);
     const res = runGoto();
     expect(res.status).toBe(0);
-    expect(opened()).toEqual(["warp://session/p1"]);
+    expect(opened()).toEqual([FOCUS_URL]);
     expect(res.stdout).toContain("Focused the CSM panel (Warp)");
   });
 
@@ -204,7 +207,7 @@ describe("csm-goto focuses the CSM panel's terminal (260927-59z)", () => {
       expect(res.status).toBe(0);
       expect(res.stdout, raw).toContain("No CSM panel is running");
     }
-    const base = { term_program: "WarpTerminal", warp_focus_url: "warp://session/p1" };
+    const base = { term_program: "WarpTerminal", warp_focus_url: FOCUS_URL };
     for (const pid of [String(LIVE), -5, 1.5, 0, 1]) {
       writePanel({ ...base, pid });
       const res = runGoto();
@@ -219,7 +222,7 @@ describe("csm-goto focuses the CSM panel's terminal (260927-59z)", () => {
     writePanel(WARP_PANEL);
     const res = runGoto("some-folder", "abc");
     expect(res.status).toBe(0);
-    expect(opened()).toEqual(["warp://session/p1"]);
+    expect(opened()).toEqual([FOCUS_URL]);
   });
 
   it("G10 a failing opener still exits 0 with a clear message", () => {
@@ -236,6 +239,36 @@ describe("csm-goto focuses the CSM panel's terminal (260927-59z)", () => {
     expect(fs.readFileSync(panelFile()).equals(before)).toBe(true);
     expect(fs.readdirSync(tmp).sort()).toEqual(["open-stub.sh", "open.log", "panel.json"]);
   });
+
+  it("G13 a warp://launch URL never reaches the opener", () => {
+    writePanel({ pid: LIVE, term_program: "tmux", warp_focus_url: "warp://launch/x.yaml" });
+    const res = runGoto();
+    expect(res.status).toBe(0);
+    expect(opened()).toEqual([]);
+    expect(res.stdout).toContain("can't be focused automatically");
+
+    resetLog();
+    writePanel({ pid: LIVE, term_program: "WarpTerminal", warp_focus_url: "warp://launch/x.yaml" });
+    const res2 = runGoto();
+    expect(res2.status).toBe(0);
+    expect(opened()).toEqual(["-a", "Warp"]);
+    expect(fs.readFileSync(openLog, "utf8")).not.toContain("warp://launch");
+  });
+
+  it(
+    "G14 the shared fixture table: only a strict session URL is opened (261017-sbh)",
+    () => {
+      for (const f of WARP_URL_FIXTURES) {
+        if (!f.json) continue;
+        resetLog();
+        writePanel({ pid: LIVE, term_program: "WarpTerminal", warp_focus_url: f.value });
+        const res = runGoto();
+        expect(res.status, f.name).toBe(0);
+        expect(opened(), f.name).toEqual(f.ok ? [f.value] : ["-a", "Warp"]);
+      }
+    },
+    60000,
+  );
 
   it("G12 source + command guards (stdlib only, no shell, no-arg command)", () => {
     const src = fs.readFileSync(csmGoto, "utf8");
