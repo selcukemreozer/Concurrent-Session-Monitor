@@ -49,6 +49,7 @@ import type { SessionRow } from "../aggregate.js";
 import type { Conflict } from "../conflicts.js";
 import type { ScannedPort } from "../ports.js";
 import type { Progress, Phase, FocusEntry } from "../phases.js";
+import { HEX32, WARP_URL_FIXTURES } from "../warp-url.fixtures.js";
 
 const ESC = String.fromCharCode(27); // 0x1B
 
@@ -1963,5 +1964,36 @@ describe("SessionsPane (OTURUMLAR, Phase 8)", () => {
     expect(out).not.toContain("where did I leave off");
     expect(out).not.toContain("last:");
     expect(out).not.toContain("(you)");
+  });
+});
+
+describe("SessionCard go-to-pane link gating (261017-sbh)", () => {
+  const VALID = "warp://session/" + HEX32;
+  const cardWith = (value: unknown) =>
+    renderToString(
+      <SessionCard s={makeRow({ warp: { focus_url: value as unknown as string } })} />,
+    );
+
+  it("C1 renders the OSC-8 link for a strict Warp session URL", () => {
+    const out = cardWith(VALID);
+    expect(out).toContain(ESC + "]8;;" + VALID);
+    expect(out).toContain("go to pane");
+  });
+
+  it("C2 renders no link for a warp://launch URL", () => {
+    const out = cardWith("warp://launch/x.yaml");
+    expect(out).not.toContain(ESC + "]8;;");
+    expect(out).not.toContain("go to pane");
+  });
+
+  it("C3 links every accept fixture and no reject fixture", () => {
+    for (const f of WARP_URL_FIXTURES) {
+      const out = cardWith(f.value);
+      if (f.ok) {
+        expect(out, f.name).toContain(ESC + "]8;;" + String(f.value));
+      } else {
+        expect(out, f.name).not.toContain(ESC + "]8;;");
+      }
+    }
   });
 });

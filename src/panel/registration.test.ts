@@ -12,6 +12,7 @@ import {
   unregisterPanel,
   validWarpFocusUrl,
 } from "./registration.js";
+import { HEX32 } from "../warp-url.fixtures.js";
 
 // 260927-59z D-01: the panel self-registers its terminal identity in
 // <storeRoot>/panel.json so /csm-goto (no args) can focus the panel's terminal.
@@ -20,6 +21,7 @@ import {
 
 const ESC = String.fromCharCode(0x1b);
 const now = new Date("2026-09-27T10:00:00.000Z");
+const FOCUS_URL = "warp://session/" + HEX32;
 
 let tmp: string;
 
@@ -44,7 +46,7 @@ describe("panel self-registration (260927-59z)", () => {
       pid: 4242,
       env: {
         TERM_PROGRAM: "WarpTerminal",
-        WARP_FOCUS_URL: "warp://session/abc-123",
+        WARP_FOCUS_URL: FOCUS_URL,
       },
       now,
       tty: "ttys003",
@@ -54,7 +56,7 @@ describe("panel self-registration (260927-59z)", () => {
       pid: 4242,
       started: "2026-09-27T10:00:00.000Z",
       term_program: "WarpTerminal",
-      warp_focus_url: "warp://session/abc-123",
+      warp_focus_url: FOCUS_URL,
       tty: "ttys003",
     });
   });
@@ -63,6 +65,8 @@ describe("panel self-registration (260927-59z)", () => {
     const bad: Array<string | undefined> = [
       "https://evil.example/",
       "file:///etc/passwd",
+      "warp://launch/x.yaml",
+      "warp://action/new_tab?path=/tmp",
       "warp://x y",
       "warp://x" + ESC + "[31m",
       "not a url",
@@ -80,7 +84,7 @@ describe("panel self-registration (260927-59z)", () => {
       pid: 10,
       env: {
         TERM_PROGRAM: "Apple_Terminal",
-        WARP_FOCUS_URL: "warp://session/abc-123",
+        WARP_FOCUS_URL: FOCUS_URL,
       },
       now,
       tty: null,
@@ -88,7 +92,7 @@ describe("panel self-registration (260927-59z)", () => {
     expect(nonWarp.warp_focus_url).toBeNull();
     expect(validWarpFocusUrl(42)).toBeNull();
     expect(validWarpFocusUrl(null)).toBeNull();
-    expect(validWarpFocusUrl("warp://session/ok")).toBe("warp://session/ok");
+    expect(validWarpFocusUrl(FOCUS_URL)).toBe(FOCUS_URL);
   });
 
   it("R3 shapes term_program (absent/empty -> null, sanitized, capped at 64)", () => {
