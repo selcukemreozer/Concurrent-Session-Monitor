@@ -5,9 +5,10 @@
 // `/csm-goto` command can bring that terminal back to the front from any chat.
 //
 // Record: { schema_version: 1, pid, started (ISO), term_program, warp_focus_url,
-// tty }. warp_focus_url is kept only for Warp and only when it validates as a
-// warp: URL (same rule as scripts/csm-goto.mjs validFocusUrl, which re-validates
-// on read — panel.json is a same-user-writable file).
+// tty }. warp_focus_url is kept only for Warp and only when it matches the
+// strict Warp session rule from src/warp-url.ts (261017-sbh), which
+// scripts/csm-goto.mjs re-checks on read — panel.json is a same-user-writable
+// file.
 //
 // Lifecycle / guarantees:
 //   - Writes are atomic (writeSnapshot: 0600 temp file in a 0700 dir + rename),
@@ -24,6 +25,7 @@ import { execFileSync } from "node:child_process";
 import { storeRoot } from "../paths.js";
 import { writeSnapshot } from "../store.js";
 import { sanitize } from "../sanitize.js";
+import { isWarpSessionUrl } from "../warp-url.js";
 
 export const PANEL_FILE = "panel.json";
 
@@ -36,24 +38,16 @@ export interface PanelRecord {
   tty: string | null;
 }
 
-const MAX_URL_LEN = 2048;
 const MAX_TERM_LEN = 64;
 const TTY_PATTERN = /^[A-Za-z0-9._/-]{1,64}$/;
 
 /**
- * Accept only a warp: URL with no control bytes, no whitespace and a length of
- * 1..2048 — mirrors validFocusUrl in scripts/csm-goto.mjs. Anything else → null.
+ * Keep the URL only when it matches the strict Warp session rule from
+ * src/warp-url.ts (`warp://session/<32 lowercase hex>` or the Preview / OSS
+ * form). Anything else, including `warp://launch/…`, gives null (261017-sbh).
  */
 export function validWarpFocusUrl(raw: unknown): string | null {
-  if (typeof raw !== "string") return null;
-  if (raw.length === 0 || raw.length > MAX_URL_LEN) return null;
-  if (sanitize(raw) !== raw) return null;
-  if (/\s/.test(raw)) return null;
-  try {
-    return new URL(raw).protocol === "warp:" ? raw : null;
-  } catch {
-    return null;
-  }
+  return isWarpSessionUrl(raw) ? raw : null;
 }
 
 /** Pure: shape the panel.json record from explicit inputs. */

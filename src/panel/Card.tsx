@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import { sanitize } from "../sanitize.js";
+import { isWarpSessionUrl } from "../warp-url.js";
 import { displayName, labelLead, UNNAMED } from "../label.js";
 import { fmtUptime } from "../liveness.js";
 import type { SessionRow } from "../aggregate.js";
@@ -199,9 +200,11 @@ function splitPath(rp: string): { name: string; dir: string } {
  * (bold), then a dim segment carrying the branch (or a dash when empty), the
  * first 8 chars of the session id (D-05), the best-effort model (D-09, "—" when
  * unknown), and compact uptime (D-10). A cyan clickable go-to-pane link appears
- * only when Warp supplied a focus_url (D-06). Below the header, each active file
- * path is listed; when none are in the window no file line is drawn at all
- * (quick 261011-pfq), keeping an idle card to its header row.
+ * only when the focus_url passes the strict Warp session rule (D-06,
+ * 261017-sbh), so a crafted store value never becomes a clickable link. Below
+ * the header, each active file path is listed; when none are in the window no
+ * file line is drawn at all (quick 261011-pfq), keeping an idle card to its
+ * header row.
  * Below the write lines, each active READ path (`s.reads`, card-only per D-10)
  * is rendered on its own line with a distinct blue `◇` glyph (PANEL-06 D-08/D-09)
  * — purely additive, guarded by `s.reads ?? []`, each path sanitized.
@@ -216,7 +219,8 @@ function splitPath(rp: string): { name: string; dir: string } {
  * its inputs are pre-sanitized. No Warp window/tab name is shown (D-07).
  */
 export function SessionCard({ s }: { s: SessionRow }) {
-  const focusUrl = s.warp?.focus_url;
+  const rawFocusUrl: unknown = s.warp?.focus_url;
+  const focusUrl = isWarpSessionUrl(rawFocusUrl) ? rawFocusUrl : undefined;
   const uptime = sanitize(fmtUptime(Date.parse(s.start_time), Date.now()));
   const reads = s.reads ?? [];
   // NAME-02 / D-06: the capped, sanitized native name, or undefined (unnamed).
