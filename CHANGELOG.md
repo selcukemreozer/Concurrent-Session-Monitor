@@ -2,6 +2,18 @@
 
 Notable changes to Concurrent Session Monitor, newest release first.
 
+## v1.6.2 (2026-10-17)
+
+### Security
+
+- `/csm-goto` and the session card's go-to-pane link now accept only a Warp
+  session focus URL (`warp://session/<32 lowercase hex>`, or the Warp Preview
+  and Warp OSS equivalents). Before, any `warp:` URL was accepted, including
+  `warp://launch/…`, which opens a Warp launch configuration that can run
+  commands.
+- The SessionStart hook and the panel's own registration store a Warp focus URL
+  only when it passes the same check.
+
 ## v1.6.1 (2026-10-14)
 
 ### Improvements

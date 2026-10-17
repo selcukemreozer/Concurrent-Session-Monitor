@@ -38877,6 +38877,12 @@ function labelLead(s) {
 // src/panel/Card.tsx
 var import_react34 = __toESM(require_react(), 1);
 
+// src/warp-url.ts
+var WARP_SESSION_URL_RE = /^(warp|warppreview|warposs):\/\/session\/[0-9a-f]{32}$/;
+function isWarpSessionUrl(raw) {
+  return typeof raw === "string" && WARP_SESSION_URL_RE.test(raw);
+}
+
 // src/ports.ts
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -39598,7 +39604,8 @@ function splitPath(rp) {
   return { name, dir };
 }
 function SessionCard({ s }) {
-  const focusUrl = s.warp?.focus_url;
+  const rawFocusUrl = s.warp?.focus_url;
+  const focusUrl = isWarpSessionUrl(rawFocusUrl) ? rawFocusUrl : void 0;
   const uptime = sanitize(fmtUptime(Date.parse(s.start_time), Date.now()));
   const reads = s.reads ?? [];
   const name = displayName(s.title);
@@ -40527,7 +40534,7 @@ function isNewer(remote, installed) {
   return false;
 }
 function installedVersion() {
-  return true ? normalizeVersion("1.6.1") : null;
+  return true ? normalizeVersion("1.6.2") : null;
 }
 function updateCheckEnabled(opts) {
   const flag = (opts.env.CSM_UPDATE_CHECK ?? "").trim().toLowerCase();
@@ -41158,19 +41165,10 @@ function writeSnapshot(dir, name, data) {
 
 // src/panel/registration.ts
 var PANEL_FILE = "panel.json";
-var MAX_URL_LEN = 2048;
 var MAX_TERM_LEN = 64;
 var TTY_PATTERN = /^[A-Za-z0-9._/-]{1,64}$/;
 function validWarpFocusUrl(raw) {
-  if (typeof raw !== "string") return null;
-  if (raw.length === 0 || raw.length > MAX_URL_LEN) return null;
-  if (sanitize(raw) !== raw) return null;
-  if (/\s/.test(raw)) return null;
-  try {
-    return new URL(raw).protocol === "warp:" ? raw : null;
-  } catch {
-    return null;
-  }
+  return isWarpSessionUrl(raw) ? raw : null;
 }
 function buildPanelRecord(opts) {
   const { pid, env: env3, now, tty: tty3 } = opts;

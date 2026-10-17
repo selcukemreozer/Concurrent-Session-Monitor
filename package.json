@@ -1,6 +1,6 @@
 {
   "name": "concurrent-session-monitor",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "description": "Real-time visibility into multiple parallel Claude Code sessions: which files each session is touching and what work is being done.",
   "type": "module",
   "engines": {

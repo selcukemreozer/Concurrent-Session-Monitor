@@ -10,7 +10,7 @@
   <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-2f5d3f?style=flat-square">
   <img alt="platform: macOS" src="https://img.shields.io/badge/platform-macOS-2f5d3f?style=flat-square">
   <img alt="node &gt;= 22" src="https://img.shields.io/badge/node-%3E%3D22-2f5d3f?style=flat-square">
-  <img alt="version 1.6.1" src="https://img.shields.io/badge/version-1.6.1-2f5d3f?style=flat-square">
+  <img alt="version 1.6.2" src="https://img.shields.io/badge/version-1.6.2-2f5d3f?style=flat-square">
   <img alt="license: MIT" src="https://img.shields.io/badge/license-MIT-2f5d3f?style=flat-square">
 </p>
 
@@ -260,7 +260,10 @@ back to the default. Times are in milliseconds.
   works only for sessions started in Warp; a session started in another
   terminal still shows up everywhere else, but cannot be focused. `/csm-goto`
   focuses the panel's exact pane in Warp and otherwise falls back to bringing
-  the terminal app (Terminal, iTerm2, Ghostty, VS Code) to the front.
+  the terminal app (Terminal, iTerm2, Ghostty, VS Code) to the front. Only a
+  Warp session focus URL (`warp://session/<id>`, or its Warp Preview / Warp OSS
+  form) is ever opened or turned into a link; any other URL found in the store
+  is ignored.
 - **The model shown per session is best-effort.** It comes from the Claude Code
   `SessionStart` hook, which may not always include the model; when it is
   unavailable the panel simply omits it.
