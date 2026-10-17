@@ -33,6 +33,11 @@ const FILE_MODE = 0o600;
 // (no fs touch) and the hook still exits 0.
 const SAFE_ID = /^[A-Za-z0-9._-]{1,128}$/;
 
+// Strict Warp session focus-URL rule (261017-sbh): a byte-identical stdlib copy
+// of the literal in src/warp-url.ts (T-1-SC forbids the import), pinned by
+// src/warp-url.parity.test.ts. Any edit must touch all three copies.
+const WARP_SESSION_URL_RE = /^(warp|warppreview|warposs):\/\/session\/[0-9a-f]{32}$/;
+
 // --- mirrors scripts/on-user-prompt.mjs; keep in lockstep (scripts cannot
 // import each other: each hook is a self-contained, build-free script).
 const MAX_TITLE = 256;
@@ -231,10 +236,14 @@ try {
 
     // D-06 Warp enrichment: an object only inside Warp, else null. No window/tab
     // name is ever read (D-07). Absent env vars degrade to "" — no failure path.
+    // A focus URL outside the strict Warp session rule is stored as ""
+    // (261017-sbh, defense in depth: readers re-validate anyway).
+    const focusEnv = process.env.WARP_FOCUS_URL;
     const warp =
       process.env.TERM_PROGRAM === "WarpTerminal"
         ? {
-            focus_url: process.env.WARP_FOCUS_URL || "",
+            focus_url:
+              typeof focusEnv === "string" && WARP_SESSION_URL_RE.test(focusEnv) ? focusEnv : "",
             session_uuid: process.env.WARP_TERMINAL_SESSION_UUID || "",
           }
         : null;

@@ -9,7 +9,9 @@ allowed-tools: Bash(node ${CLAUDE_PLUGIN_ROOT}/scripts/csm-goto.mjs *)
   command-expansion time with no argv and inlines its stdout into context. The
   script reads panel.json, which the panel writes at the store root when it
   starts (and removes on a clean exit). In Warp it opens the panel's recorded
-  warp: focus URL, bringing the exact pane forward; in Terminal, iTerm2,
+  Warp session focus URL, bringing the exact pane forward — only
+  `warp://session/<32 hex>` (or the Preview/OSS equivalent) is ever opened;
+  in Terminal, iTerm2,
   Ghostty or VS Code it can only activate the app (not the exact window or
   tab); in any other terminal it reports the panel's pid/tty instead. With no
   live panel it says so. FOCUS-ONLY: nothing is typed or sent anywhere. There

@@ -8,8 +8,8 @@
 // open the most recently started one wins (last writer).
 //
 // Focus strategy:
-//   - Warp: the panel recorded its $WARP_FOCUS_URL → `open <warp: URL>` brings
-//     the panel's exact pane forward.
+//   - Warp: the panel recorded its $WARP_FOCUS_URL → `open <session URL>`
+//     brings the panel's exact pane forward.
 //   - Terminal / iTerm2 / Warp (no URL) / Ghostty / VS Code: `open -a <App>` —
 //     only the app can be activated, not the exact window or tab.
 //   - Any other terminal: nothing is opened; the panel's pid / tty / terminal
@@ -20,9 +20,11 @@
 // FOCUS-ONLY and READ-ONLY: nothing is typed or sent anywhere and the store is
 // never written. panel.json is a same-user-writable file, so EVERY field is
 // re-validated here: pid must be an integer > 1 that is alive; the focus URL
-// must be a well-formed warp: URL; the app name comes only from a fixed Map
-// keyed by exact TERM_PROGRAM values (never from the file); echoed text is
-// control-byte stripped and length-capped. The opener is run via execFileSync
+// must match the strict Warp session rule (`warp://session/<32 lowercase hex>`
+// or the Preview / OSS form), and anything else — for example a
+// launch-configuration URL — is never opened; the app name comes only from a
+// fixed Map keyed by exact TERM_PROGRAM values (never from the file); echoed
+// text is control-byte stripped and length-capped. The opener is run via execFileSync
 // with an args ARRAY and no shell, so no field can inject a command.
 //
 // Self-contained (Node stdlib only, T-1-SC): NO import from src/. The whole body
@@ -32,8 +34,10 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";
 
-/** Upper bound on an accepted focus URL (a real Warp URL is well under this). */
-const MAX_URL_LEN = 2048;
+// Strict Warp session focus-URL rule (261017-sbh): a byte-identical stdlib copy
+// of the literal in src/warp-url.ts (T-1-SC forbids the import), pinned by
+// src/warp-url.parity.test.ts. Any edit must touch all three copies.
+const WARP_SESSION_URL_RE = /^(warp|warppreview|warposs):\/\/session\/[0-9a-f]{32}$/;
 /** Cap on echoed term_program / tty text. */
 const MAX_ECHO = 64;
 
@@ -100,18 +104,14 @@ function pidAlive(pid) {
 }
 
 /**
- * Accept only a well-formed warp: URL (no control bytes, no whitespace, bounded
- * length). Returns the URL string or undefined. `open` would otherwise happily
- * launch file:// paths or http(s) pages — this keeps the command focus-only.
+ * Accept only a URL that fully matches the strict Warp session rule
+ * (WARP_SESSION_URL_RE). Returns the URL string or undefined. `open` would
+ * otherwise happily launch file:// paths, http(s) pages or a Warp launch
+ * configuration (`warp://launch/…`, which can run commands) — this keeps the
+ * command focus-only (261017-sbh).
  */
 function validFocusUrl(raw) {
-  if (typeof raw !== "string" || raw.length === 0 || raw.length > MAX_URL_LEN) return undefined;
-  if (sanitize(raw) !== raw || /\s/.test(raw)) return undefined;
-  try {
-    return new URL(raw).protocol === "warp:" ? raw : undefined;
-  } catch {
-    return undefined;
-  }
+  return typeof raw === "string" && WARP_SESSION_URL_RE.test(raw) ? raw : undefined;
 }
 
 /**
