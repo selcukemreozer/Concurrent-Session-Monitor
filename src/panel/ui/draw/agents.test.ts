@@ -131,10 +131,10 @@ describe("drawCard: the checkout card (running, in conflict)", () => {
 
   it("styles the STATE label and the counts", () => {
     expect(cellAt(scr, 2, 5)).toMatchObject({ ch: "R", fg: RUNNING, bold: true });
-    expect(cellAt(scr, 35, 5)).toMatchObject({ ch: "!", fg: RED, bold: true });
-    expect(cellAt(scr, 36, 5)).toMatchObject({ ch: "1", fg: RED, bold: true });
-    expect(cellAt(scr, 38, 5)).toMatchObject({ ch: "✎", fg: "#d6d3cb" });
-    expect(cellAt(scr, 41, 5)).toMatchObject({ ch: "◦", fg: "#6FA8FF" });
+    expect(cellAt(scr, 37, 5)).toMatchObject({ ch: "!", fg: RED, bold: true });
+    expect(cellAt(scr, 38, 5)).toMatchObject({ ch: "1", fg: RED, bold: true });
+    expect(cellAt(scr, 40, 5)).toMatchObject({ ch: "✎", fg: "#d6d3cb" });
+    expect(cellAt(scr, 43, 5)).toMatchObject({ ch: "◦", fg: "#6FA8FF" });
     expect(cellAt(scr, 44, 5)).toMatchObject({ ch: "2", fg: "#6FA8FF" });
     expect(cellAt(scr, 45, 5).ch).toBe(" ");
     expect(cellAt(scr, 46, 5).ch).toBe("│");
@@ -285,8 +285,8 @@ describe("drawCard: dimmed (another card is selected)", () => {
     expect(cellAt(scr, 4, 4).fg).toBe(DIM2);
     expect(cellAt(scr, 6, 4).fg).toBe(DIM2);
     expect(cellAt(scr, 2, 5).fg).toBe(DIM2);
-    expect(cellAt(scr, 38, 5).fg).toBe(DIM2);
-    expect(cellAt(scr, 41, 5).fg).toBe(DIM2);
+    expect(cellAt(scr, 40, 5).fg).toBe(DIM2);
+    expect(cellAt(scr, 43, 5).fg).toBe(DIM2);
   });
 
   it("keeps the state icon in its state color", () => {
@@ -295,8 +295,8 @@ describe("drawCard: dimmed (another card is selected)", () => {
 
   it("never dims red: the conflict edge and !N stay #F0545A", () => {
     for (let x = 0; x < 47; x++) expect(cellAt(scr, x, 6)).toMatchObject({ ch: "▀", fg: RED });
-    expect(cellAt(scr, 35, 5)).toMatchObject({ ch: "!", fg: RED, bold: true });
-    expect(cellAt(scr, 36, 5)).toMatchObject({ ch: "1", fg: RED });
+    expect(cellAt(scr, 37, 5)).toMatchObject({ ch: "!", fg: RED, bold: true });
+    expect(cellAt(scr, 38, 5)).toMatchObject({ ch: "1", fg: RED });
   });
 
   it("drops the asking tint and dims the light bottom", () => {
@@ -345,14 +345,19 @@ describe("drawIdleStrip", () => {
     expect(cellAt(scr, 44, 1)).toMatchObject({ ch: "h", fg: DIM2 });
   });
 
-  it("truncates a long name before the ago text", () => {
+  it("caps a long name at 24 graphemes (NAME-02)", () => {
     const s = strip({ id: "x", name: "n".repeat(60), ago: "34h" });
+    expect(text(s, 1)).toBe(("  ● " + "n".repeat(24) + "…").padEnd(42) + "34h");
+  });
+
+  it("truncates a wide name by cells before the ago text", () => {
+    // 30 two-cell ideographs: label cap 24, then the 47 - 8 - 3 = 36 cell budget
+    // keeps 17 (34 cells) + the ellipsis at x38; ago sits at x42..x44.
+    const s = strip({ id: "x", name: String.fromCodePoint(0x6f22).repeat(30), ago: "34h" });
     const row = text(s, 1);
-    // name budget 47 - 8 - 3 = 36 cells: x4..x39, ellipsis at x39, ago x42..x44
-    expect(cellAt(s, 39, 1).ch).toBe("…");
-    expect(cellAt(s, 40, 1).ch).toBe(" ");
-    expect(cellAt(s, 41, 1).ch).toBe(" ");
-    expect(row.endsWith("…  34h")).toBe(true);
+    expect(cellAt(s, 38, 1).ch).toBe("…");
+    for (const x of [39, 40, 41]) expect(cellAt(s, x, 1).ch).toBe(" ");
+    expect(row.endsWith("…   34h")).toBe(true);
     expect(cellWidth(row)).toBe(45);
   });
 
@@ -422,7 +427,8 @@ describe("drawAgentsPane: clipping by whole card rows (D-08)", () => {
       for (const cardCols of [1, 2, 3]) {
         const scr = new Screen(175, 60);
         const res = drawAgentsPane(scr, { x: 0, y: 0, w: 96, h }, { ...PANE, cardCols });
-        expect(res.rows).toBeLessThanOrEqual(h);
+        // below one card row + spacer the down row lands in the caller's spacer row
+        expect(res.rows).toBeLessThanOrEqual(Math.max(h, 9));
         for (let y = 0; y < 60; y++) expect(text(scr, y, 96)).toBe("");
       }
     }
