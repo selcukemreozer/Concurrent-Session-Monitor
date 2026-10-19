@@ -8,7 +8,7 @@
 //
 //   1. restore the terminal (unmount Ink; raw-mode / alt-screen fallback),
 //   2. write exactly ONE sanitized stderr line
-//        `csm crashed: <message> — details in <path>`,
+//        `csm crashed: <message> \u2014 details in <path>`,
 //   3. append the stack to crash.log (timestamp + pid + stack ONLY; the error
 //      object is never serialized and the environment is never read),
 //   4. exit 1.
@@ -22,8 +22,12 @@
 // handler for `CSM_UI=v2` only, lives in entry.ts (plan 09-14).
 //
 // Source kept ASCII-only (special code points are written as escapes).
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { oneLine, truncateEnd } from "./ui/text.js";
 import { sanitize } from "../sanitize.js";
+import { storeRoot } from "../paths.js";
 
 export const CRASH_LOG = "crash.log";
 export const CRASH_LOG_CAP = 256 * 1024;
@@ -117,7 +121,7 @@ export function createCrashHandler(d: CrashDeps): (err: unknown) => void {
     }
     try {
       d.writeErr(
-        `csm crashed: ${crashMessage(err)} — details in ${d.displayLogPath}\n`,
+        `csm crashed: ${crashMessage(err)} \u2014 details in ${d.displayLogPath}\n`,
       );
     } catch {
       // EPIPE / closed stderr: still log and exit.
@@ -138,4 +142,111 @@ export function installCrashHandlers(
 ): void {
   proc.on("uncaughtException", (err: unknown) => handler(err));
   proc.on("unhandledRejection", (reason: unknown) => handler(reason));
+}
+
+/**
+ * Append one entry to `<dir>/crash.log` (T-09-04, T-09-05, T-09-06). Never
+ * throws: a crash report must not cause a second crash.
+ *
+ *   - the directory is created 0700 when missing (dir comes from storeRoot()
+ *     only, so CSM_STORE_DIR is honored through the one D-01b seam);
+ *   - past CRASH_LOG_CAP the file rotates ONCE to crash.log.1 (replacing any
+ *     older rotation), and only when lstat says it is a regular file;
+ *   - the open is O_APPEND | O_CREAT | O_NOFOLLOW with mode 0600, so a
+ *     pre-placed symlink is refused (ELOOP) and never written through.
+ */
+export function appendCrashLog(entry: string, dir: string = storeRoot()): void {
+  try {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const file = path.join(dir, CRASH_LOG);
+    let st: fs.Stats | undefined;
+    try {
+      st = fs.lstatSync(file);
+    } catch {
+      st = undefined; // missing: O_CREAT makes it
+    }
+    if (
+      st !== undefined &&
+      st.isFile() &&
+      st.size + Buffer.byteLength(entry) > CRASH_LOG_CAP
+    ) {
+      fs.renameSync(file, path.join(dir, `${CRASH_LOG}.1`));
+    }
+    const { O_WRONLY, O_APPEND, O_CREAT, O_NOFOLLOW } = fs.constants;
+    const fd = fs.openSync(file, O_WRONLY | O_APPEND | O_CREAT | O_NOFOLLOW, 0o600);
+    try {
+      fs.writeSync(fd, entry);
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    // Best-effort: unwritable store, symlinked log, dir is a file, ...
+  }
+}
+
+/**
+ * The crash.log path as shown on the stderr line: the real store root
+ * (storeRoot(), so CSM_STORE_DIR is honored) with a leading $HOME shown as
+ * `~`, passed through oneLine so a crafted dir cannot inject escapes.
+ */
+export function crashLogDisplayPath(
+  dir: string = storeRoot(),
+  home: string = os.homedir(),
+): string {
+  const full = path.join(dir, CRASH_LOG);
+  const prefix = home + path.sep;
+  const shown =
+    home !== "" && home !== path.sep && full.startsWith(prefix)
+      ? "~/" + full.slice(prefix.length)
+      : full;
+  return oneLine(shown);
+}
+
+const ESC = String.fromCharCode(27);
+/** CSI ?1049l (leave the alt screen) then CSI ?25h (show the cursor). */
+const RESTORE_SEQ = `${ESC}[?1049l${ESC}[?25h`;
+
+function defaultIo(): RestoreIo {
+  return {
+    stdin: process.stdin,
+    stdoutIsTTY: process.stdout.isTTY === true,
+    writeOut: (s: string) => {
+      fs.writeSync(1, s);
+    },
+  };
+}
+
+/**
+ * Restore the terminal (T-09-14c). Unmounting Ink is the whole restore when it
+ * works: Ink then leaves the alt screen, shows the cursor and drops raw mode
+ * itself. The fallback below must NEVER run after a successful unmount: Ink
+ * already wrote these bytes, and a repeat may move the cursor (RESEARCH A1).
+ *
+ * Only when unmount is impossible (no instance, or it throws): raw mode off on
+ * a TTY stdin, and alt-screen-exit + cursor-show on a TTY stdout. Never throws.
+ */
+export function restoreTerminal(
+  inst: { unmount(): void } | undefined,
+  io: RestoreIo = defaultIo(),
+): void {
+  if (inst !== undefined) {
+    try {
+      inst.unmount();
+      return;
+    } catch {
+      // fall through to the manual restore
+    }
+  }
+  try {
+    if (io.stdin.isTTY === true && typeof io.stdin.setRawMode === "function") {
+      io.stdin.setRawMode(false);
+    }
+  } catch {
+    // stdin already gone
+  }
+  try {
+    if (io.stdoutIsTTY) io.writeOut(RESTORE_SEQ);
+  } catch {
+    // stdout already gone
+  }
 }
