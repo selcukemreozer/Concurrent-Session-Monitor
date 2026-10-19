@@ -378,7 +378,10 @@ export function App() {
     () =>
       startUpdateCheck({
         installed: installedVersion(),
-        isTTY: stdout.isTTY === true,
+        // Ink 8 types useStdout().stdout as a generic writable stream, so the
+        // TTY flag is read through a guard. It stays Ink's own stdout (never the
+        // global process stream), which keeps the injected test stdout honored.
+        isTTY: "isTTY" in stdout && (stdout as { isTTY?: boolean }).isTTY === true,
         onResult: setUpdateTo,
       }),
     [],
