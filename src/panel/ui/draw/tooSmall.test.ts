@@ -37,7 +37,13 @@ describe("drawTooSmall clipping", () => {
     const lines = drawTooSmall(40, 10, SAMPLE_HEADER);
     expect(lines.length).toBeLessThanOrEqual(10);
     for (const l of lines) expect(lineWidth(l)).toBeLessThanOrEqual(40);
-    expect(lineText(lines[4]!).endsWith("…")).toBe(true);
+  });
+
+  it("cuts a line that does not fit with an ellipsis (30x10)", () => {
+    const lines = drawTooSmall(30, 10, SAMPLE_HEADER);
+    const last = lineText(lines[4]!);
+    expect(last.endsWith("…")).toBe(true);
+    expect(lineWidth(lines[4]!)).toBe(30);
   });
 
   it("returns exactly 3 lines at 30x3", () => {
