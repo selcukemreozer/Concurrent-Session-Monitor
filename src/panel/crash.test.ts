@@ -1,12 +1,21 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import { EventEmitter } from "node:events";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import {
+  CRASH_LOG,
+  CRASH_LOG_CAP,
   CRASH_MSG_CELLS,
   crashMessage,
   crashEntry,
   createCrashHandler,
   installCrashHandlers,
+  appendCrashLog,
+  crashLogDisplayPath,
+  restoreTerminal,
   type CrashDeps,
+  type RestoreIo,
 } from "./crash.js";
 import { cellWidth } from "./ui/text.js";
 
@@ -200,5 +209,219 @@ describe("installCrashHandlers", () => {
     expect(seen).toEqual([e, r]);
     expect(seen[0]).toBe(e);
     expect(seen[1]).toBe(r);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 2: crash.log writer, display path, terminal restore.
+// ---------------------------------------------------------------------------
+
+const tmpDirs: string[] = [];
+function tmpDir(): string {
+  const d = fs.mkdtempSync(os.tmpdir() + "/csm-crash-");
+  tmpDirs.push(d);
+  return d;
+}
+
+afterEach(() => {
+  while (tmpDirs.length > 0) {
+    const d = tmpDirs.pop() as string;
+    fs.rmSync(d, { recursive: true, force: true });
+  }
+});
+
+describe("appendCrashLog", () => {
+  it("creates crash.log with mode 0600 and appends", () => {
+    const dir = tmpDir();
+    appendCrashLog("one\n", dir);
+    const file = path.join(dir, CRASH_LOG);
+    expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+    appendCrashLog("two\n", dir);
+    expect(fs.readFileSync(file, "utf8")).toBe("one\ntwo\n");
+  });
+
+  it("rotates once to crash.log.1 past the cap", () => {
+    const dir = tmpDir();
+    const file = path.join(dir, CRASH_LOG);
+    const old = "a".repeat(CRASH_LOG_CAP);
+    fs.writeFileSync(file, old, { mode: 0o600 });
+    fs.writeFileSync(file + ".1", "older rotation\n");
+    appendCrashLog("new\n", dir);
+    expect(fs.readFileSync(file + ".1", "utf8")).toBe(old);
+    expect(fs.readFileSync(file, "utf8")).toBe("new\n");
+    expect(fs.existsSync(file + ".2")).toBe(false);
+  });
+
+  it("does not rotate while under the cap", () => {
+    const dir = tmpDir();
+    const file = path.join(dir, CRASH_LOG);
+    fs.writeFileSync(file, "a".repeat(CRASH_LOG_CAP - 10), { mode: 0o600 });
+    appendCrashLog("tiny\n", dir);
+    expect(fs.existsSync(file + ".1")).toBe(false);
+    expect(fs.statSync(file).size).toBe(CRASH_LOG_CAP - 5);
+  });
+
+  it("never writes through a symlink", () => {
+    const dir = tmpDir();
+    const outside = tmpDir();
+    const target = path.join(outside, "victim.txt");
+    fs.writeFileSync(target, "untouched\n");
+    fs.symlinkSync(target, path.join(dir, CRASH_LOG));
+    expect(() => appendCrashLog("evil\n", dir)).not.toThrow();
+    expect(fs.readFileSync(target, "utf8")).toBe("untouched\n");
+  });
+
+  it("never rotates a symlink even past the cap", () => {
+    const dir = tmpDir();
+    const outside = tmpDir();
+    const target = path.join(outside, "big.txt");
+    const big = "b".repeat(CRASH_LOG_CAP + 1);
+    fs.writeFileSync(target, big);
+    fs.symlinkSync(target, path.join(dir, CRASH_LOG));
+    expect(() => appendCrashLog("evil\n", dir)).not.toThrow();
+    expect(fs.readFileSync(target, "utf8")).toBe(big);
+    expect(fs.existsSync(path.join(dir, CRASH_LOG + ".1"))).toBe(false);
+  });
+
+  it("creates a missing directory", () => {
+    const dir = path.join(tmpDir(), "nested", "store");
+    appendCrashLog("entry\n", dir);
+    expect(fs.readFileSync(path.join(dir, CRASH_LOG), "utf8")).toBe("entry\n");
+  });
+
+  it("never throws when dir is a regular file", () => {
+    const file = path.join(tmpDir(), "not-a-dir");
+    fs.writeFileSync(file, "x");
+    expect(() => appendCrashLog("entry\n", file)).not.toThrow();
+    expect(fs.readFileSync(file, "utf8")).toBe("x");
+  });
+});
+
+describe("crashLogDisplayPath", () => {
+  it("shows $HOME as ~", () => {
+    expect(crashLogDisplayPath("/Users/x/.claude/csm", "/Users/x")).toBe(
+      "~/.claude/csm/crash.log",
+    );
+  });
+
+  it("keeps a path outside $HOME absolute", () => {
+    expect(crashLogDisplayPath("/var/tmp/csm", "/Users/x")).toBe(
+      "/var/tmp/csm/crash.log",
+    );
+  });
+
+  it("does not treat a sibling prefix of $HOME as home", () => {
+    expect(crashLogDisplayPath("/Users/xavier/csm", "/Users/x")).toBe(
+      "/Users/xavier/csm/crash.log",
+    );
+  });
+
+  it("honors CSM_STORE_DIR through storeRoot()", () => {
+    const dir = tmpDir();
+    const prev = process.env.CSM_STORE_DIR;
+    process.env.CSM_STORE_DIR = dir;
+    try {
+      expect(crashLogDisplayPath()).toBe(
+        crashLogDisplayPath(dir, os.homedir()),
+      );
+      expect(crashLogDisplayPath(dir, "/nonexistent-home")).toBe(
+        dir + "/crash.log",
+      );
+    } finally {
+      if (prev === undefined) delete process.env.CSM_STORE_DIR;
+      else process.env.CSM_STORE_DIR = prev;
+    }
+  });
+
+  it("strips control bytes from the dir", () => {
+    const p = crashLogDisplayPath("/tmp/a" + ESC + "b", "/Users/x");
+    expect(p).not.toContain(ESC);
+    expect(p).toBe("/tmp/ab/crash.log");
+  });
+});
+
+describe("restoreTerminal", () => {
+  function fakeIo(tty: boolean): {
+    io: RestoreIo;
+    raw: boolean[];
+    out: string[];
+  } {
+    const raw: boolean[] = [];
+    const out: string[] = [];
+    const io: RestoreIo = {
+      stdin: {
+        isTTY: tty,
+        setRawMode: (m: boolean) => {
+          raw.push(m);
+        },
+      },
+      stdoutIsTTY: tty,
+      writeOut: (s: string) => {
+        out.push(s);
+      },
+    };
+    return { io, raw, out };
+  }
+
+  const RESTORE_SEQ = ESC + "[?1049l" + ESC + "[?25h";
+
+  it("a successful unmount is the whole restore", () => {
+    const f = fakeIo(true);
+    let unmounted = 0;
+    restoreTerminal(
+      {
+        unmount: () => {
+          unmounted++;
+        },
+      },
+      f.io,
+    );
+    expect(unmounted).toBe(1);
+    expect(f.raw).toEqual([]);
+    expect(f.out).toEqual([]);
+  });
+
+  it("falls back when unmount throws", () => {
+    const f = fakeIo(true);
+    restoreTerminal(
+      {
+        unmount: () => {
+          throw new Error("ink gone");
+        },
+      },
+      f.io,
+    );
+    expect(f.raw).toEqual([false]);
+    expect(f.out).toEqual([RESTORE_SEQ]);
+  });
+
+  it("falls back when there is no Ink instance", () => {
+    const f = fakeIo(true);
+    restoreTerminal(undefined, f.io);
+    expect(f.raw).toEqual([false]);
+    expect(f.out).toEqual([RESTORE_SEQ]);
+  });
+
+  it("does nothing to a non-TTY", () => {
+    const f = fakeIo(false);
+    restoreTerminal(undefined, f.io);
+    expect(f.raw).toEqual([]);
+    expect(f.out).toEqual([]);
+  });
+
+  it("a throwing setRawMode or writeOut never escapes", () => {
+    const io: RestoreIo = {
+      stdin: {
+        isTTY: true,
+        setRawMode: () => {
+          throw new Error("EIO");
+        },
+      },
+      stdoutIsTTY: true,
+      writeOut: () => {
+        throw new Error("EPIPE");
+      },
+    };
+    expect(() => restoreTerminal(undefined, io)).not.toThrow();
   });
 });
