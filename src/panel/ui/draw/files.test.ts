@@ -141,7 +141,7 @@ describe("drawFilesPane: frame fidelity (175x55, rows 27..34, step 11)", () => {
 
   it("draws the separator in dim2 at x4", () => {
     expect(cellAt(scr, 4, 31)).toMatchObject({ ch: "┄", fg: DIM2 });
-    expect(cellAt(scr, 10, 31)).toMatchObject({ ch: "b", fg: DIM2 });
+    expect(cellAt(scr, 7, 31)).toMatchObject({ ch: "b", fg: DIM2 });
   });
 });
 
@@ -243,10 +243,9 @@ describe("drawFilesPane: no ticker and empty", () => {
   it("draws a short list without separator or scrollbar", () => {
     const { scr, rows } = pane({ groups: four });
     expect(rows).toBe(1 + 1 + 4);
-    for (let y = 27; y < 40; y++) {
-      expect(text(scr, y)).not.toContain("back to top");
-      expect(cellAt(scr, 95, y).ch).toBe(" ");
-    }
+    for (let y = 27; y < 40; y++) expect(text(scr, y)).not.toContain("back to top");
+    // below the title (whose right info ends at x95) the scrollbar column stays blank
+    for (let y = 28; y < 40; y++) expect(cellAt(scr, 95, y).ch).toBe(" ");
     expect(text(scr, 29)).toBe("  ■ one".padEnd(26) + "✎ a.ts");
     expect(text(scr, 30)).toBe("".padEnd(26) + "b.ts");
   });
