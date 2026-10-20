@@ -7,13 +7,17 @@
  * 09-13 appends the "through Ink" half, which renders PanelApp and splits the
  * last frame.
  *
- * Three parts:
+ * Four parts:
  *   1. the rows x cols matrix x UI states x ticks x keys off, over SAMPLE;
  *   2. the same matrix over a wide fixture (24-grapheme CJK/emoji/ZWJ/combining
  *      names with an RLO bidi control, 200-character paths);
  *   3. rect containment: every pane draw, at every height the shell can hand
  *      it, writes nothing outside its rect (Screen.put clips only at the
  *      screen edge, so each pane must clip itself).
+ *   4. focus visibility (09-16 gap closure, KEYS-01, D-13): at every size from
+ *      60x16 and every focus, exactly one inverse title, on the focused pane;
+ *      PHASES/SESSIONS/PORTS also show a body row. AGENTS body rows at split
+ *      16-18 rows are WR-02, deferred to Phase 10.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import React from "react";
@@ -22,8 +26,10 @@ import { PanelApp, type PanelAppProps } from "../PanelApp.js";
 import { frameLines, nonTtyStdin, renderCapture } from "./test-harness.js";
 import { Screen, lineText, lineWidth, type Line } from "./screen.js";
 import { cellWidth, graphemes, isControlCp } from "./text.js";
-import { initialUi, type UiState } from "./uiState.js";
+import { FOCUS_ORDER, initialUi, type UiState } from "./uiState.js";
 import { SAMPLE, SAMPLE_HEADER } from "./sample.js";
+import { PALETTE } from "./palette.js";
+import { V2 } from "./glyphs.js";
 import type { PanesModel, Rect } from "./models.js";
 import { drawShell, type ShellInput } from "./draw/shell.js";
 import { drawAgentsPane } from "./draw/agents.js";
@@ -271,6 +277,74 @@ describe("v2 panes stay inside their rects (pure)", () => {
       }
     }
   });
+});
+
+// --- focus visibility (plan 09-16, KEYS-01) --------------------------------
+
+// Stacked 60-164 cols and split 165+ cols, from the 60x16 floor (D-27) up.
+const FOCUS_ROWS = [16, 17, 18, 19, 20, 21, 22, 23, 24, 30, 67];
+const FOCUS_COLS = [60, 80, 96, 99, 100, 164, 165, 175, 213, 214, 284];
+/** [rows, cols] */
+const FOCUS_SIZES: ReadonlyArray<readonly [number, number]> = FOCUS_ROWS.flatMap((r) =>
+  FOCUS_COLS.map((c) => [r, c] as const),
+);
+const INVERSE_TITLE = new RegExp(`${V2.capL}(AGENTS|PHASES|SESSIONS|PORTS)${V2.capR}`, "g");
+
+/** SAMPLE with `n` copies of its conflict on distinct paths (SAMPLE is never mutated). */
+function withConflicts(n: number): PanesModel {
+  const c = SAMPLE.conflicts[0]!;
+  return { ...SAMPLE, conflicts: Array.from({ length: n }, (_, i) => ({ ...c, path: `src/conflict-${i}.ts` })) };
+}
+
+const FOCUS_FIXTURES: ReadonlyArray<readonly [string, PanesModel]> = [
+  ["sample", SAMPLE],
+  ["no conflicts", withConflicts(0)],
+  ["five conflicts", withConflicts(5)],
+];
+
+/** The label the focused pane's inverse title carries. */
+function focusLabel(ui: UiState): string {
+  if (ui.focus === "agents") return "AGENTS";
+  if (ui.focus === "ports") return "PORTS";
+  return ui.rightTab === "phases" ? "PHASES" : "SESSIONS";
+}
+
+describe("v2 shell focus visibility (pure, KEYS-01)", () => {
+  it.each(FOCUS_SIZES)(
+    "%i rows x %i cols: exactly one inverse title, on the focused pane, with a body row",
+    (rows, cols) => {
+      for (const [name, panes] of FOCUS_FIXTURES) {
+        for (const focus of FOCUS_ORDER) {
+          for (const rightTab of ["phases", "sessions"] as const) {
+            const ui: UiState = { ...initialUi, focus, rightTab };
+            const at = `${name}, focus ${focus}, tab ${rightTab}`;
+            const lines = shell(rows, cols, ui, 0, false, panes);
+            const t = lines.map((l) => lineText(l));
+            const label = focusLabel(ui);
+            const inverse = `${V2.capL}${label}${V2.capR}`;
+            // (a) exactly one inverse title, and it is the focused pane's
+            const found = t.join("\n").match(INVERSE_TITLE) ?? [];
+            expect(found, `${at}: inverse titles`).toEqual([inverse]);
+            // (b) its label cell really is drawn inverse
+            const y = t.findIndex((s) => s.includes(inverse));
+            const seg = (lines[y] as Line).find((s) => s.text === label);
+            expect(seg?.bg, `${at}: label background`).toBe(PALETTE.hi);
+            const footer = t.length - 1;
+            if (focus === "ports") {
+              // (c) the focused first-port row sits under the title, above the footer
+              const cursorRow = t.slice(y + 1, footer).some((s) => s.includes(`${V2.cursor} :`));
+              expect(cursorRow, `${at}: focused port row`).toBe(true);
+            }
+            if (focus === "right") {
+              // (d) the first tab-body row, two rows under the tab title
+              expect(y + 2, `${at}: body row above the footer`).toBeLessThan(footer);
+              expect((t[y + 2] as string).trim(), `${at}: body row text`).not.toBe("");
+            }
+          }
+        }
+      }
+    },
+  );
 });
 
 // --- through Ink (plan 09-13) ----------------------------------------------

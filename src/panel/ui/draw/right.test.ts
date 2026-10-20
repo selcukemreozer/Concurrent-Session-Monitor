@@ -200,3 +200,20 @@ describe("drawRightColumn short height", () => {
     expect(portsY).toBeLessThan(27);
   });
 });
+
+describe("drawRightColumn: a focused PORTS keeps its first port row (09-16)", () => {
+  it.each([6, 7, 8])("h=%i: ▐PORTS▌ and the ❯ cursor row fit inside the rect", (h) => {
+    const r: Rect = { x: X, y: 2, w: 74, h };
+    const { scr, end, portsY } = column({ focus: "ports" }, r);
+    expect(text(scr, portsY, X, 175).startsWith("▐PORTS▌")).toBe(true);
+    expect(cellAt(scr, X, portsY + 2).ch).toBe("❯");
+    expect(end).toBeLessThanOrEqual(2 + h - 1);
+  });
+
+  it("h=7 without PORTS focus still serves the 3-row body first", () => {
+    const r: Rect = { x: X, y: 2, w: 74, h: 7 };
+    for (const ui of [{ focus: "agents" as const }, { focus: "right" as const }]) {
+      expect(column(ui, r).portsY).toBe(8);
+    }
+  });
+});

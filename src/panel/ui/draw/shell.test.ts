@@ -297,3 +297,37 @@ describe("drawShell: footer position and height", () => {
     expect(tall.length).toBeLessThan(80);
   });
 });
+
+describe("drawShell: a focused bottom pane always shows (09-16, KEYS-01)", () => {
+  it("60x16 with PORTS focused: AGENTS collapses to its title + ↓ 8 more, FILES stays, PORTS shows its cursor row", () => {
+    const lines = drawShell(input({ cols: 60, rows: 16, ui: ui({ focus: "ports" }) }));
+    const t = texts(lines);
+    expect(lines.length).toBeLessThanOrEqual(16);
+    expect(t[2]).toContain(" AGENTS ");
+    expect(t[2]).not.toContain("▐AGENTS▌");
+    expect(t[3]).toContain("↓ 8 more");
+    expect((t[4] as string).startsWith(" FILES ")).toBe(true);
+    expect(t[5]).toContain("dashboard research");
+    const p = rowOf(t, (s) => s.includes("▐PORTS▌"));
+    expect(p).toBeGreaterThan(5);
+    expect(t[p + 2]).toContain("❯ :3000");
+    expect(t[t.length - 1]).toContain("↑↓ browse ports");
+  });
+
+  it("60x16 with PHASES focused: the first phase body row shows under the tab title", () => {
+    const t = texts(drawShell(input({ cols: 60, rows: 16, ui: ui({ focus: "right" }) })));
+    const y = rowOf(t, (s) => s.includes("▐PHASES▌"));
+    expect(y).toBeGreaterThan(2);
+    expect(t[y + 2]).toContain(SAMPLE.projects[SAMPLE.projectIndex]!.name);
+    expect(t[3]).toContain("↓ 8 more");
+  });
+
+  it.each([20, 21, 22])("80x%i with PORTS focused: the card row and FILES do not yield, PORTS shows its cursor row", (rows) => {
+    const foc = texts(drawShell(input({ cols: 80, rows, ui: ui({ focus: "ports" }) })));
+    const rest = texts(drawShell(input({ cols: 80, rows, ui: ui({ focus: "agents" }) })));
+    expect(foc.slice(3, 12)).toEqual(rest.slice(3, 12));
+    const p = rowOf(foc, (s) => s.includes("▐PORTS▌"));
+    expect(p).toBeGreaterThan(11);
+    expect(foc.slice(p + 1).some((s) => s.includes("❯ :3000"))).toBe(true);
+  });
+});
