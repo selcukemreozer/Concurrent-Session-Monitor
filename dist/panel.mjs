@@ -37002,189 +37002,14 @@ function fmtUptime(startMs, now) {
   return `${h}h ${m % 60}m`;
 }
 
-// src/ports.ts
+// src/phases.ts
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-var pexec = promisify(execFile);
-var APPLE_AGENT_DENYLIST = /* @__PURE__ */ new Set([
-  "rapportd",
-  "ControlCenter",
-  "sharingd",
-  "AirPlayXPCHelper",
-  "identityservicesd",
-  "remoted"
-]);
-function parseLsofF(stdout) {
-  const out = [];
-  let pid = 0;
-  let command = "";
-  let login = "";
-  for (const line of stdout.split("\n")) {
-    if (line === "") continue;
-    const tag = line[0];
-    const val = line.slice(1);
-    if (tag === "p") {
-      pid = Number(val) || 0;
-      command = "";
-      login = "";
-    } else if (tag === "c") {
-      command = val;
-    } else if (tag === "L") {
-      login = val;
-    } else if (tag === "n") {
-      out.push({ pid, command, login, name: val });
-    }
-  }
-  return out;
-}
-function parsePpidMap(stdout) {
-  const m = /* @__PURE__ */ new Map();
-  const lines = stdout.split("\n");
-  for (let i = 1; i < lines.length; i++) {
-    const t = lines[i].trim().split(/\s+/);
-    if (t.length < 2) continue;
-    const pid = Number(t[0]);
-    const ppid = Number(t[1]);
-    if (Number.isInteger(pid) && Number.isInteger(ppid)) m.set(pid, ppid);
-  }
-  return m;
-}
-var PS_LINE = /^\s*(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/;
-function parsePsSnapshot(stdout) {
-  const m = /* @__PURE__ */ new Map();
-  for (const line of stdout.split("\n")) {
-    const mm = PS_LINE.exec(line);
-    if (!mm) continue;
-    const pid = Number(mm[1]);
-    const ppid = Number(mm[2]);
-    if (!Number.isInteger(pid) || !Number.isInteger(ppid)) continue;
-    m.set(pid, { ppid, tty: mm[3], command: mm[4].trimEnd() });
-  }
-  return m;
-}
-function isWarpCommand(cmd) {
-  return cmd.includes("/Warp.app/");
-}
-function isRealTty(t) {
-  return typeof t === "string" && t !== "" && t !== "??" && t !== "-";
-}
-function classifyOrigin(chain, procs) {
-  if (chain.length === 0) return { origin: "other" };
-  const self = procs.get(chain[0]);
-  if (self && isWarpCommand(self.command)) return { origin: "other" };
-  const warpAncestor = chain.slice(1).some((pid) => {
-    const p = procs.get(pid);
-    return p !== void 0 && isWarpCommand(p.command);
-  });
-  if (!warpAncestor) return { origin: "other" };
-  for (const pid of chain) {
-    const t = procs.get(pid)?.tty;
-    if (isRealTty(t)) return { origin: "warp", tty: t };
-  }
-  return { origin: "warp" };
-}
-function ancestryChain(pid, ppid) {
-  const chain = [];
-  const seen = /* @__PURE__ */ new Set();
-  let cur = pid;
-  while (cur !== void 0 && cur > 1 && !seen.has(cur)) {
-    chain.push(cur);
-    seen.add(cur);
-    cur = ppid.get(cur);
-  }
-  return chain;
-}
-function splitHostPort(name) {
-  if (name.startsWith("[")) {
-    const rb = name.lastIndexOf("]");
-    const host = name.slice(1, rb);
-    const port = Number(name.slice(rb + 2));
-    return { host, port };
-  }
-  const c = name.lastIndexOf(":");
-  return { host: name.slice(0, c), port: Number(name.slice(c + 1)) };
-}
-var LOCAL_HOSTS = /* @__PURE__ */ new Set(["127.0.0.1", "::1", "localhost"]);
-function isExposed(host) {
-  if (host === "*" || host === "0.0.0.0" || host === "::") return true;
-  if (LOCAL_HOSTS.has(host)) return false;
-  if (host.startsWith("127.")) return false;
-  return true;
-}
-function livePidMap(rows) {
-  const m = /* @__PURE__ */ new Map();
-  for (const r of rows) {
-    if (r.alive && !r.readyToPrune && typeof r.pid === "number") m.set(r.pid, r);
-  }
-  return m;
-}
-function attribute(p, live) {
-  for (const pid of p.ancestryPids) {
-    const r = live.get(pid);
-    if (r) return r;
-  }
-  return null;
-}
-function portScanMs() {
-  return numEnv("CSM_PORT_SCAN_MS", 2500);
-}
-async function scanPorts(uid = process.getuid?.()) {
-  let lsofOut = "";
-  let psOut = "";
-  try {
-    const args = ["-nP", "-iTCP", "-sTCP:LISTEN", "-FpcLn"];
-    if (uid !== void 0) args.push("-a", "-u", String(uid));
-    ({ stdout: lsofOut } = await pexec("lsof", args, { timeout: 1500, maxBuffer: 1 << 20 }));
-  } catch {
-    return [];
-  }
-  try {
-    ({ stdout: psOut } = await pexec("ps", ["-axo", "pid,ppid,tty,command"], {
-      timeout: 1500,
-      maxBuffer: 1 << 21
-    }));
-  } catch {
-    psOut = "";
-  }
-  const ppid = parsePpidMap(psOut);
-  const procs = parsePsSnapshot(psOut);
-  const socks = parseLsofF(lsofOut);
-  const byKey = /* @__PURE__ */ new Map();
-  for (const s of socks) {
-    if (APPLE_AGENT_DENYLIST.has(s.command)) continue;
-    const { host, port } = splitHostPort(s.name);
-    if (!Number.isInteger(port)) continue;
-    const key = `${port} ${s.pid}`;
-    const exposed = isExposed(host);
-    const prev = byKey.get(key);
-    if (prev) {
-      prev.exposed = prev.exposed || exposed;
-      continue;
-    }
-    const chain = ancestryChain(s.pid, ppid);
-    const { origin, tty: tty3 } = classifyOrigin(chain, procs);
-    const entry = {
-      port,
-      pid: s.pid,
-      command: s.command,
-      exposed,
-      ancestryPids: chain,
-      origin
-    };
-    if (tty3 !== void 0) entry.tty = tty3;
-    byKey.set(key, entry);
-  }
-  return [...byKey.values()];
-}
-
-// src/phases.ts
-import { execFile as execFile2 } from "node:child_process";
-import { promisify as promisify2 } from "node:util";
 import { existsSync } from "node:fs";
 import { access } from "node:fs/promises";
 import * as os3 from "node:os";
 import * as path2 from "node:path";
-var pexec2 = promisify2(execFile2);
+var pexec = promisify(execFile);
 var FAZLAR_VISIBLE_ROWS = 15;
 function phaseScanMs() {
   return numEnv("CSM_PHASE_SCAN_MS", 4e3);
@@ -37257,7 +37082,7 @@ function resolveGsdTools(cwd2 = process.cwd()) {
 async function scanProgress(root, gsdTools) {
   let progress;
   try {
-    const { stdout } = await pexec2("node", [gsdTools, "query", "progress", "--cwd", root], {
+    const { stdout } = await pexec("node", [gsdTools, "query", "progress", "--cwd", root], {
       timeout: 1500,
       maxBuffer: 1 << 20
     });
@@ -37267,7 +37092,7 @@ async function scanProgress(root, gsdTools) {
   }
   if (progress === null) return null;
   try {
-    const { stdout } = await pexec2(
+    const { stdout } = await pexec(
       "node",
       [gsdTools, "query", "roadmap.analyze", "--cwd", root],
       { timeout: 1500, maxBuffer: 1 << 20 }
@@ -38113,15 +37938,182 @@ var EXPOSED_GLYPH = "\u21C5";
 var PORT_CURSOR_GLYPH = "\u276F";
 var CURRENT_GLYPH = "\u25B8";
 
-// src/panel/Card.tsx
-var import_jsx_runtime = __toESM(require_jsx_runtime(), 1);
-var ESC3 = String.fromCharCode(27);
-var ST = ESC3 + "\\";
-function osc8(url, label2) {
-  const u = sanitize(url);
-  const l = sanitize(label2);
-  return `${ESC3}]8;;${u}${ST}${l}${ESC3}]8;;${ST}`;
+// src/ports.ts
+import { execFile as execFile2 } from "node:child_process";
+import { promisify as promisify2 } from "node:util";
+var pexec2 = promisify2(execFile2);
+var APPLE_AGENT_DENYLIST = /* @__PURE__ */ new Set([
+  "rapportd",
+  "ControlCenter",
+  "sharingd",
+  "AirPlayXPCHelper",
+  "identityservicesd",
+  "remoted"
+]);
+function parseLsofF(stdout) {
+  const out = [];
+  let pid = 0;
+  let command = "";
+  let login = "";
+  for (const line of stdout.split("\n")) {
+    if (line === "") continue;
+    const tag = line[0];
+    const val = line.slice(1);
+    if (tag === "p") {
+      pid = Number(val) || 0;
+      command = "";
+      login = "";
+    } else if (tag === "c") {
+      command = val;
+    } else if (tag === "L") {
+      login = val;
+    } else if (tag === "n") {
+      out.push({ pid, command, login, name: val });
+    }
+  }
+  return out;
 }
+function parsePpidMap(stdout) {
+  const m = /* @__PURE__ */ new Map();
+  const lines = stdout.split("\n");
+  for (let i = 1; i < lines.length; i++) {
+    const t = lines[i].trim().split(/\s+/);
+    if (t.length < 2) continue;
+    const pid = Number(t[0]);
+    const ppid = Number(t[1]);
+    if (Number.isInteger(pid) && Number.isInteger(ppid)) m.set(pid, ppid);
+  }
+  return m;
+}
+var PS_LINE = /^\s*(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/;
+function parsePsSnapshot(stdout) {
+  const m = /* @__PURE__ */ new Map();
+  for (const line of stdout.split("\n")) {
+    const mm = PS_LINE.exec(line);
+    if (!mm) continue;
+    const pid = Number(mm[1]);
+    const ppid = Number(mm[2]);
+    if (!Number.isInteger(pid) || !Number.isInteger(ppid)) continue;
+    m.set(pid, { ppid, tty: mm[3], command: mm[4].trimEnd() });
+  }
+  return m;
+}
+function isWarpCommand(cmd) {
+  return cmd.includes("/Warp.app/");
+}
+function isRealTty(t) {
+  return typeof t === "string" && t !== "" && t !== "??" && t !== "-";
+}
+function classifyOrigin(chain, procs) {
+  if (chain.length === 0) return { origin: "other" };
+  const self = procs.get(chain[0]);
+  if (self && isWarpCommand(self.command)) return { origin: "other" };
+  const warpAncestor = chain.slice(1).some((pid) => {
+    const p = procs.get(pid);
+    return p !== void 0 && isWarpCommand(p.command);
+  });
+  if (!warpAncestor) return { origin: "other" };
+  for (const pid of chain) {
+    const t = procs.get(pid)?.tty;
+    if (isRealTty(t)) return { origin: "warp", tty: t };
+  }
+  return { origin: "warp" };
+}
+function ancestryChain(pid, ppid) {
+  const chain = [];
+  const seen = /* @__PURE__ */ new Set();
+  let cur = pid;
+  while (cur !== void 0 && cur > 1 && !seen.has(cur)) {
+    chain.push(cur);
+    seen.add(cur);
+    cur = ppid.get(cur);
+  }
+  return chain;
+}
+function splitHostPort(name) {
+  if (name.startsWith("[")) {
+    const rb = name.lastIndexOf("]");
+    const host = name.slice(1, rb);
+    const port = Number(name.slice(rb + 2));
+    return { host, port };
+  }
+  const c = name.lastIndexOf(":");
+  return { host: name.slice(0, c), port: Number(name.slice(c + 1)) };
+}
+var LOCAL_HOSTS = /* @__PURE__ */ new Set(["127.0.0.1", "::1", "localhost"]);
+function isExposed(host) {
+  if (host === "*" || host === "0.0.0.0" || host === "::") return true;
+  if (LOCAL_HOSTS.has(host)) return false;
+  if (host.startsWith("127.")) return false;
+  return true;
+}
+function livePidMap(rows) {
+  const m = /* @__PURE__ */ new Map();
+  for (const r of rows) {
+    if (r.alive && !r.readyToPrune && typeof r.pid === "number") m.set(r.pid, r);
+  }
+  return m;
+}
+function attribute(p, live) {
+  for (const pid of p.ancestryPids) {
+    const r = live.get(pid);
+    if (r) return r;
+  }
+  return null;
+}
+function portScanMs() {
+  return numEnv("CSM_PORT_SCAN_MS", 2500);
+}
+async function scanPorts(uid = process.getuid?.()) {
+  let lsofOut = "";
+  let psOut = "";
+  try {
+    const args = ["-nP", "-iTCP", "-sTCP:LISTEN", "-FpcLn"];
+    if (uid !== void 0) args.push("-a", "-u", String(uid));
+    ({ stdout: lsofOut } = await pexec2("lsof", args, { timeout: 1500, maxBuffer: 1 << 20 }));
+  } catch {
+    return [];
+  }
+  try {
+    ({ stdout: psOut } = await pexec2("ps", ["-axo", "pid,ppid,tty,command"], {
+      timeout: 1500,
+      maxBuffer: 1 << 21
+    }));
+  } catch {
+    psOut = "";
+  }
+  const ppid = parsePpidMap(psOut);
+  const procs = parsePsSnapshot(psOut);
+  const socks = parseLsofF(lsofOut);
+  const byKey = /* @__PURE__ */ new Map();
+  for (const s of socks) {
+    if (APPLE_AGENT_DENYLIST.has(s.command)) continue;
+    const { host, port } = splitHostPort(s.name);
+    if (!Number.isInteger(port)) continue;
+    const key = `${port} ${s.pid}`;
+    const exposed = isExposed(host);
+    const prev = byKey.get(key);
+    if (prev) {
+      prev.exposed = prev.exposed || exposed;
+      continue;
+    }
+    const chain = ancestryChain(s.pid, ppid);
+    const { origin, tty: tty3 } = classifyOrigin(chain, procs);
+    const entry = {
+      port,
+      pid: s.pid,
+      command: s.command,
+      exposed,
+      ancestryPids: chain,
+      origin
+    };
+    if (tty3 !== void 0) entry.tty = tty3;
+    byKey.set(key, entry);
+  }
+  return [...byKey.values()];
+}
+
+// src/panel/ui/rowModels.ts
 function dotColor(dotState) {
   switch (dotState) {
     case "active":
@@ -38131,6 +38123,56 @@ function dotColor(dotState) {
     default:
       return "grey";
   }
+}
+var PORTS_CAP = 12;
+var WARP_HEADING = "Warp'ta ba\u015Flatt\u0131n";
+var OTHER_HEADING = "Di\u011Fer";
+function portHeading(folder, branch, session_id, intent, title) {
+  const b = sanitize(branch) || "\u2014";
+  const id = sanitize(String(session_id).slice(0, 8));
+  const base = `${labelLead({ title, folder })} \xB7 ${b} \xB7 ${id}`;
+  return typeof intent === "string" && intent.length > 0 ? `${base} ${INTENT_GLYPH} ${sanitize(intent)}` : base;
+}
+function groupPorts(ports, rows) {
+  const live = livePidMap(rows);
+  const sessionGroups = /* @__PURE__ */ new Map();
+  const warp = [];
+  const other = [];
+  for (const p of ports) {
+    const row = attribute(p, live);
+    if (row === null) {
+      (p.origin === "warp" ? warp : other).push(p);
+      continue;
+    }
+    let g = sessionGroups.get(row.session_id);
+    if (!g) {
+      g = {
+        key: row.session_id,
+        heading: portHeading(row.folder, row.branch, row.session_id, row.intent, row.title),
+        ports: []
+      };
+      sessionGroups.set(row.session_id, g);
+    }
+    g.ports.push(p);
+  }
+  const groups = [...sessionGroups.values()];
+  if (warp.length > 0) groups.push({ key: " warp", heading: WARP_HEADING, ports: warp });
+  if (other.length > 0) groups.push({ key: " other", heading: OTHER_HEADING, ports: other });
+  return groups;
+}
+function confirmPrompt(c) {
+  const head = c.signal === "SIGKILL" ? "kill SIGKILL :" : "kill :";
+  return `${head}${sanitize(String(c.port))} ${sanitize(c.command)} (pid ${sanitize(String(c.pid))})? y/n`;
+}
+
+// src/panel/Card.tsx
+var import_jsx_runtime = __toESM(require_jsx_runtime(), 1);
+var ESC3 = String.fromCharCode(27);
+var ST = ESC3 + "\\";
+function osc8(url, label2) {
+  const u = sanitize(url);
+  const l = sanitize(label2);
+  return `${ESC3}]8;;${u}${ST}${l}${ESC3}]8;;${ST}`;
 }
 function modelLabel(model) {
   return sanitize(model && model !== "unknown" ? model : "\u2014");
@@ -38258,46 +38300,6 @@ function ConflictBand({ conflicts }) {
     shown.map((c) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "red", children: `${WARN} ${sanitize(basename3(c.realpath))}  ${c.sessions.map(label).join(JOIN)}` }, c.realpath)),
     more > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "red", dimColor: true, children: `  +${more} more` }) : null
   ] });
-}
-var PORTS_CAP = 12;
-var WARP_HEADING = "Warp'ta ba\u015Flatt\u0131n";
-var OTHER_HEADING = "Di\u011Fer";
-function portHeading(folder, branch, session_id, intent, title) {
-  const b = sanitize(branch) || "\u2014";
-  const id = sanitize(String(session_id).slice(0, 8));
-  const base = `${labelLead({ title, folder })} \xB7 ${b} \xB7 ${id}`;
-  return typeof intent === "string" && intent.length > 0 ? `${base} ${INTENT_GLYPH} ${sanitize(intent)}` : base;
-}
-function groupPorts(ports, rows) {
-  const live = livePidMap(rows);
-  const sessionGroups = /* @__PURE__ */ new Map();
-  const warp = [];
-  const other = [];
-  for (const p of ports) {
-    const row = attribute(p, live);
-    if (row === null) {
-      (p.origin === "warp" ? warp : other).push(p);
-      continue;
-    }
-    let g = sessionGroups.get(row.session_id);
-    if (!g) {
-      g = {
-        key: row.session_id,
-        heading: portHeading(row.folder, row.branch, row.session_id, row.intent, row.title),
-        ports: []
-      };
-      sessionGroups.set(row.session_id, g);
-    }
-    g.ports.push(p);
-  }
-  const groups = [...sessionGroups.values()];
-  if (warp.length > 0) groups.push({ key: " warp", heading: WARP_HEADING, ports: warp });
-  if (other.length > 0) groups.push({ key: " other", heading: OTHER_HEADING, ports: other });
-  return groups;
-}
-function confirmPrompt(c) {
-  const head = c.signal === "SIGKILL" ? "kill SIGKILL :" : "kill :";
-  return `${head}${sanitize(String(c.port))} ${sanitize(c.command)} (pid ${sanitize(String(c.pid))})? y/n`;
 }
 function PortRow({
   p,
