@@ -46,3 +46,61 @@ describe("committed bundle freshness (INV-2)", () => {
     ).toBe(true);
   }, 60000);
 });
+
+// React production build (261020-wr6): scripts/build.mjs once had no
+// process.env.NODE_ENV define, so React's CJS entry points (react,
+// react/jsx-runtime, react-reconciler, scheduler) chose their development build
+// at RUNTIME — and since the launcher never sets NODE_ENV, every installed panel
+// ran dev React. In 1.6.1 the dev reconciler's performance.measure ("Performance
+// Tracks") entries were never cleared, so a long-running panel hit
+// MaxPerformanceEntryBufferExceededWarning (1,000,001 entries) and grew without
+// bound (1.1 GB RSS after 3h36m). The fix is the esbuild define in
+// scripts/build.mjs. These tests read the COMMITTED bundle; together with the
+// INV-2 byte-diff above (which re-runs build.mjs) they lock the define and the
+// committed bundle in step: dropping the define, or committing a bundle built
+// without it, fails the suite.
+//
+// Assertions match esbuild's non-minified module-boundary comments
+// (`// node_modules/<path>`) and literal API names — never minified identifiers.
+
+function countLiteral(haystack: string, needle: string): number {
+  return haystack.split(needle).length - 1;
+}
+
+const FIX_HINT =
+  "check the process.env.NODE_ENV define in scripts/build.mjs and run `npm run build`";
+
+describe("committed bundle uses React's production build (261020-wr6)", () => {
+  const bundle = readFileSync(COMMITTED, "utf8");
+
+  it("bundles no *.development.js module from node_modules", () => {
+    const devModules =
+      bundle.match(/^\/\/ node_modules\/\S+\.development\.js$/gm) ?? [];
+    expect(devModules, `dev React modules are bundled — ${FIX_HINT}`).toEqual(
+      [],
+    );
+  });
+
+  it("bundles the production react and react-reconciler modules", () => {
+    for (const mod of [
+      "node_modules/react-reconciler/cjs/react-reconciler.production.js",
+      "node_modules/react/cjs/react.production.js",
+    ]) {
+      expect(
+        bundle.split("\n").includes(`// ${mod}`),
+        `missing production module ${mod} — ${FIX_HINT}`,
+      ).toBe(true);
+    }
+  });
+
+  it("has no performance.measure call sites and no runtime NODE_ENV switch", () => {
+    expect(
+      countLiteral(bundle, "performance.measure("),
+      `performance.measure( call sites leak perf_hooks entries — ${FIX_HINT}`,
+    ).toBe(0);
+    expect(
+      countLiteral(bundle, "process.env.NODE_ENV"),
+      `runtime NODE_ENV switch left in the bundle — ${FIX_HINT}`,
+    ).toBe(0);
+  });
+});
