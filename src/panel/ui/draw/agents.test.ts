@@ -427,11 +427,37 @@ describe("drawAgentsPane: clipping by whole card rows (D-08)", () => {
       for (const cardCols of [1, 2, 3]) {
         const scr = new Screen(175, 60);
         const res = drawAgentsPane(scr, { x: 0, y: 0, w: 96, h }, { ...PANE, cardCols });
-        // below one card row + spacer the down row lands in the caller's spacer row
-        expect(res.rows).toBeLessThanOrEqual(Math.max(h, 9));
+        expect(res.rows).toBeLessThanOrEqual(h);
         for (let y = 0; y < 60; y++) expect(text(scr, y, 96)).toBe("");
       }
     }
+  });
+
+  it("never draws below the rect at any height (09-09 rect clip)", () => {
+    for (let h = 1; h <= 30; h++) {
+      for (const firstRow of [0, 1]) {
+        const scr = new Screen(175, 60);
+        const res = drawAgentsPane(scr, { x: 0, y: 5, w: 96, h }, { ...PANE, firstRow });
+        expect(res.rows).toBeLessThanOrEqual(h);
+        for (let y = 5 + h; y < 60; y++) expect(text(scr, y)).toBe("");
+      }
+    }
+  });
+
+  it("draws one card row without the down row when only 8 rows fit", () => {
+    const scr = new Screen(175, 40);
+    const res = drawAgentsPane(scr, { x: 0, y: 2, w: 96, h: 8 }, PANE);
+    expect(res).toEqual({ rows: 8, moreBelow: 6 });
+    expect(text(scr, 3, 0, 96)).toBe(cut(FRAME_AGENTS[1] as string, 0, 96));
+    for (let y = 10; y < 40; y++) expect(text(scr, y)).toBe("");
+  });
+
+  it("draws only the down row when no card row fits", () => {
+    const scr = new Screen(175, 40);
+    const res = drawAgentsPane(scr, { x: 0, y: 2, w: 96, h: 5 }, PANE);
+    expect(res).toEqual({ rows: 2, moreBelow: 8 });
+    expect(text(scr, 3)).toBe("  ↓ 8 more");
+    for (let y = 4; y < 40; y++) expect(text(scr, y)).toBe("");
   });
 });
 

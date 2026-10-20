@@ -199,9 +199,12 @@ function sumItems(slots: readonly Slot[], from: number, to: number): number {
  * row). Clipping, with `available = r.h - 1` (minus 1 more for the `up` row):
  * when every remaining card row fits (`rows*8 - 1 <= available`) all are
  * drawn; otherwise `max(1, floor(available / 8))` card rows are drawn and the
- * `down` row takes the spacer after them. The caller places FILES directly
- * after `rows` when `moreBelow > 0`, else after `rows + 1`. Below one card row
- * plus its spacer the `down` row lands in the caller's spacer row.
+ * `down` row takes the spacer after them. Nothing is ever drawn outside `r`
+ * and `rows <= r.h` always (09-09 rect clip): with room for one card row but
+ * not its `down` row (h = 8) the card row is drawn and the `down` row is
+ * omitted (`moreBelow` still counts the hidden items); with less than one card
+ * row only the `down` row is drawn. The shell places FILES after `rows`, plus
+ * one spacer row when `rows < r.h`.
  */
 export function drawAgentsPane(
   scr: Screen,
@@ -249,13 +252,28 @@ export function drawAgentsPane(
 
   const fr = Number.isFinite(m.firstRow) ? Math.trunc(m.firstRow) : 0;
   const first = Math.min(Math.max(0, fr), Math.max(0, cardRows - 1));
-  const up = first > 0;
+  // the `up` row needs a row under the title inside the rect (09-09 rect clip)
+  const up = first > 0 && r.h >= 2;
   const available = r.h - 1 - (up ? 1 : 0);
   const remaining = cardRows - first;
-  const k =
-    remaining * CARD_PITCH_Y - 1 <= available
-      ? remaining
-      : Math.min(remaining, Math.max(1, Math.floor(available / CARD_PITCH_Y)));
+  // Rect clip (09-09): every row drawn lies inside r. When all remaining card
+  // rows fit they are all drawn; otherwise as many whole card rows as leave
+  // room for the `down` row. If not even one card row + the `down` row fits,
+  // one card row is still drawn when it fits on its own (the `down` row is
+  // then omitted); below that only the `down` row is drawn.
+  let k: number;
+  let downRow = true;
+  if (remaining * CARD_PITCH_Y - 1 <= available) {
+    k = remaining;
+  } else {
+    k = Math.min(remaining, Math.floor(available / CARD_PITCH_Y));
+    if (k === 0 && available >= CARD_H) {
+      k = 1;
+      downRow = false;
+    } else if (k === 0 && available < 1) {
+      downRow = false;
+    }
+  }
   const above = sumItems(slots, 0, first * cols);
   const below = sumItems(slots, (first + k) * cols, slots.length);
 
@@ -286,10 +304,11 @@ export function drawAgentsPane(
     }
   }
 
-  let rows = 1 + (up ? 1 : 0) + k * CARD_PITCH_Y - 1;
-  if (below > 0) {
-    scr.put(r.x + 2, gy + k * CARD_PITCH_Y - 1, `${V2.down} ${below} more`, dimSt);
-    rows += 1;
+  let rows = 1 + (up ? 1 : 0) + Math.max(0, k * CARD_PITCH_Y - 1);
+  if (below > 0 && downRow) {
+    const dy = k > 0 ? gy + k * CARD_PITCH_Y - 1 : gy;
+    scr.put(r.x + 2, dy, `${V2.down} ${below} more`, dimSt);
+    rows = dy - r.y + 1;
   }
-  return { rows, moreBelow: below };
+  return { rows: Math.min(rows, r.h), moreBelow: below };
 }

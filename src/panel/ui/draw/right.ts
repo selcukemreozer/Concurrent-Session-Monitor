@@ -95,6 +95,7 @@ export function drawRightColumn(scr: Screen, r: Rect, m: RightColumnModel): { en
     },
   );
 
-  const end = portsRows > 0 ? portsY + portsRows - 1 : Math.max(r.y, bodyEnd);
+  // `end` never points past the rect (09-09: tiny rects where the body gets 0 rows).
+  const end = Math.min(bottom - 1, portsRows > 0 ? portsY + portsRows - 1 : Math.max(r.y, bodyEnd));
   return { end, portsY };
 }
