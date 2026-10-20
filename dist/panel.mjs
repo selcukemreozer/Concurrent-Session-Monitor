@@ -38094,10 +38094,7 @@ function followOffset(idx, offset, total, visible) {
   return clampOffset(next, total, visible);
 }
 
-// src/panel/Card.tsx
-var import_jsx_runtime = __toESM(require_jsx_runtime(), 1);
-var ESC3 = String.fromCharCode(27);
-var ST = ESC3 + "\\";
+// src/panel/ui/glyphs.ts
 var DOT = "\u25CF";
 var READ_GLYPH = "\u25C7";
 var READ_COLOR = "blue";
@@ -38110,6 +38107,16 @@ var ATTENTION_GLYPH = "\u25C9";
 var RUN_GLYPH = "\u25B6";
 var SUBAGENT_GLYPH = "\u21BB";
 var SUBAGENT_COLOR = "#40E0D0";
+var WARN = "\u26A0";
+var JOIN = " \u2194 ";
+var EXPOSED_GLYPH = "\u21C5";
+var PORT_CURSOR_GLYPH = "\u276F";
+var CURRENT_GLYPH = "\u25B8";
+
+// src/panel/Card.tsx
+var import_jsx_runtime = __toESM(require_jsx_runtime(), 1);
+var ESC3 = String.fromCharCode(27);
+var ST = ESC3 + "\\";
 function osc8(url, label2) {
   const u = sanitize(url);
   const l = sanitize(label2);
@@ -38233,8 +38240,6 @@ function CompactRow({ s }) {
     String(s.files.length) + "f"
   ] });
 }
-var WARN = "\u26A0";
-var JOIN = " \u2194 ";
 var CONFLICT_CAP = 5;
 function basename3(rp) {
   const parts = String(rp).split("/");
@@ -38254,11 +38259,9 @@ function ConflictBand({ conflicts }) {
     more > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: "red", dimColor: true, children: `  +${more} more` }) : null
   ] });
 }
-var EXPOSED_GLYPH = "\u21C5";
 var PORTS_CAP = 12;
 var WARP_HEADING = "Warp'ta ba\u015Flatt\u0131n";
 var OTHER_HEADING = "Di\u011Fer";
-var PORT_CURSOR_GLYPH = "\u276F";
 function portHeading(folder, branch, session_id, intent, title) {
   const b = sanitize(branch) || "\u2014";
   const id = sanitize(String(session_id).slice(0, 8));
@@ -38369,7 +38372,6 @@ function PortsPane({
     statusLine
   ] });
 }
-var CURRENT_GLYPH = "\u25B8";
 function phaseComplete(p) {
   return p.status === "Complete" || p.plans > 0 && p.summaries >= p.plans;
 }
