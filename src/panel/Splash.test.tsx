@@ -67,3 +67,55 @@ describe("Splash (csm launch emblem)", () => {
     expect(colors).not.toContain("cyan");
   });
 });
+
+/** True when any element in the tree carries a truthy Ink faint attribute prop. */
+function hasFaint(node: React.ReactNode): boolean {
+  if (Array.isArray(node)) return node.some((n) => hasFaint(n));
+  if (!node || typeof node !== "object") return false;
+  const el = node as React.ReactElement<Record<string, unknown> & { children?: React.ReactNode }>;
+  if (!el.props) return false;
+  if (el.props["dimColor"]) return true;
+  return hasFaint(el.props.children);
+}
+
+describe("Splash v2 palette (Phase 9 plan 09-13, D-22)", () => {
+  it("recolors the emblem, wordmark and tagline with the v2 tokens", () => {
+    const colors = collectColors(Splash({ palette: "v2" }));
+    expect(colors).toContain("#E8C24A");
+    expect(colors).toContain("#f5f3ec");
+    expect(colors).toContain("#85827a");
+    expect(colors).not.toContain("green");
+  });
+
+  it("never uses the faint attribute", () => {
+    expect(hasFaint(Splash({ palette: "v2" }))).toBe(false);
+  });
+
+  it("the default stays the legacy green splash with the faint tagline", () => {
+    expect(collectColors(Splash())).toEqual(["green", "green", "green"]);
+    expect(hasFaint(Splash())).toBe(true);
+    expect(collectColors(Splash({ palette: "legacy" }))).toEqual(["green", "green", "green"]);
+  });
+
+  it("the v2 splash renders the same wordmark and tagline text", () => {
+    let buf = "";
+    const out = new Writable({
+      write(c, _e, cb) {
+        buf += c.toString();
+        cb();
+      },
+    }) as unknown as NodeJS.WriteStream;
+    (out as unknown as { columns: number }).columns = 80;
+    (out as unknown as { rows: number }).rows = 24;
+    const inst = render(React.createElement(Splash, { palette: "v2" }), {
+      stdout: out,
+      debug: true,
+      patchConsole: false,
+      exitOnCtrlC: false,
+    });
+    expect(buf).toContain("CONCURRENT · SESSION · MONITOR");
+    expect(buf).toContain("the watch never sleeps");
+    expect(buf).toContain("((•))");
+    inst.unmount();
+  });
+});

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import React from "react";
 import { render } from "ink";
 import { Writable } from "node:stream";
@@ -12,6 +12,14 @@ vi.mock("./App.js", async () => {
   const ReactMod = await import("react");
   const { Text } = await import("ink");
   return { App: () => ReactMod.createElement(Text, null, "PANEL_STUB") };
+});
+
+// Phase 9 plan 09-13: the v2 root is stubbed the same way, so the variant
+// switch is observable without mounting the real PanelApp (store hooks, timers).
+vi.mock("./PanelApp.js", async () => {
+  const ReactMod = await import("react");
+  const { Text } = await import("ink");
+  return { PanelApp: () => ReactMod.createElement(Text, null, "V2_STUB") };
 });
 
 import { Root } from "./Root.js";
@@ -64,6 +72,76 @@ describe("Root (csm splash → panel switch)", () => {
     await sleep(150);
     expect(frame()).toContain("PANEL_STUB");
     expect(frame()).not.toContain("CONCURRENT");
+    inst.unmount();
+  });
+});
+
+describe("Root CSM_UI variant switch (Phase 9 plan 09-13, D-22/D-23)", () => {
+  const saved = process.env.CSM_UI;
+  afterEach(() => {
+    if (saved === undefined) delete process.env.CSM_UI;
+    else process.env.CSM_UI = saved;
+  });
+
+  /** Set CSM_UI for one case; `undefined` removes it. */
+  function setEnv(value: string | undefined): void {
+    if (value === undefined) delete process.env.CSM_UI;
+    else process.env.CSM_UI = value;
+  }
+
+  it("the legacy variant prop renders the 1.6.x App", () => {
+    setEnv("v2");
+    const { inst, frame } = renderCapture(<Root enableSplash={false} variant="legacy" />);
+    expect(frame()).toContain("PANEL_STUB");
+    expect(frame()).not.toContain("V2_STUB");
+    inst.unmount();
+  });
+
+  it.each([
+    ["unset", undefined],
+    ["v1", "v1"],
+    ["legacy", "legacy"],
+    ["V2", "V2"],
+    ["empty string", ""],
+  ] as const)("CSM_UI %s keeps the 1.6.x App", (_label, value) => {
+    setEnv(value);
+    const { inst, frame } = renderCapture(<Root enableSplash={false} />);
+    expect(frame()).toContain("PANEL_STUB");
+    expect(frame()).not.toContain("V2_STUB");
+    inst.unmount();
+  });
+
+  it.each([
+    ["v2", "v2"],
+    ["' v2 ' (trimmed)", " v2 "],
+  ] as const)("CSM_UI %s opens the v2 shell", (_label, value) => {
+    setEnv(value);
+    const { inst, frame } = renderCapture(<Root enableSplash={false} />);
+    expect(frame()).toContain("V2_STUB");
+    expect(frame()).not.toContain("PANEL_STUB");
+    inst.unmount();
+  });
+
+  it("the v2 variant prop opens the v2 shell", () => {
+    setEnv(undefined);
+    const { inst, frame } = renderCapture(<Root enableSplash={false} variant="v2" />);
+    expect(frame()).toContain("V2_STUB");
+    expect(frame()).not.toContain("PANEL_STUB");
+    inst.unmount();
+  });
+
+  it("v2 shows the splash first, then the v2 shell", async () => {
+    setEnv(undefined);
+    const { inst, frame, clear } = renderCapture(
+      <Root enableSplash={true} splashMs={30} variant="v2" />,
+    );
+    expect(frame()).toContain("CONCURRENT");
+    expect(frame()).not.toContain("V2_STUB");
+    clear();
+    await sleep(150);
+    expect(frame()).toContain("V2_STUB");
+    expect(frame()).not.toContain("CONCURRENT");
+    expect(frame()).not.toContain("PANEL_STUB");
     inst.unmount();
   });
 });
