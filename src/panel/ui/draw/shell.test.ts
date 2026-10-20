@@ -195,7 +195,7 @@ describe("drawShell: breakpoints (D-27)", () => {
     const t = texts(lines);
     expect(lines.length).toBeLessThanOrEqual(40);
     // full-width AGENTS with 2 card columns
-    expect(cellWidth(t[2] as string)).toBe(119);
+    expect(cellWidth(t[2] as string)).toBe(120);
     const edge = "▄".repeat(47);
     expect(cut(t[3] as string, 0, 47)).toBe(edge);
     expect(cut(t[3] as string, 49, 47)).toBe(edge);
@@ -215,29 +215,51 @@ describe("drawShell: breakpoints (D-27)", () => {
     for (const s of t) expect(cellWidth(s)).toBeLessThanOrEqual(120);
   });
 
-  it("expands the focused bottom pane at 80x24 (rows from the ticker and the grid)", () => {
-    const measure = (focus: UiState["focus"]): { body: number; t: string[]; n: number; w: number } => {
-      const lines = drawShell(input({ cols: 80, rows: 24, ui: ui({ focus }) }));
-      const t = texts(lines);
-      const tabs = rowOf(t, (s) => s.includes("[r]"));
-      const ports = rowOf(t, (s) => s.includes("PORTS"), tabs + 1);
-      return {
-        body: ports - tabs - 3,
-        t,
-        n: lines.length,
-        w: Math.max(...lines.map((l) => lineWidth(l))),
-      };
+  const measure = (rows: number, focus: UiState["focus"]) => {
+    const lines = drawShell(input({ cols: 80, rows, ui: ui({ focus }) }));
+    const t = texts(lines);
+    const files = rowOf(t, (s) => s.startsWith(" FILES "));
+    const tabs = rowOf(t, (s) => s.includes("[r]"));
+    const ports = rowOf(t, (s) => s.includes("PORTS"), tabs + 1);
+    return {
+      t,
+      files,
+      tabs,
+      // drawn PHASES body rows (tabs, spacer, body..., spacer, PORTS title)
+      body: ports - tabs - 3,
+      // the right column's footprint: tabs row .. the row above the footer spacer
+      right: t.length - 2 - tabs,
+      n: lines.length,
+      w: Math.max(...lines.map((l) => lineWidth(l))),
     };
-    const rest = measure("agents");
-    const foc = measure("right");
-    expect(foc.body).toBeGreaterThanOrEqual(4);
-    expect(foc.body).toBeGreaterThan(rest.body);
+  };
+
+  it("expands the focused bottom pane at 80x24 (rows from the ticker and the grid)", () => {
+    const rest = measure(24, "agents");
+    const foc = measure(24, "right");
+    // the 10-row expanded minimum: tabs + spacer + 4 body rows + spacer + PORTS 3
+    expect(foc.right).toBeGreaterThanOrEqual(10);
+    expect(foc.right).toBeGreaterThan(rest.right);
+    // taken from the FILES ticker (down to 0: title + conflict row only) ...
+    expect(foc.tabs - foc.files).toBe(2);
+    expect(rest.tabs - rest.files).toBeGreaterThan(2);
+    // ... while the grid keeps its one card row
+    expect(foc.t[9]).toContain("└");
     expect(foc.t.some((s) => s.includes("▐PHASES▌"))).toBe(true);
     for (const m of [rest, foc]) {
       expect(m.n).toBeLessThanOrEqual(24);
       expect(m.w).toBeLessThanOrEqual(80);
       expect(m.t[0]).toContain("◆ CSM");
     }
+  });
+
+  it("gives the focused PHASES body at least 4 drawn rows once a phase row fits (80x30)", () => {
+    const rest = measure(30, "agents");
+    const foc = measure(30, "right");
+    expect(foc.body).toBeGreaterThanOrEqual(4);
+    expect(foc.body).toBeGreaterThan(rest.body);
+    expect(foc.n).toBeLessThanOrEqual(30);
+    expect(foc.w).toBeLessThanOrEqual(80);
   });
 
   it("draws the too-small screen below 60x16", () => {
