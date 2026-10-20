@@ -9,7 +9,7 @@ import type { Flash, HeaderModel, PanesModel, Rect } from "../models.js";
 import { drawHeader } from "./header.js";
 import { drawAgentsPane } from "./agents.js";
 import { drawFilesPane } from "./files.js";
-import { drawRightColumn } from "./right.js";
+import { drawRightColumn, FOCUSED_PORTS_FLOOR, FOCUSED_TAB_FLOOR } from "./right.js";
 import { drawFooter } from "./footer.js";
 import { drawTooSmall } from "./tooSmall.js";
 
@@ -52,6 +52,15 @@ import { drawTooSmall } from "./tooSmall.js";
  *              bottom pane that gets focus expands (UI-SPEC: it takes rows
  *              from the FILES ticker, down to 0, and the grid, down to 1 card
  *              row). At 80x24 that is exactly the 10-row expanded minimum.
+ *              When even one card row would leave the focused pane below its
+ *              floor (title + one body row: FOCUSED_TAB_FLOOR for
+ *              PHASES/SESSIONS, FOCUSED_PORTS_FLOOR for PORTS), the unfocused
+ *              AGENTS pane collapses to AGENTS_COLLAPSED rows (title + ↓ N
+ *              more) instead, so the focused pane always draws its inverse
+ *              title and one body row (UI-SPEC Focus model; D-13; 09-16 closes
+ *              09-VERIFICATION SC2 / WR-03). FILES title and conflict rows
+ *              never yield (LAYOUT-03). At the 60x16 floor this always fits:
+ *              12 - 2 - 4 = 6 >= FOCUSED_PORTS_FLOOR.
  *
  * Every pane clips to the rect it is given (09-09 rect clip), so nothing is
  * drawn outside its rect, every line is at most `cols` cells and at most
@@ -94,6 +103,11 @@ const FILES_MAX_H = 10;
 const RIGHT_MIN = 7;
 /** Right column focused: tabs + spacer + 4 body + spacer + PORTS title + 2 rows. */
 const RIGHT_FOCUS_MIN = 10;
+/**
+ * The unfocused AGENTS pane when the grid gives way to a focused bottom pane:
+ * its title + the ↓ N more row drawAgentsPane draws when no card row fits.
+ */
+const AGENTS_COLLAPSED = 2;
 
 interface Measured {
   agents: number;
@@ -211,7 +225,14 @@ export function drawShell(input: ShellInput): Line[] {
     const rh = Math.max(1, total * 4);
     const rNat = drawRightColumn(new Screen(cols, rh), { x: 0, y: 0, w: cols, h: rh }, rightModel(input, 0)).end + 1;
     const rightFocused = input.ui.focus === "right" || input.ui.focus === "ports";
-    const agents: Demand = { id: "agents", min: Math.min(CARD_PITCH_Y, m.agents), max: m.agents, step: CARD_PITCH_Y };
+    // 09-16: the grid keeps its one card row unless that would leave the focused pane below its floor
+    const cardMin = Math.min(CARD_PITCH_Y, m.agents);
+    const focusFloor = Math.min(input.ui.focus === "ports" ? FOCUSED_PORTS_FLOOR : FOCUSED_TAB_FLOOR, rNat);
+    const gridYields = rightFocused && total - cardMin - m.filesHard < focusFloor;
+    const collapsed = Math.min(AGENTS_COLLAPSED, m.agents);
+    const agents: Demand = gridYields
+      ? { id: "agents", min: collapsed, max: collapsed }
+      : { id: "agents", min: cardMin, max: m.agents, step: CARD_PITCH_Y };
     const filesHard: Demand = { id: "filesHard", min: m.filesHard, max: m.filesHard };
     const ticker: Demand = { id: "ticker", min: Math.min(TICKER_MIN, m.filesTicker), max: m.filesTicker };
     const right: Demand = { id: "right", min: Math.min(rightFocused ? RIGHT_FOCUS_MIN : RIGHT_MIN, rNat), max: rNat };

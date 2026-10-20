@@ -25,6 +25,11 @@ import { drawPortsPane } from "./ports.js";
  * The body height is budgeted with `allocate` before drawing: the body keeps
  * at least 3 rows, PORTS keeps its minimum (title + spacer + 1 row) and the
  * body takes the rest, so nothing passes `r.y + r.h - 1` (T-09-14a).
+ * With PORTS focused, the PORTS minimum is served before the body minimum, so
+ * a short column shrinks the unfocused PHASES|SESSIONS body (its tab row
+ * stays) before PORTS loses its first port row (09-16, KEYS-01; UI-SPEC: in
+ * stacked modes the bottom band collapses to its title row(s)). With 9+ rows,
+ * which is every split-mode column, both minimums fit and nothing changes.
  * Returns the last row used (`end`, absolute) and the PORTS title row. Pure.
  */
 
@@ -44,6 +49,10 @@ const CHROME_ROWS = 3;
 const BODY_MIN = 3;
 /** PORTS title + spacer + one row. */
 const PORTS_MIN = 3;
+/** Focused PHASES/SESSIONS floor (09-16, D-13): tabs, spacer, one body row and the spacer row kept above PORTS. */
+export const FOCUSED_TAB_FLOOR = CHROME_ROWS + 1;
+/** Focused PORTS floor (09-16, D-13): tabs, spacer, a 0-row body, spacer, PORTS title + spacer + one port row. */
+export const FOCUSED_PORTS_FLOOR = CHROME_ROWS + PORTS_MIN;
 
 export function drawRightColumn(scr: Screen, r: Rect, m: RightColumnModel): { end: number; portsY: number } {
   const ui = m.ui;
@@ -53,15 +62,11 @@ export function drawRightColumn(scr: Screen, r: Rect, m: RightColumnModel): { en
 
   drawTabs(scr, r.x, r.y, r.w, { active: ui.rightTab, columnFocused: rightFocused, sample: m.sample });
 
+  const portsFocused = ui.focus === "ports";
   const avail = Math.max(0, r.h - CHROME_ROWS);
-  const budget = allocate(
-    avail,
-    [
-      { id: "body", min: BODY_MIN, max: avail },
-      { id: "ports", min: PORTS_MIN, max: PORTS_MIN },
-    ],
-    ["body"],
-  );
+  const body = { id: "body", min: BODY_MIN, max: avail };
+  const ports = { id: "ports", min: PORTS_MIN, max: PORTS_MIN };
+  const budget = allocate(avail, portsFocused ? [ports, body] : [body, ports], ["body"]);
 
   const bodyRect: Rect = { x: r.x, y: r.y + 2, w: r.w, h: budget.body ?? 0 };
   const bodyRows =
@@ -83,7 +88,6 @@ export function drawRightColumn(scr: Screen, r: Rect, m: RightColumnModel): { en
 
   let portsY = Math.max(bodyEnd + 2, Math.trunc(m.portsMinY) || 0);
   if (bottom - portsY < PORTS_MIN) portsY = bodyEnd + 2;
-  const portsFocused = ui.focus === "ports";
   const portsRows = drawPortsPane(
     scr,
     { x: r.x, y: portsY, w: r.w, h: Math.max(0, bottom - portsY) },

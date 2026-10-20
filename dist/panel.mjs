@@ -25206,21 +25206,19 @@ function drawPortsPane(scr, r2, m) {
 var CHROME_ROWS = 3;
 var BODY_MIN = 3;
 var PORTS_MIN = 3;
+var FOCUSED_TAB_FLOOR = CHROME_ROWS + 1;
+var FOCUSED_PORTS_FLOOR = CHROME_ROWS + PORTS_MIN;
 function drawRightColumn(scr, r2, m) {
   const ui = m.ui;
   const rightFocused = ui.focus === "right";
   const bottom = r2.y + r2.h;
   if (r2.w <= 0 || r2.h <= 0) return { end: r2.y - 1, portsY: r2.y };
   drawTabs(scr, r2.x, r2.y, r2.w, { active: ui.rightTab, columnFocused: rightFocused, sample: m.sample });
+  const portsFocused = ui.focus === "ports";
   const avail = Math.max(0, r2.h - CHROME_ROWS);
-  const budget = allocate(
-    avail,
-    [
-      { id: "body", min: BODY_MIN, max: avail },
-      { id: "ports", min: PORTS_MIN, max: PORTS_MIN }
-    ],
-    ["body"]
-  );
+  const body = { id: "body", min: BODY_MIN, max: avail };
+  const ports = { id: "ports", min: PORTS_MIN, max: PORTS_MIN };
+  const budget = allocate(avail, portsFocused ? [ports, body] : [body, ports], ["body"]);
   const bodyRect = { x: r2.x, y: r2.y + 2, w: r2.w, h: budget.body ?? 0 };
   const bodyRows = ui.rightTab === "phases" ? drawPhases(scr, bodyRect, {
     projects: m.projects,
@@ -25237,7 +25235,6 @@ function drawRightColumn(scr, r2, m) {
   const bodyEnd = bodyRect.y + bodyRows - 1;
   let portsY = Math.max(bodyEnd + 2, Math.trunc(m.portsMinY) || 0);
   if (bottom - portsY < PORTS_MIN) portsY = bodyEnd + 2;
-  const portsFocused = ui.focus === "ports";
   const portsRows = drawPortsPane(
     scr,
     { x: r2.x, y: portsY, w: r2.w, h: Math.max(0, bottom - portsY) },
@@ -25335,6 +25332,7 @@ var TICKER_MIN = 3;
 var FILES_MAX_H = 10;
 var RIGHT_MIN = 7;
 var RIGHT_FOCUS_MIN = 10;
+var AGENTS_COLLAPSED = 2;
 function agentsModel(input, cardCols) {
   return {
     agents: input.panes.agents,
@@ -25424,7 +25422,11 @@ function drawShell(input) {
     const rh = Math.max(1, total * 4);
     const rNat = drawRightColumn(new Screen(cols, rh), { x: 0, y: 0, w: cols, h: rh }, rightModel(input, 0)).end + 1;
     const rightFocused = input.ui.focus === "right" || input.ui.focus === "ports";
-    const agents2 = { id: "agents", min: Math.min(CARD_PITCH_Y, m.agents), max: m.agents, step: CARD_PITCH_Y };
+    const cardMin = Math.min(CARD_PITCH_Y, m.agents);
+    const focusFloor = Math.min(input.ui.focus === "ports" ? FOCUSED_PORTS_FLOOR : FOCUSED_TAB_FLOOR, rNat);
+    const gridYields = rightFocused && total - cardMin - m.filesHard < focusFloor;
+    const collapsed = Math.min(AGENTS_COLLAPSED, m.agents);
+    const agents2 = gridYields ? { id: "agents", min: collapsed, max: collapsed } : { id: "agents", min: cardMin, max: m.agents, step: CARD_PITCH_Y };
     const filesHard = { id: "filesHard", min: m.filesHard, max: m.filesHard };
     const ticker = { id: "ticker", min: Math.min(TICKER_MIN, m.filesTicker), max: m.filesTicker };
     const right = { id: "right", min: Math.min(rightFocused ? RIGHT_FOCUS_MIN : RIGHT_MIN, rNat), max: rNat };
