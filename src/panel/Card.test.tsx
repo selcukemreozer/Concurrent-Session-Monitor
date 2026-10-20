@@ -95,7 +95,7 @@ describe("osc8 (D-06 clickable Warp go-to-pane hyperlink)", () => {
   });
 });
 
-describe("SessionCard (D-09 bordered card)", () => {
+describe("legacy-layout: SessionCard (D-09 bordered card)", () => {
   it("is a renderable component export", () => {
     expect(typeof SessionCard).toBe("function");
   });
@@ -109,7 +109,7 @@ describe("dotColor (D-11/D-12 steady 3-state dot mapping)", () => {
   });
 });
 
-describe("SessionCard dot + uptime + model (D-09/D-10/D-11/D-12)", () => {
+describe("legacy-layout: SessionCard dot + uptime + model (D-09/D-10/D-11/D-12)", () => {
   it("renders the filled-circle dot glyph for each dotState", () => {
     for (const state of ["active", "idle", "stale"] as const) {
       const out = renderToString(<SessionCard s={makeRow({ dotState: state })} />);
@@ -153,7 +153,7 @@ describe("SessionCard dot + uptime + model (D-09/D-10/D-11/D-12)", () => {
   });
 });
 
-describe("CompactRow (D-13 one-line overflow row)", () => {
+describe("legacy-layout: CompactRow (D-13 one-line overflow row)", () => {
   it("is a renderable component export", () => {
     expect(typeof CompactRow).toBe("function");
   });
@@ -189,7 +189,7 @@ describe("CompactRow (D-13 one-line overflow row)", () => {
   });
 });
 
-describe("SessionCard read lines (PANEL-06 D-08/D-09/D-10)", () => {
+describe("legacy-layout: SessionCard read lines (PANEL-06 D-08/D-09/D-10)", () => {
   const now = () => new Date().toISOString();
 
   it("renders each read path as `◇ basename | dir` — dir only, never the full path (D-08)", () => {
@@ -308,7 +308,7 @@ describe("SessionCard read lines (PANEL-06 D-08/D-09/D-10)", () => {
   });
 });
 
-describe("SessionCard intent line (PANEL-02 D-10/D-11/D-12)", () => {
+describe("legacy-layout: SessionCard intent line (PANEL-02 D-10/D-11/D-12)", () => {
   const now = () => new Date().toISOString();
   const INTENT_GLYPH = "»"; // U+00BB, the card-only intent marker
 
@@ -419,7 +419,7 @@ describe("SessionCard intent line (PANEL-02 D-10/D-11/D-12)", () => {
   });
 });
 
-describe("SessionCard skill line (SKILL-04/SKILL-02, D-02/D-03/D-04)", () => {
+describe("legacy-layout: SessionCard skill line (SKILL-04/SKILL-02, D-02/D-03/D-04)", () => {
   const now = () => new Date().toISOString();
   const SKILL_GLYPH = "⚙"; // U+2699 — the card-only skill marker
 
@@ -502,7 +502,7 @@ describe("SessionCard skill line (SKILL-04/SKILL-02, D-02/D-03/D-04)", () => {
   });
 });
 
-describe("SessionCard target branch (mismatch flag) (TB-03, D-BR-03/D-BR-05)", () => {
+describe("legacy-layout: SessionCard target branch (mismatch flag) (TB-03, D-BR-03/D-BR-05)", () => {
   const BRANCH_GLYPH = "⎇"; // U+2387 — the declared-target marker
   const NEQ_GLYPH = "≠"; // U+2260 — the mismatch (intent-vs-reality drift) flag
 
@@ -576,7 +576,7 @@ describe("SessionCard target branch (mismatch flag) (TB-03, D-BR-03/D-BR-05)", (
 // carries the literal detail-free label "waiting" (D-02 forbids splitting on
 // type). Both surfaces render nothing when attention is false. These are RED until
 // Card.tsx gains the ATTENTION_GLYPH line + compact token.
-describe("SessionCard + CompactRow attention indicator (ATTN-03, D-01/D-02/D-03)", () => {
+describe("legacy-layout: SessionCard + CompactRow attention indicator (ATTN-03, D-01/D-02/D-03)", () => {
   const ATTENTION_GLYPH = "◉"; // U+25C9 fisheye
 
   it("SessionCard renders the fisheye glyph AND the literal 'waiting' when attention is true", () => {
@@ -606,7 +606,7 @@ describe("SessionCard + CompactRow attention indicator (ATTN-03, D-01/D-02/D-03)
 // yellowBright look. Asking wins when both flags are set (belt-and-braces render
 // guard — the reader already forces attention false). Color cases force
 // chalk.level = 1 inside try/finally (never depend on FORCE_COLOR).
-describe("SessionCard + CompactRow asking indicator (AQ-04)", () => {
+describe("legacy-layout: SessionCard + CompactRow asking indicator (AQ-04)", () => {
   const GLYPH = "◉";
   const MAGENTA = ESC + "[35m";
   const YELLOW_BRIGHT = ESC + "[93m";
@@ -694,7 +694,7 @@ describe("SessionCard + CompactRow asking indicator (AQ-04)", () => {
 // --- Quick task 260927-46l (D-05): "running" (a session working a turn) renders
 // a GREEN border and a green, non-bold "▶ running" line on SessionCard, and a
 // leading green ▶ token on CompactRow. Precedence asking > waiting > running.
-describe("SessionCard + CompactRow running indicator (260927-46l)", () => {
+describe("legacy-layout: SessionCard + CompactRow running indicator (260927-46l)", () => {
   const GREEN = ESC + "[32m";
   const MAGENTA = ESC + "[35m";
   const YELLOW_BRIGHT = ESC + "[93m";
@@ -777,7 +777,7 @@ describe("SessionCard + CompactRow running indicator (260927-46l)", () => {
 // "↻ subagent" line (+ " ×N" when N > 1) with a turquoise border on SessionCard
 // and a leading turquoise ↻ token on CompactRow. Colour assertions run at chalk
 // level 3: at level 1 chalk downsamples #40E0D0 to plain cyan (ESC[36m).
-describe("SessionCard + CompactRow subagent indicator (260927-73b)", () => {
+describe("legacy-layout: SessionCard + CompactRow subagent indicator (260927-73b)", () => {
   const TURQ = ESC + "[38;2;64;224;208m";
   const BOLD = ESC + "[1m";
   const MAGENTA = ESC + "[35m";
@@ -883,7 +883,7 @@ function makeConflict(over: Partial<Conflict> = {}): Conflict {
   };
 }
 
-describe("ConflictBand (PANEL-04 D-06/D-07/D-09/D-10/D-11)", () => {
+describe("legacy-layout: ConflictBand (PANEL-04 D-06/D-07/D-09/D-10/D-11)", () => {
   it("renders nothing (no ⚠) when there are no conflicts (D-07 empty state)", () => {
     const out = renderToString(<ConflictBand conflicts={[]} />);
     expect(out).not.toContain("⚠");
@@ -944,7 +944,7 @@ function makePort(over: Partial<ScannedPort> = {}): ScannedPort {
   };
 }
 
-describe("PortsPane (PORT-05 port pane render)", () => {
+describe("legacy-layout: PortsPane (PORT-05 port pane render)", () => {
   const INTENT_GLYPH = "»"; // U+00BB — the heading intent marker (reused from the card)
 
   it("groups a port under its owning session's folder·branch·shortid heading (port attribution)", () => {
@@ -1210,7 +1210,7 @@ function makeFocus(over: Partial<FocusEntry> = {}): FocusEntry {
   return { root: "/repo/proj", name: "proj", ...over };
 }
 
-describe("PhasesPane (PANEL-07 FAZLAR phase table)", () => {
+describe("legacy-layout: PhasesPane (PANEL-07 FAZLAR phase table)", () => {
   const CURRENT = "▸"; // U+25B8 — the in-progress marker
   // Reserved foreground SGR params MINUS green `[32m`: red/yellow/blue/magenta/
   // cyan/grey. Green is a user-directed relaxation of T-04.2-05b — completed
@@ -1568,7 +1568,7 @@ describe("port grouping helpers (260927-8ge)", () => {
   });
 });
 
-describe("session label — SessionCard + CompactRow (NAME-02, D-06/D-07/D-09)", () => {
+describe("legacy-layout: session label — SessionCard + CompactRow (NAME-02, D-06/D-07/D-09)", () => {
   const E = String.fromCodePoint(0x2026);
   const NAME = "gm calc system migration";
   const RESERVED = ["[35m", "[93m", "[32m", "[34m", "[36m", "[31m"].map((c) => ESC + c);
@@ -1659,7 +1659,7 @@ describe("session label — SessionCard + CompactRow (NAME-02, D-06/D-07/D-09)",
   });
 });
 
-describe("session label — ConflictBand + PortsPane (NAME-02, D-07/D-08)", () => {
+describe("legacy-layout: session label — ConflictBand + PortsPane (NAME-02, D-07/D-08)", () => {
   const E = String.fromCodePoint(0x2026);
 
   it("B1: a named conflict session leads with its name; an unnamed one keeps the folder", () => {
@@ -1760,7 +1760,7 @@ function rid(i: number): string {
   return `${String(i).padStart(8, "0")}-0000-4000-8000-000000000000`;
 }
 
-describe("SessionsPane (OTURUMLAR, Phase 8)", () => {
+describe("legacy-layout: SessionsPane (OTURUMLAR, Phase 8)", () => {
   it("exports the heading, toggle hints and live marker constants", () => {
     expect(SESSIONS_HEADING).toBe("OTURUMLAR");
     expect(SESSIONS_TOGGLE_HINT).toBe("[r: fazlar]");
@@ -1967,7 +1967,7 @@ describe("SessionsPane (OTURUMLAR, Phase 8)", () => {
   });
 });
 
-describe("SessionCard go-to-pane link gating (261017-sbh)", () => {
+describe("legacy-layout: SessionCard go-to-pane link gating (261017-sbh)", () => {
   const VALID = "warp://session/" + HEX32;
   const cardWith = (value: unknown) =>
     renderToString(

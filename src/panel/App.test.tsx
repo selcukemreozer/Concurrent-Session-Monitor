@@ -433,7 +433,7 @@ describe("App grace-then-prune lifecycle (D-05/D-06/D-08, SC-3/SC-4)", () => {
   });
 });
 
-describe("App summary header (D-15)", () => {
+describe("legacy-layout: App summary header (D-15)", () => {
   beforeEach(() => {
     (readAll as unknown as { mockReset: () => void }).mockReset();
     (pruneSession as unknown as { mockReset: () => void }).mockReset();
@@ -460,7 +460,7 @@ describe("App summary header (D-15)", () => {
 // the grace state must never inflate the count nor resurrect a pruned session. The
 // counter is always rendered (colored only when >0) for layout stability. RED
 // until App.tsx adds the nWaiting counter.
-describe("App waiting counter (ATTN-03, D-01 header counter, Pitfall 5)", () => {
+describe("legacy-layout: App waiting counter (ATTN-03, D-01 header counter, Pitfall 5)", () => {
   beforeEach(() => {
     (readAll as unknown as { mockReset: () => void }).mockReset();
     (pruneSession as unknown as { mockReset: () => void }).mockReset();
@@ -492,7 +492,7 @@ describe("App waiting counter (ATTN-03, D-01 header counter, Pitfall 5)", () => 
 // (magenta+bold when > 0) beside "N waiting", with the same visibility rules —
 // always rendered, non-ended rows only — and each row counted exactly once
 // (asking wins over waiting).
-describe("App asking counter (AQ-04)", () => {
+describe("legacy-layout: App asking counter (AQ-04)", () => {
   beforeEach(() => {
     (readAll as unknown as { mockReset: () => void }).mockReset();
     (pruneSession as unknown as { mockReset: () => void }).mockReset();
@@ -561,7 +561,7 @@ describe("App asking counter (AQ-04)", () => {
 // --- Quick task 260927-73b (D-05): the header gains an "N subagent" counter
 // (turquoise #40E0D0 + bold when > 0) beside "N asking", counting non-ended
 // rows with the pre-gated row.subagent (rows, not agents).
-describe("App subagent counter (260927-73b)", () => {
+describe("legacy-layout: App subagent counter (260927-73b)", () => {
   const TURQ = ESC + "[38;2;64;224;208m";
 
   beforeEach(() => {
@@ -632,7 +632,7 @@ describe("App subagent counter (260927-73b)", () => {
   });
 });
 
-describe("App conflict surface (PANEL-04 SC-1/SC-3, D-06/D-07)", () => {
+describe("legacy-layout: App conflict surface (PANEL-04 SC-1/SC-3, D-06/D-07)", () => {
   beforeEach(() => {
     (readAll as unknown as { mockReset: () => void }).mockReset();
     (pruneSession as unknown as { mockReset: () => void }).mockReset();
@@ -701,7 +701,7 @@ describe("App conflict surface (PANEL-04 SC-1/SC-3, D-06/D-07)", () => {
   });
 });
 
-describe("App de-framed header (borderless, HEADER_LINES=3)", () => {
+describe("legacy-layout: App de-framed header (borderless, HEADER_LINES=3)", () => {
   beforeEach(() => {
     (readAll as unknown as { mockReset: () => void }).mockReset();
     (pruneSession as unknown as { mockReset: () => void }).mockReset();
@@ -721,7 +721,7 @@ describe("App de-framed header (borderless, HEADER_LINES=3)", () => {
   });
 });
 
-describe("App height-driven compact overflow (D-13)", () => {
+describe("legacy-layout: App height-driven compact overflow (D-13)", () => {
   beforeEach(() => {
     (readAll as unknown as { mockReset: () => void }).mockReset();
     (pruneSession as unknown as { mockReset: () => void }).mockReset();
