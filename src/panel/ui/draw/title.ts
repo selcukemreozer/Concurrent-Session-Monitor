@@ -79,7 +79,10 @@ export function drawTitle(
 
   const right = o.right ? plainText(o.right, end - cx) : "";
   if (right === "") {
-    for (; cx < end; cx++) scr.put(cx, y, V2.hline, { fg: PALETTE.edge });
+    // Like the design's `title()` (rx = x + w; rule while cx < rx - 1): with
+    // no right info the rule stops 1 cell before the pane's right edge, as in
+    // the approved frame's PORTS title (plan 09-08).
+    for (; cx < end - 1; cx++) scr.put(cx, y, V2.hline, { fg: PALETTE.edge });
     return;
   }
   const rx = end - cellWidth(right);

@@ -80,13 +80,13 @@ describe("drawTitle unfocused FILES", () => {
 });
 
 describe("drawTitle edge cases", () => {
-  it("runs the rule to the last cell without right info", () => {
+  it("stops the rule 1 cell before the right edge without right info (frame PORTS title)", () => {
     const scr = new Screen(175, 1);
     drawTitle(scr, 0, 0, 96, { label: "PORTS", focused: false, sample: true });
     const l = row(scr, 0);
-    expect(lastInk(l)).toBe(95);
-    expect(segAt(l, 95)).toMatchObject({ fg: "#3a3936" });
-    expect(lineText(l)[95]).toBe("─");
+    expect(lastInk(l)).toBe(94);
+    expect(segAt(l, 94)).toMatchObject({ fg: "#3a3936" });
+    expect(lineText(l)[94]).toBe("─");
   });
 
   it("omits the chip when sample is not set", () => {
