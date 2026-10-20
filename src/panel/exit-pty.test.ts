@@ -270,7 +270,13 @@ async function buildFixture(outDir: string): Promise<string> {
     alias: { "react-devtools-core": RDC_STUB },
     banner: { js: BANNER },
     jsx: "automatic",
-    define: { __CSM_VERSION__: JSON.stringify("0.0.0") },
+    // KEEP IN SYNC with the define in scripts/build.mjs (261020-wr6): the
+    // NODE_ENV entry makes the crash tests exercise the production React
+    // build that ships, not dev React.
+    define: {
+      __CSM_VERSION__: JSON.stringify("0.0.0"),
+      "process.env.NODE_ENV": JSON.stringify("production"),
+    },
     logLevel: "silent",
   });
   return outfile;

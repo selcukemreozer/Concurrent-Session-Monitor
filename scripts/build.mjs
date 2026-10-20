@@ -18,6 +18,16 @@
 // installed version (for the "update available" notice) without any runtime
 // file read. Because the bundle-freshness test re-runs this script and byte-
 // diffs the result, bumping plugin.json without rebuilding also fails the suite.
+//
+// React production build (261020-wr6): React's CJS entries (react,
+// react/jsx-runtime, react-reconciler, scheduler) pick their dev or prod build
+// at runtime from process.env.NODE_ENV, and the launcher never sets it, so
+// without this define every install ran dev React. The 1.6.1 dev reconciler
+// leaked perf_hooks measure entries (MaxPerformanceEntryBufferExceededWarning,
+// unbounded RSS in a long-running panel), and dev React adds per-render
+// overhead on top. Defining NODE_ENV as "production" lets esbuild fold the
+// switch and drop the *.development.js modules (bundle ~1.9 MB -> ~1.1 MB)
+// without minifying. src/panel/bundle-freshness.test.ts guards it.
 import { build } from "esbuild";
 import { readFileSync } from "node:fs";
 import * as path from "node:path";
@@ -55,6 +65,9 @@ await build({
   alias: { "react-devtools-core": "./scripts/rdc-stub.mjs" },
   banner: { js: BANNER },
   jsx: "automatic",
-  define: { __CSM_VERSION__: JSON.stringify(version) },
+  define: {
+    __CSM_VERSION__: JSON.stringify(version),
+    "process.env.NODE_ENV": JSON.stringify("production"),
+  },
   logLevel: "info",
 });
