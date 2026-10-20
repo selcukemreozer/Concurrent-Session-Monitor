@@ -107,7 +107,7 @@ describe("Splash v2 palette (Phase 9 plan 09-13, D-22)", () => {
     }) as unknown as NodeJS.WriteStream;
     (out as unknown as { columns: number }).columns = 80;
     (out as unknown as { rows: number }).rows = 24;
-    const inst = render(React.createElement(Splash, { palette: "v2" }), {
+    const inst = render(<Splash palette="v2" />, {
       stdout: out,
       debug: true,
       patchConsole: false,
