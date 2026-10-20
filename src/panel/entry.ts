@@ -26,10 +26,19 @@
 // first line must be that pid's exact marker). Deferred so the readdir never
 // delays the first frame and never keeps the process alive; bounded to
 // WARP_SWEEP_MAX_ENTRIES names; never throws.
+import * as fs from "node:fs";
 import type { Instance } from "ink";
 import { run } from "./main.js"; // the sole rendering call site stays in main.tsx
 import { registerPanel, unregisterPanel } from "./registration.js";
 import { cleanupWarpTabConfig, defaultLater, sweepStaleWarpTabConfigs } from "./launch.js";
+import {
+  appendCrashLog,
+  crashLogDisplayPath,
+  createCrashHandler,
+  installCrashHandlers,
+  restoreTerminal,
+} from "./crash.js";
+import { uiVariant } from "./ui/variant.js";
 
 // D-07 reconciliation: as of Phase 04.2 the panel enters raw mode WHEN A TTY IS
 // PRESENT (App's TTY-guarded FAZLAR keyboard via useInput). In that case Ink's
@@ -61,6 +70,35 @@ process.on("exit", () => {
   cleanupWarpTabConfig();
 });
 
+// Plan 09-14 (D-25, KEYS-04): the v2 crash path. Any crash runs one fixed
+// sequence: restore the terminal (unmount Ink, raw-mode / alt-screen fallback)
+// -> write ONE `csm crashed: ... details in .../crash.log` line -> append the
+// stack to crash.log under the store root -> exit 1. The stderr write is
+// synchronous on fd 2 (Pitfall 4: stderr to a pipe is async on macOS, so an
+// async write can be lost when exit(1) runs). A render-phase error never reaches
+// uncaughtException: Ink's error boundary unmounts and waitUntilExit() rejects
+// (Pitfall 3), so the catch around that await routes it to the same handler.
+// restoreTerminal(instance) is safe there: Ink's unmount() returns early once
+// the instance is already unmounted, so the restore bytes are never doubled.
+// RESEARCH Open Question 1: the handlers are v2-only in 1.7.0 (legacy keeps
+// today's crash behavior, D-23) and become universal at the Phase 10 flip.
+// Installed BEFORE run(), like the signal handlers, so a boot-time crash is
+// covered too; `instance` is read when the handler runs, not now.
+const onCrash: ((err: unknown) => void) | null =
+  uiVariant() === "v2"
+    ? createCrashHandler({
+        restore: () => restoreTerminal(instance),
+        writeErr: (line: string) => {
+          fs.writeSync(2, line);
+        },
+        appendLog: (entry: string) => appendCrashLog(entry),
+        exit: (code: number) => process.exit(code),
+        displayLogPath: crashLogDisplayPath(),
+        now: () => new Date(),
+      })
+    : null;
+if (onCrash !== null) installCrashHandlers(onCrash);
+
 instance = run();
 registerPanel();
 defaultLater(() => {
@@ -68,6 +106,14 @@ defaultLater(() => {
 }, 0);
 
 // Keep the process alive until Ink exits (unmount on signal, or an internal exit).
-await instance.waitUntilExit();
+// A rejection here is a render-phase error (Pitfall 3): legacy re-throws it
+// unchanged (D-23); v2 sends it through the crash handler, which exits 1 (the
+// exit listener above still runs both cleanups).
+try {
+  await instance.waitUntilExit();
+} catch (err) {
+  if (onCrash === null) throw err;
+  onCrash(err);
+}
 unregisterPanel();
 cleanupWarpTabConfig();

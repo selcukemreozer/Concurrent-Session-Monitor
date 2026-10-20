@@ -11366,10 +11366,10 @@ var require_react_reconciler_development = __commonJS({
           fiber = fiber.next, id--;
         return fiber;
       }
-      function copyWithSetImpl(obj, path11, index, value) {
-        if (index >= path11.length) return value;
-        var key = path11[index], updated = isArrayImpl(obj) ? obj.slice() : assign({}, obj);
-        updated[key] = copyWithSetImpl(obj[key], path11, index + 1, value);
+      function copyWithSetImpl(obj, path12, index, value) {
+        if (index >= path12.length) return value;
+        var key = path12[index], updated = isArrayImpl(obj) ? obj.slice() : assign({}, obj);
+        updated[key] = copyWithSetImpl(obj[key], path12, index + 1, value);
         return updated;
       }
       function copyWithRename(obj, oldPath, newPath) {
@@ -11396,11 +11396,11 @@ var require_react_reconciler_development = __commonJS({
         );
         return updated;
       }
-      function copyWithDeleteImpl(obj, path11, index) {
-        var key = path11[index], updated = isArrayImpl(obj) ? obj.slice() : assign({}, obj);
-        if (index + 1 === path11.length)
+      function copyWithDeleteImpl(obj, path12, index) {
+        var key = path12[index], updated = isArrayImpl(obj) ? obj.slice() : assign({}, obj);
+        if (index + 1 === path12.length)
           return isArrayImpl(updated) ? updated.splice(key, 1) : delete updated[key], updated;
-        updated[key] = copyWithDeleteImpl(obj[key], path11, index + 1);
+        updated[key] = copyWithDeleteImpl(obj[key], path12, index + 1);
         return updated;
       }
       function shouldSuspendImpl() {
@@ -25723,29 +25723,29 @@ var require_react_reconciler_development = __commonJS({
       var didWarnAboutNestedUpdates = false;
       var didWarnAboutFindNodeInStrictMode = {};
       var overrideHookState = null, overrideHookStateDeletePath = null, overrideHookStateRenamePath = null, overrideProps = null, overridePropsDeletePath = null, overridePropsRenamePath = null, scheduleUpdate = null, scheduleRetry = null, setErrorHandler = null, setSuspenseHandler = null;
-      overrideHookState = function(fiber, id, path11, value) {
+      overrideHookState = function(fiber, id, path12, value) {
         id = findHook(fiber, id);
-        null !== id && (path11 = copyWithSetImpl(id.memoizedState, path11, 0, value), id.memoizedState = path11, id.baseState = path11, fiber.memoizedProps = assign({}, fiber.memoizedProps), path11 = enqueueConcurrentRenderForLane(fiber, 2), null !== path11 && scheduleUpdateOnFiber(path11, fiber, 2));
+        null !== id && (path12 = copyWithSetImpl(id.memoizedState, path12, 0, value), id.memoizedState = path12, id.baseState = path12, fiber.memoizedProps = assign({}, fiber.memoizedProps), path12 = enqueueConcurrentRenderForLane(fiber, 2), null !== path12 && scheduleUpdateOnFiber(path12, fiber, 2));
       };
-      overrideHookStateDeletePath = function(fiber, id, path11) {
+      overrideHookStateDeletePath = function(fiber, id, path12) {
         id = findHook(fiber, id);
-        null !== id && (path11 = copyWithDeleteImpl(id.memoizedState, path11, 0), id.memoizedState = path11, id.baseState = path11, fiber.memoizedProps = assign({}, fiber.memoizedProps), path11 = enqueueConcurrentRenderForLane(fiber, 2), null !== path11 && scheduleUpdateOnFiber(path11, fiber, 2));
+        null !== id && (path12 = copyWithDeleteImpl(id.memoizedState, path12, 0), id.memoizedState = path12, id.baseState = path12, fiber.memoizedProps = assign({}, fiber.memoizedProps), path12 = enqueueConcurrentRenderForLane(fiber, 2), null !== path12 && scheduleUpdateOnFiber(path12, fiber, 2));
       };
       overrideHookStateRenamePath = function(fiber, id, oldPath, newPath) {
         id = findHook(fiber, id);
         null !== id && (oldPath = copyWithRename(id.memoizedState, oldPath, newPath), id.memoizedState = oldPath, id.baseState = oldPath, fiber.memoizedProps = assign({}, fiber.memoizedProps), oldPath = enqueueConcurrentRenderForLane(fiber, 2), null !== oldPath && scheduleUpdateOnFiber(oldPath, fiber, 2));
       };
-      overrideProps = function(fiber, path11, value) {
-        fiber.pendingProps = copyWithSetImpl(fiber.memoizedProps, path11, 0, value);
+      overrideProps = function(fiber, path12, value) {
+        fiber.pendingProps = copyWithSetImpl(fiber.memoizedProps, path12, 0, value);
         fiber.alternate && (fiber.alternate.pendingProps = fiber.pendingProps);
-        path11 = enqueueConcurrentRenderForLane(fiber, 2);
-        null !== path11 && scheduleUpdateOnFiber(path11, fiber, 2);
+        path12 = enqueueConcurrentRenderForLane(fiber, 2);
+        null !== path12 && scheduleUpdateOnFiber(path12, fiber, 2);
       };
-      overridePropsDeletePath = function(fiber, path11) {
-        fiber.pendingProps = copyWithDeleteImpl(fiber.memoizedProps, path11, 0);
+      overridePropsDeletePath = function(fiber, path12) {
+        fiber.pendingProps = copyWithDeleteImpl(fiber.memoizedProps, path12, 0);
         fiber.alternate && (fiber.alternate.pendingProps = fiber.pendingProps);
-        path11 = enqueueConcurrentRenderForLane(fiber, 2);
-        null !== path11 && scheduleUpdateOnFiber(path11, fiber, 2);
+        path12 = enqueueConcurrentRenderForLane(fiber, 2);
+        null !== path12 && scheduleUpdateOnFiber(path12, fiber, 2);
       };
       overridePropsRenamePath = function(fiber, oldPath, newPath) {
         fiber.pendingProps = copyWithRename(
@@ -26935,6 +26935,9 @@ var require_jsx_runtime = __commonJS({
     }
   }
 });
+
+// src/panel/entry.ts
+import * as fs11 from "node:fs";
 
 // src/panel/main.tsx
 var import_react46 = __toESM(require_react(), 1);
@@ -32448,8 +32451,8 @@ var findStaticNode = (node) => {
 };
 var currentUpdatePriority = import_constants.NoEventPriority;
 async function loadPackageJson() {
-  const fs10 = await import("node:fs");
-  const content = fs10.readFileSync(new URL("../package.json", import.meta.url), "utf8");
+  const fs12 = await import("node:fs");
+  const content = fs12.readFileSync(new URL("../package.json", import.meta.url), "utf8");
   const parsedContent = JSON.parse(content);
   return {
     name: parsedContent?.name,
@@ -35231,7 +35234,7 @@ function Text({ color, backgroundColor, dimColor = false, bold = false, italic =
 }
 
 // node_modules/ink/build/components/ErrorOverview.js
-var cleanupPath = (path11) => path11?.startsWith("file://") ? relative(cwd(), fileURLToPath(path11)) : path11;
+var cleanupPath = (path12) => path12?.startsWith("file://") ? relative(cwd(), fileURLToPath(path12)) : path12;
 var stackUtils = new import_stack_utils.default({
   cwd: cwd(),
   internals: import_stack_utils.default.nodeInternals()
@@ -39814,9 +39817,9 @@ function App2() {
       resolvePlanningRoots(liveRowsRef.current).then((roots) => {
         if (!mounted.current) return void 0;
         setPlanningRoots(roots);
-        const fs10 = buildFocusSet(liveRowsRef.current, roots);
-        const i = fs10.length ? focusedIndexRef.current % fs10.length : 0;
-        const root = fs10.length ? fs10[i].root : null;
+        const fs12 = buildFocusSet(liveRowsRef.current, roots);
+        const i = fs12.length ? focusedIndexRef.current % fs12.length : 0;
+        const root = fs12.length ? fs12[i].root : null;
         const shim = shimRef.current;
         if (shim && root) {
           return scanProgress(root, shim).then((p) => {
@@ -41904,8 +41907,8 @@ var agents = [
     inConflict: true
   }
 ];
-var w = (path11) => ({ path: path11, kind: "write" });
-var r = (path11) => ({ path: path11, kind: "read" });
+var w = (path12) => ({ path: path12, kind: "write" });
+var r = (path12) => ({ path: path12, kind: "read" });
 var groups = [
   {
     agentId: ID.plan,
@@ -42266,6 +42269,141 @@ function unregisterPanel(pid = process.pid) {
   }
 }
 
+// src/panel/crash.ts
+import * as fs10 from "node:fs";
+import * as os8 from "node:os";
+import * as path11 from "node:path";
+var CRASH_LOG = "crash.log";
+var CRASH_LOG_CAP = 256 * 1024;
+var CRASH_MSG_CELLS = 120;
+function safeString(x) {
+  try {
+    return String(x);
+  } catch {
+    return "unknown error";
+  }
+}
+function rawMessage(err) {
+  if (err instanceof Error) {
+    try {
+      return safeString(err.message);
+    } catch {
+      return "";
+    }
+  }
+  return safeString(err);
+}
+function crashMessage(err) {
+  const m = truncateEnd(oneLine(rawMessage(err)), CRASH_MSG_CELLS);
+  return m === "" ? "unknown error" : m;
+}
+function crashEntry(err, now, pid) {
+  let body = "";
+  if (err instanceof Error) {
+    try {
+      const stack = err.stack;
+      if (typeof stack === "string" && stack !== "") body = stack;
+    } catch {
+      body = "";
+    }
+    if (body === "") body = rawMessage(err);
+  }
+  if (body === "") body = safeString(err);
+  const lines = body.split(/\r?\n/).map((l) => sanitize(l));
+  return `[${now.toISOString()}] pid ${pid}
+${lines.join("\n")}
+`;
+}
+function createCrashHandler(d) {
+  let crashing = false;
+  return (err) => {
+    if (crashing) {
+      d.exit(1);
+      return;
+    }
+    crashing = true;
+    try {
+      d.restore();
+    } catch {
+    }
+    try {
+      d.writeErr(
+        `csm crashed: ${crashMessage(err)} \u2014 details in ${d.displayLogPath}
+`
+      );
+    } catch {
+    }
+    try {
+      d.appendLog(crashEntry(err, d.now(), process.pid));
+    } catch {
+    }
+    d.exit(1);
+  };
+}
+function installCrashHandlers(handler, proc = process) {
+  proc.on("uncaughtException", (err) => handler(err));
+  proc.on("unhandledRejection", (reason) => handler(reason));
+}
+function appendCrashLog(entry, dir = storeRoot()) {
+  try {
+    fs10.mkdirSync(dir, { recursive: true, mode: 448 });
+    const file = path11.join(dir, CRASH_LOG);
+    let st;
+    try {
+      st = fs10.lstatSync(file);
+    } catch {
+      st = void 0;
+    }
+    if (st !== void 0 && st.isFile() && st.size + Buffer.byteLength(entry) > CRASH_LOG_CAP) {
+      fs10.renameSync(file, path11.join(dir, `${CRASH_LOG}.1`));
+    }
+    const { O_WRONLY, O_APPEND, O_CREAT, O_NOFOLLOW } = fs10.constants;
+    const fd = fs10.openSync(file, O_WRONLY | O_APPEND | O_CREAT | O_NOFOLLOW, 384);
+    try {
+      fs10.writeSync(fd, entry);
+    } finally {
+      fs10.closeSync(fd);
+    }
+  } catch {
+  }
+}
+function crashLogDisplayPath(dir = storeRoot(), home = os8.homedir()) {
+  const full = path11.join(dir, CRASH_LOG);
+  const prefix = home + path11.sep;
+  const shown = home !== "" && home !== path11.sep && full.startsWith(prefix) ? "~/" + full.slice(prefix.length) : full;
+  return oneLine(shown);
+}
+var ESC4 = String.fromCharCode(27);
+var RESTORE_SEQ = `${ESC4}[?1049l${ESC4}[?25h`;
+function defaultIo() {
+  return {
+    stdin: process.stdin,
+    stdoutIsTTY: process.stdout.isTTY === true,
+    writeOut: (s) => {
+      fs10.writeSync(1, s);
+    }
+  };
+}
+function restoreTerminal(inst, io = defaultIo()) {
+  if (inst !== void 0) {
+    try {
+      inst.unmount();
+      return;
+    } catch {
+    }
+  }
+  try {
+    if (io.stdin.isTTY === true && typeof io.stdin.setRawMode === "function") {
+      io.stdin.setRawMode(false);
+    }
+  } catch {
+  }
+  try {
+    if (io.stdoutIsTTY) io.writeOut(RESTORE_SEQ);
+  } catch {
+  }
+}
+
 // src/panel/entry.ts
 var instance;
 var shuttingDown = false;
@@ -42285,12 +42423,28 @@ process.on("exit", () => {
   unregisterPanel();
   cleanupWarpTabConfig();
 });
+var onCrash = uiVariant() === "v2" ? createCrashHandler({
+  restore: () => restoreTerminal(instance),
+  writeErr: (line) => {
+    fs11.writeSync(2, line);
+  },
+  appendLog: (entry) => appendCrashLog(entry),
+  exit: (code) => process.exit(code),
+  displayLogPath: crashLogDisplayPath(),
+  now: () => /* @__PURE__ */ new Date()
+}) : null;
+if (onCrash !== null) installCrashHandlers(onCrash);
 instance = run();
 registerPanel();
 defaultLater(() => {
   sweepStaleWarpTabConfigs();
 }, 0);
-await instance.waitUntilExit();
+try {
+  await instance.waitUntilExit();
+} catch (err) {
+  if (onCrash === null) throw err;
+  onCrash(err);
+}
 unregisterPanel();
 cleanupWarpTabConfig();
 /*! Bundled license information:
