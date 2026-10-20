@@ -1,10 +1,8 @@
 import React from "react";
-import { Box, Text, useWindowSize, useInput, useStdin, useStdout } from "ink";
-import { readAll, type SessionRow } from "../aggregate.js";
-import { pruneSession } from "../prune.js";
+import { Box, Text, useWindowSize, useInput, useStdin } from "ink";
+import type { SessionRow } from "../aggregate.js";
 import { sanitize } from "../sanitize.js";
 import { labelLead } from "../label.js";
-import { numEnv } from "../env.js";
 import {
   SessionCard,
   CompactRow,
@@ -35,9 +33,7 @@ import {
   applyHolds,
   type LaunchHolds,
 } from "./launch-hold.js";
-import { detectConflicts, type Conflict } from "../conflicts.js";
-import { scanPorts, portScanMs, type ScannedPort } from "../ports.js";
-import { scanBranches, branchScanMs, liveBranch } from "../branch.js";
+import { liveBranch } from "../branch.js";
 import {
   scanProgress,
   phaseScanMs,
@@ -49,19 +45,14 @@ import {
   FAZLAR_VISIBLE_ROWS,
   type Progress,
 } from "../phases.js";
-import {
-  startUpdateCheck,
-  installedVersion,
-  updateLabel,
-  updateLabelFits,
-} from "../update.js";
+import { updateLabel, updateLabelFits } from "../update.js";
+import { useRoster } from "./hooks/useRoster.js";
+import { usePorts } from "./hooks/usePorts.js";
+import { useBranches } from "./hooks/useBranches.js";
+import { useUpdateCheck } from "./hooks/useUpdateCheck.js";
 
 /** The title-row brand; also the width budget input for the update label. */
 const BRAND = "◆ Concurrent Session Monitor";
-
-/** Poll cadence (Claude's Discretion): ~750ms comfortably meets criterion #1
- * ("a touch appears within about a second") without a file watcher. */
-const POLL_MS = 750;
 
 /** Which pane the RIGHT bottom slot shows (Phase 8, D-14): `r` flips it on a TTY. */
 type RightPane = "fazlar" | "oturumlar";
@@ -98,103 +89,6 @@ const HEADER_LINES = 3;
  */
 const PORTS_LINES = 10;
 
-/** Grace window (D-05, RESEARCH Open Q3): render a dead/vanished session dim-grey
- * as "ended" for ~1.2s (one–two poll ticks) BEFORE pruning it, so the user sees
- * it die rather than blink out. Env-gated for tuning/tests. */
-function graceMs(): number {
-  return numEnv("CSM_GRACE_MS", 1200);
-}
-
-/** One row as the panel will display it: the last-known session data plus whether
- * it is in its post-death "ended" grace (D-08). */
-interface DisplayRow {
-  id: string;
-  row: SessionRow;
-  ended: boolean;
-}
-
-/** What a reconcile tick hands back to render: the ordered display list plus the
- * header counts. */
-interface Reconciled {
-  display: DisplayRow[];
-  live: number;
-  idle: number;
-  /** Cross-session file conflicts detected this tick (PANEL-04, D-13). Re-derived
-   * every poll from the raw live `rows` (never the grace-ghost `display` list), so
-   * a cleared overlap disappears next tick with no stored conflict state. */
-  conflicts: Conflict[];
-}
-
-/** Per-session memory across ticks: the last row we saw and, once it dies or
- * vanishes, when its grace started (D-05/D-06/D-08). */
-interface SeenEntry {
-  row: SessionRow;
-  endedAt?: number;
-}
-
-/**
- * The reader-side grace-then-prune reducer (RESEARCH Pattern 2), owned by App so
- * `readAll` stays a pure, disk-mutation-free reducer (Anti-Pattern: no rmSync in
- * readAll). Pure w.r.t. render — the ONLY side effect is the idempotent
- * `pruneSession(id)` call after the grace elapses.
- *
- * Each tick, for every current row: refresh its `seen` entry, clearing `endedAt`
- * while alive and starting the grace clock the instant it becomes not-alive /
- * readyToPrune (D-06). For any previously-seen id NOT in the current rows, start
- * the grace too — this gives a consistent "ended" ghost even on a clean
- * SessionEnd disappearance (D-08). When `now - endedAt >= graceMs`, call
- * `pruneSession(id)` exactly once (then delete the id, so it never fires twice —
- * idempotent regardless, per prune.ts). Live present rows render first in
- * `readAll`'s most-recently-active order (D-09); vanished-but-in-grace rows are
- * appended so the user still sees them fade.
- */
-function reconcile(seen: Map<string, SeenEntry>, rows: SessionRow[], now: number): Reconciled {
-  const live = new Map(rows.map((r) => [r.session_id, r]));
-
-  // Present rows: refresh/adopt, (re)starting the grace clock only on death.
-  for (const [id, r] of live) {
-    const dead = !r.alive || r.readyToPrune;
-    const prev = seen.get(id);
-    seen.set(id, { row: r, endedAt: dead ? prev?.endedAt ?? now : undefined });
-  }
-
-  // Vanished rows (clean SessionEnd or an already-reaped shard): start the grace.
-  for (const [id, entry] of seen) {
-    if (!live.has(id) && entry.endedAt == null) {
-      seen.set(id, { row: entry.row, endedAt: now });
-    }
-  }
-
-  // Prune anything whose grace has elapsed — exactly once per id.
-  for (const id of [...seen.keys()]) {
-    const entry = seen.get(id)!;
-    if (entry.endedAt != null && now - entry.endedAt >= graceMs()) {
-      pruneSession(id);
-      seen.delete(id);
-    }
-  }
-
-  // Display order: live/present rows first (D-09 order), then vanished-in-grace.
-  const display: DisplayRow[] = [];
-  for (const r of rows) {
-    const entry = seen.get(r.session_id);
-    if (!entry) continue; // pruned on this very tick
-    display.push({ id: r.session_id, row: entry.row, ended: entry.endedAt != null });
-  }
-  for (const [id, entry] of seen) {
-    if (live.has(id)) continue;
-    display.push({ id, row: entry.row, ended: true });
-  }
-
-  const liveCount = rows.filter((r) => r.alive).length;
-  const idleCount = rows.filter((r) => r.dotState === "idle").length;
-  // Detect on the raw live `rows` (D-12 filters non-live inside), NOT `display`
-  // — a grace-ghost must never contribute a conflict (SC-3). One detection per
-  // tick, re-derived every poll so a cleared overlap auto-clears (D-13, SC-4).
-  const conflicts = detectConflicts(rows, now);
-  return { display, live: liveCount, idle: idleCount, conflicts };
-}
-
 /** First 8 chars of the session id (D-05), sanitized (WR-04). */
 function shortId(session_id: string): string {
   return sanitize(String(session_id).slice(0, 8));
@@ -215,16 +109,25 @@ function fmtClock(now: number): string {
 /**
  * The live cross-session panel (PANEL-01, PANEL-03, PANEL-05).
  *
- * Seeds its rows from a synchronous `readAll()` on mount, then arms a ~750ms
- * interval that re-reads the FULL store each tick, reconciles it through the
- * grace-then-prune lifecycle, and re-renders. A full re-read (not event deltas)
- * is self-healing across the store's atomic temp+rename writes and any missed
- * touch (Pattern 7 / Pitfall 4). The interval is cleared on unmount so the
- * process exits cleanly.
+ * Data acquisition lives in shared hooks under `./hooks/` (Phase 9 plan 09-10,
+ * strangler step S1), so LegacyApp and the v2 PanelApp read the same sources:
+ * `useRoster` (the synchronous `readAll()` seed plus the ~750ms full re-read
+ * through the grace-then-prune `reconcile` reducer), `usePorts` and
+ * `useBranches` (the slower, overlap-guarded scans, once on mount then at their
+ * env-gated cadences), and `useUpdateCheck`. All of them run on the shared
+ * `usePoll` interval (or startUpdateCheck's own timers) and stop on unmount, so
+ * the process exits cleanly.
  *
- * A `seen` Map (session_id -> { row, endedAt? }) drives D-05/D-06/D-08: a dead or
- * vanished session renders dim-grey as "ended" for the grace, then App calls
- * `pruneSession(id)` exactly once (SC-3). A summary header reports live/idle
+ * The FAZLAR phase scan (keyed on `focusedIndex`) and the OTURUMLAR resume scan
+ * (keyed on `rightPane`) deliberately stay inline here. They carry closed race
+ * guards (the component-lifetime `mounted` ref, the D-19 visible-period
+ * generations, the D-16 launch holds and the T-08-11 stale-closure refs) and had
+ * no second consumer in Phase 9; Phase 10 extracts them as usePhases/useResume
+ * when the v2 PHASES and SESSIONS panes go live.
+ *
+ * useRoster's `seen` Map (session_id -> { row, endedAt? }) drives D-05/D-06/D-08:
+ * a dead or vanished session renders dim-grey as "ended" for the grace, then
+ * `pruneSession(id)` runs exactly once (SC-3). A summary header reports live/idle
  * counts and a Phase-3 conflicts placeholder (D-15). When the roster would
  * overflow the terminal height, every row collapses to a one-line `CompactRow`
  * (D-13) via Ink's built-in `useWindowSize`.
@@ -299,101 +202,24 @@ function PanelKeyboard({
 }
 
 export function App() {
-  const seen = React.useRef<Map<string, SeenEntry>>(new Map());
-  const [state, setState] = React.useState<Reconciled>(() =>
-    reconcile(seen.current, readAll(), Date.now()),
-  );
+  const state = useRoster();
 
-  React.useEffect(() => {
-    const timer = setInterval(
-      () => setState(reconcile(seen.current, readAll(), Date.now())),
-      POLL_MS,
-    );
-    return () => clearInterval(timer);
-  }, []);
+  // Live (non-grace) rows feed the PortsPane attribution join so ownership stays
+  // fresh against the 750ms liveness — a grace-ghost never claims a port. The ref
+  // lets the slow scans (useBranches, the phase and resume scans) read the
+  // freshest live rows without re-arming every 750ms render (avoids stale
+  // closures, Pattern 1). Declared before useBranches, which reads it.
+  const liveRows = state.display.filter((d) => !d.ended).map((d) => d.row);
+  const liveRowsRef = React.useRef(liveRows);
+  liveRowsRef.current = liveRows;
 
-  // Cached last-good scan result + an in-flight guard so scans never overlap.
-  const [ports, setPorts] = React.useState<ScannedPort[]>([]);
-  const scanning = React.useRef(false);
-
-  // SECOND, slower timer (D-05, PORT-06): spawn scanPorts() asynchronously off
-  // the render thread at portScanMs() cadence — independent of and NEVER inside
-  // the 750ms poll. An in-flight scan is skipped (overlap guard); the resolved
-  // ScannedPort[] is cached in state and rendered between scans. On unmount the
-  // interval is cleared and a late resolve is ignored (alive flag). scanPorts()
-  // never rejects, but the catch still resets to [] defensively.
-  React.useEffect(() => {
-    let alive = true;
-    const tick = () => {
-      if (scanning.current) return; // prior scan still running — skip, no overlap
-      scanning.current = true;
-      scanPorts()
-        .then((p) => { if (alive) setPorts(p); })
-        .catch(() => { if (alive) setPorts([]); })
-        .finally(() => { scanning.current = false; });
-    };
-    tick(); // scan once on mount
-    const t = setInterval(tick, portScanMs());
-    return () => { alive = false; clearInterval(t); };
-  }, []);
-
-  // Cached live-branch map (cwd -> current checkout) + an in-flight overlap guard.
-  const [branches, setBranches] = React.useState<Map<string, string>>(() => new Map());
-  const scanningBranches = React.useRef(false);
-
-  // THIRD, slow scan effect (LB-02, D-LB-04): a sibling of the port-scan effect,
-  // NEVER inside the 750ms poll. Each non-overlapping tick derives each LIVE
-  // (non-grace) session's CURRENT git branch from its cwd off the render thread at
-  // branchScanMs() cadence, caches the resolved Map in state, and merges it into
-  // the rows via liveBranch(). It reads liveRowsRef.current (declared below, the
-  // freshest live rows) so it never re-arms every render. scanBranches() never
-  // rejects, but the catch still resets to an empty Map defensively; on unmount
-  // the interval is cleared and a late resolve is ignored (alive flag).
-  React.useEffect(() => {
-    let alive = true;
-    const tick = () => {
-      if (scanningBranches.current) return; // prior scan still running — skip, no overlap
-      scanningBranches.current = true;
-      scanBranches(liveRowsRef.current)
-        .then((m) => { if (alive) setBranches(m); })
-        .catch(() => { if (alive) setBranches(new Map()); })
-        .finally(() => { scanningBranches.current = false; });
-    };
-    tick(); // scan once on mount
-    const t = setInterval(tick, branchScanMs());
-    return () => { alive = false; clearInterval(t); };
-  }, []);
-
-  // Newer published version (or null) from the update check.
-  const [updateTo, setUpdateTo] = React.useState<string | null>(null);
-  const { stdout } = useStdout();
-
-  // FOURTH, slowest effect (261014-e2u): the "⬆ vX available" update check.
-  // Runs once right after the first render, then every 6 h, off the render
-  // thread. startUpdateCheck owns the overlap guard, the unref'd timers and the
-  // stopped flag, so its stop function IS this effect's cleanup. It schedules
-  // nothing when CSM_UPDATE_CHECK=0/false/off, when stdout is not a TTY, or when
-  // the installed version is unknown. It only reads a version; it never installs.
-  React.useEffect(
-    () =>
-      startUpdateCheck({
-        installed: installedVersion(),
-        // Ink 8 types useStdout().stdout as a generic writable stream, so the
-        // TTY flag is read through a guard. It stays Ink's own stdout (never the
-        // global process stream), which keeps the injected test stdout honored.
-        isTTY: "isTTY" in stdout && (stdout as { isTTY?: boolean }).isTTY === true,
-        onResult: setUpdateTo,
-      }),
-    [],
-  );
+  const ports = usePorts();
+  const branches = useBranches(liveRowsRef);
+  const updateTo = useUpdateCheck();
 
   const { rows: termRows, columns: termCols } = useWindowSize();
   const capacity = Math.max(1, termRows - HEADER_LINES - PORTS_LINES);
   const compact = state.display.length * CARD_LINES > capacity;
-
-  // Live (non-grace) rows feed the PortsPane attribution join so ownership stays
-  // fresh against the 750ms liveness — a grace-ghost never claims a port.
-  const liveRows = state.display.filter((d) => !d.ended).map((d) => d.row);
 
   // ── FAZLAR (RIGHT pane) state ──────────────────────────────────────────────
   // Cached per-root Progress + the async-resolved planningRoots set (the ONLY
@@ -431,10 +257,8 @@ export function App() {
   const focusProgress = focusRoot ? progress.get(focusRoot) ?? null : null;
   const totalPhases = focusProgress ? focusProgress.phases.length : 0;
 
-  // Refs so the slow scan interval reads the freshest liveRows / focus index
+  // Ref so the slow phase-scan interval reads the freshest focus index
   // without re-arming every 750ms render (avoids stale closures, Pattern 1).
-  const liveRowsRef = React.useRef(liveRows);
-  liveRowsRef.current = liveRows;
   const focusedIndexRef = React.useRef(focusedIndex);
   focusedIndexRef.current = focusedIndex;
 

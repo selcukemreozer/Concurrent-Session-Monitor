@@ -10573,11 +10573,11 @@ var require_react_reconciler_production = __commonJS({
       }
       var exports2 = {};
       "use strict";
-      var React14 = require_react(), Scheduler = require_scheduler(), assign = Object.assign, REACT_LEGACY_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.element"), REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = /* @__PURE__ */ Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = /* @__PURE__ */ Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = /* @__PURE__ */ Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = /* @__PURE__ */ Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = /* @__PURE__ */ Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = /* @__PURE__ */ Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = /* @__PURE__ */ Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = /* @__PURE__ */ Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = /* @__PURE__ */ Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = /* @__PURE__ */ Symbol.for("react.memo"), REACT_LAZY_TYPE = /* @__PURE__ */ Symbol.for("react.lazy");
+      var React19 = require_react(), Scheduler = require_scheduler(), assign = Object.assign, REACT_LEGACY_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.element"), REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = /* @__PURE__ */ Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = /* @__PURE__ */ Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = /* @__PURE__ */ Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = /* @__PURE__ */ Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = /* @__PURE__ */ Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = /* @__PURE__ */ Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = /* @__PURE__ */ Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = /* @__PURE__ */ Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = /* @__PURE__ */ Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = /* @__PURE__ */ Symbol.for("react.memo"), REACT_LAZY_TYPE = /* @__PURE__ */ Symbol.for("react.lazy");
       /* @__PURE__ */ Symbol.for("react.scope");
       var REACT_ACTIVITY_TYPE = /* @__PURE__ */ Symbol.for("react.activity"), REACT_LEGACY_HIDDEN_TYPE = /* @__PURE__ */ Symbol.for("react.legacy_hidden");
       /* @__PURE__ */ Symbol.for("react.tracing_marker");
-      var REACT_MEMO_CACHE_SENTINEL = /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel"), REACT_VIEW_TRANSITION_TYPE = /* @__PURE__ */ Symbol.for("react.view_transition"), REACT_RECOVERABLE_TYPE = /* @__PURE__ */ Symbol.for("react.recoverable"), MAYBE_ITERATOR_SYMBOL = Symbol.iterator, REACT_OPTIMISTIC_KEY = /* @__PURE__ */ Symbol.for("react.optimistic_key"), REACT_CLIENT_REFERENCE = /* @__PURE__ */ Symbol.for("react.client.reference"), isArrayImpl = Array.isArray, ReactSharedInternals = React14.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, rendererVersion = $$$config.rendererVersion, rendererPackageName = $$$config.rendererPackageName, extraDevToolsConfig = $$$config.extraDevToolsConfig, getPublicInstance = $$$config.getPublicInstance, getRootHostContext = $$$config.getRootHostContext, getChildHostContext = $$$config.getChildHostContext, prepareForCommit = $$$config.prepareForCommit, resetAfterCommit = $$$config.resetAfterCommit, createInstance = $$$config.createInstance;
+      var REACT_MEMO_CACHE_SENTINEL = /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel"), REACT_VIEW_TRANSITION_TYPE = /* @__PURE__ */ Symbol.for("react.view_transition"), REACT_RECOVERABLE_TYPE = /* @__PURE__ */ Symbol.for("react.recoverable"), MAYBE_ITERATOR_SYMBOL = Symbol.iterator, REACT_OPTIMISTIC_KEY = /* @__PURE__ */ Symbol.for("react.optimistic_key"), REACT_CLIENT_REFERENCE = /* @__PURE__ */ Symbol.for("react.client.reference"), isArrayImpl = Array.isArray, ReactSharedInternals = React19.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, rendererVersion = $$$config.rendererVersion, rendererPackageName = $$$config.rendererPackageName, extraDevToolsConfig = $$$config.extraDevToolsConfig, getPublicInstance = $$$config.getPublicInstance, getRootHostContext = $$$config.getRootHostContext, getChildHostContext = $$$config.getChildHostContext, prepareForCommit = $$$config.prepareForCommit, resetAfterCommit = $$$config.resetAfterCommit, createInstance = $$$config.createInstance;
       $$$config.cloneMutableInstance;
       var appendInitialChild = $$$config.appendInitialChild, finalizeInitialChildren = $$$config.finalizeInitialChildren, shouldSetTextContent = $$$config.shouldSetTextContent, createTextInstance = $$$config.createTextInstance;
       $$$config.cloneMutableTextInstance;
@@ -24216,11 +24216,11 @@ var require_react_reconciler_development = __commonJS({
       }
       var exports2 = {};
       "use strict";
-      var React14 = require_react(), Scheduler = require_scheduler(), assign = Object.assign, REACT_LEGACY_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.element"), REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = /* @__PURE__ */ Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = /* @__PURE__ */ Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = /* @__PURE__ */ Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = /* @__PURE__ */ Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = /* @__PURE__ */ Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = /* @__PURE__ */ Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = /* @__PURE__ */ Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = /* @__PURE__ */ Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = /* @__PURE__ */ Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = /* @__PURE__ */ Symbol.for("react.memo"), REACT_LAZY_TYPE = /* @__PURE__ */ Symbol.for("react.lazy");
+      var React19 = require_react(), Scheduler = require_scheduler(), assign = Object.assign, REACT_LEGACY_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.element"), REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = /* @__PURE__ */ Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = /* @__PURE__ */ Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = /* @__PURE__ */ Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = /* @__PURE__ */ Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = /* @__PURE__ */ Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = /* @__PURE__ */ Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = /* @__PURE__ */ Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = /* @__PURE__ */ Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = /* @__PURE__ */ Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = /* @__PURE__ */ Symbol.for("react.memo"), REACT_LAZY_TYPE = /* @__PURE__ */ Symbol.for("react.lazy");
       /* @__PURE__ */ Symbol.for("react.scope");
       var REACT_ACTIVITY_TYPE = /* @__PURE__ */ Symbol.for("react.activity"), REACT_LEGACY_HIDDEN_TYPE = /* @__PURE__ */ Symbol.for("react.legacy_hidden");
       /* @__PURE__ */ Symbol.for("react.tracing_marker");
-      var REACT_MEMO_CACHE_SENTINEL = /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel"), REACT_VIEW_TRANSITION_TYPE = /* @__PURE__ */ Symbol.for("react.view_transition"), REACT_RECOVERABLE_TYPE = /* @__PURE__ */ Symbol.for("react.recoverable"), MAYBE_ITERATOR_SYMBOL = Symbol.iterator, REACT_OPTIMISTIC_KEY = /* @__PURE__ */ Symbol.for("react.optimistic_key"), REACT_CLIENT_REFERENCE = /* @__PURE__ */ Symbol.for("react.client.reference"), isArrayImpl = Array.isArray, ReactSharedInternals = React14.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, rendererVersion = $$$config.rendererVersion, rendererPackageName = $$$config.rendererPackageName, extraDevToolsConfig = $$$config.extraDevToolsConfig, getPublicInstance = $$$config.getPublicInstance, getRootHostContext = $$$config.getRootHostContext, getChildHostContext = $$$config.getChildHostContext, prepareForCommit = $$$config.prepareForCommit, resetAfterCommit = $$$config.resetAfterCommit, createInstance = $$$config.createInstance;
+      var REACT_MEMO_CACHE_SENTINEL = /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel"), REACT_VIEW_TRANSITION_TYPE = /* @__PURE__ */ Symbol.for("react.view_transition"), REACT_RECOVERABLE_TYPE = /* @__PURE__ */ Symbol.for("react.recoverable"), MAYBE_ITERATOR_SYMBOL = Symbol.iterator, REACT_OPTIMISTIC_KEY = /* @__PURE__ */ Symbol.for("react.optimistic_key"), REACT_CLIENT_REFERENCE = /* @__PURE__ */ Symbol.for("react.client.reference"), isArrayImpl = Array.isArray, ReactSharedInternals = React19.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, rendererVersion = $$$config.rendererVersion, rendererPackageName = $$$config.rendererPackageName, extraDevToolsConfig = $$$config.extraDevToolsConfig, getPublicInstance = $$$config.getPublicInstance, getRootHostContext = $$$config.getRootHostContext, getChildHostContext = $$$config.getChildHostContext, prepareForCommit = $$$config.prepareForCommit, resetAfterCommit = $$$config.resetAfterCommit, createInstance = $$$config.createInstance;
       $$$config.cloneMutableInstance;
       var appendInitialChild = $$$config.appendInitialChild, finalizeInitialChildren = $$$config.finalizeInitialChildren, shouldSetTextContent = $$$config.shouldSetTextContent, createTextInstance = $$$config.createTextInstance;
       $$$config.cloneMutableTextInstance;
@@ -26869,18 +26869,18 @@ var require_react_jsx_runtime_development = __commonJS({
       function isValidElement(object) {
         return "object" === typeof object && null !== object && object.$$typeof === REACT_ELEMENT_TYPE;
       }
-      var React14 = require_react(), REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = /* @__PURE__ */ Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = /* @__PURE__ */ Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = /* @__PURE__ */ Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = /* @__PURE__ */ Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = /* @__PURE__ */ Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = /* @__PURE__ */ Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = /* @__PURE__ */ Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = /* @__PURE__ */ Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = /* @__PURE__ */ Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = /* @__PURE__ */ Symbol.for("react.memo"), REACT_LAZY_TYPE = /* @__PURE__ */ Symbol.for("react.lazy"), REACT_ACTIVITY_TYPE = /* @__PURE__ */ Symbol.for("react.activity"), REACT_VIEW_TRANSITION_TYPE = /* @__PURE__ */ Symbol.for("react.view_transition"), REACT_CLIENT_REFERENCE = /* @__PURE__ */ Symbol.for("react.client.reference"), ReactSharedInternals = React14.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, hasOwnProperty = Object.prototype.hasOwnProperty, isArrayImpl = Array.isArray, createTask = console.createTask ? console.createTask : function() {
+      var React19 = require_react(), REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = /* @__PURE__ */ Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = /* @__PURE__ */ Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = /* @__PURE__ */ Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = /* @__PURE__ */ Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = /* @__PURE__ */ Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = /* @__PURE__ */ Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = /* @__PURE__ */ Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = /* @__PURE__ */ Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = /* @__PURE__ */ Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = /* @__PURE__ */ Symbol.for("react.memo"), REACT_LAZY_TYPE = /* @__PURE__ */ Symbol.for("react.lazy"), REACT_ACTIVITY_TYPE = /* @__PURE__ */ Symbol.for("react.activity"), REACT_VIEW_TRANSITION_TYPE = /* @__PURE__ */ Symbol.for("react.view_transition"), REACT_CLIENT_REFERENCE = /* @__PURE__ */ Symbol.for("react.client.reference"), ReactSharedInternals = React19.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, hasOwnProperty = Object.prototype.hasOwnProperty, isArrayImpl = Array.isArray, createTask = console.createTask ? console.createTask : function() {
         return null;
       };
-      React14 = {
+      React19 = {
         react_stack_bottom_frame: function(callStackForError) {
           return callStackForError();
         }
       };
       var specialPropKeyWarningShown;
       var didWarnAboutElementRef = {};
-      var unknownOwnerDebugStack = React14.react_stack_bottom_frame.bind(
-        React14,
+      var unknownOwnerDebugStack = React19.react_stack_bottom_frame.bind(
+        React19,
         UnknownOwner
       )();
       var unknownOwnerDebugTask = createTask(getTaskName(UnknownOwner));
@@ -26937,7 +26937,7 @@ var require_jsx_runtime = __commonJS({
 });
 
 // src/panel/main.tsx
-var import_react39 = __toESM(require_react(), 1);
+var import_react44 = __toESM(require_react(), 1);
 
 // node_modules/ink/build/render.js
 import { Stream } from "node:stream";
@@ -36843,860 +36843,10 @@ var use_window_size_default = useWindowSize;
 var import_react35 = __toESM(require_react(), 1);
 
 // src/panel/Root.tsx
-var import_react38 = __toESM(require_react(), 1);
+var import_react43 = __toESM(require_react(), 1);
 
 // src/panel/App.tsx
-var import_react37 = __toESM(require_react(), 1);
-
-// src/aggregate.ts
-import * as fs5 from "node:fs";
-import * as path4 from "node:path";
-
-// src/paths.ts
-import * as os3 from "node:os";
-import * as path from "node:path";
-var SAFE_ID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
-function safeId(id) {
-  if (typeof id !== "string") {
-    throw new Error(`Unsafe session id: ${JSON.stringify(id)}`);
-  }
-  if (SAFE_ID_PATTERN.test(id) && id !== "." && id !== "..") {
-    return id;
-  }
-  let cleaned = id.replace(/[^A-Za-z0-9._-]/g, "_").replace(/\.\.+/g, "_").slice(0, 128);
-  if (cleaned === "" || cleaned === "." || cleaned === "..") {
-    cleaned = "_";
-  }
-  return cleaned;
-}
-function storeRoot() {
-  const override = process.env.CSM_STORE_DIR;
-  if (override) return override;
-  return path.join(os3.homedir(), ".claude", "csm");
-}
-function sessionsDir() {
-  return path.join(storeRoot(), "sessions");
-}
-function sessionDir(sessionId) {
-  return path.join(sessionsDir(), safeId(sessionId));
-}
-
-// src/env.ts
-function numEnv(name, def) {
-  const raw = process.env[name];
-  if (raw === void 0) return def;
-  const n = Number(raw);
-  return Number.isFinite(n) && n >= 0 ? n : def;
-}
-
-// src/transcript.ts
-import * as fs3 from "node:fs";
-import * as fsp from "node:fs/promises";
-import * as os4 from "node:os";
-import * as path2 from "node:path";
-var TAIL_BYTES = 256 * 1024;
-var MAX_TITLE_LINE = 4096;
-var HEAD_BYTES = 256 * 1024;
-var MAX_SCAN_LINE = 64 * 1024;
-var PERMISSION_MODE_BYTES = 4 * 1024 * 1024;
-var SESSION_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-var TRIVIAL_COMMANDS = /* @__PURE__ */ new Set([
-  "clear",
-  "reload-plugins",
-  "model",
-  "effort",
-  "compact",
-  "resume",
-  "exit",
-  "config",
-  "help",
-  "status",
-  "cost",
-  "login",
-  "logout"
-]);
-var SAFE_ID_PATTERN2 = /^[A-Za-z0-9._-]{1,128}$/;
-var MAX_PATH = 4096;
-var MARKER = '"type":"custom-title"';
-var NEWLINE = 10;
-var META_MARKERS = ['"type":"custom-title"', '"type":"ai-title"', '"type":"last-prompt"'];
-var CARRIER_MARKER = '"entrypoint":"';
-var ASSISTANT_MARKER = '"type":"assistant"';
-var USER_MARKER = '"type":"user"';
-var CWD_MARKER = '"cwd":"';
-var MODE_MARKER = '"permissionMode":"';
-var MODE_MARKER_BYTES = Buffer.from(MODE_MARKER, "utf8");
-function projectSlug(cwd2) {
-  return cwd2.replace(/[^a-zA-Z0-9]/g, "-");
-}
-function windowLines(buf, atBoundary) {
-  let first = 0;
-  if (!atBoundary) {
-    const nl = buf.indexOf(NEWLINE);
-    if (nl < 0) return [];
-    first = nl + 1;
-  }
-  const last = buf.lastIndexOf(NEWLINE);
-  if (last < first) return [];
-  return buf.subarray(first, last).toString("utf8").split("\n");
-}
-function scanCustomTitle(buf, atBoundary, sessionId) {
-  let found;
-  for (const line of windowLines(buf, atBoundary)) {
-    if (line.length === 0 || line.length > MAX_TITLE_LINE) continue;
-    if (!line.includes(MARKER)) continue;
-    let parsed;
-    try {
-      parsed = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    if (parsed === null || typeof parsed !== "object") continue;
-    const o = parsed;
-    if (o.type !== "custom-title") continue;
-    if (typeof o.customTitle !== "string") continue;
-    if (o.sessionId !== void 0 && o.sessionId !== sessionId) continue;
-    found = o.customTitle;
-  }
-  return found;
-}
-function scanTailFacts(buf, atBoundary, sessionId, slug) {
-  const f = { hasAssistant: false };
-  for (const line of windowLines(buf, atBoundary)) {
-    if (line.length === 0 || line.length > MAX_SCAN_LINE) continue;
-    const isMeta = META_MARKERS.some((m) => line.includes(m));
-    const isCarrier = line.includes(CARRIER_MARKER);
-    const isAssistant = line.includes(ASSISTANT_MARKER);
-    if (!isMeta && !isCarrier && !isAssistant) continue;
-    const metaOk = line.length <= MAX_TITLE_LINE;
-    if (isMeta && !metaOk && !isCarrier && !isAssistant) continue;
-    let parsed;
-    try {
-      parsed = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    if (parsed === null || typeof parsed !== "object") continue;
-    const o = parsed;
-    if (o.sessionId !== void 0 && o.sessionId !== sessionId) continue;
-    if (metaOk) {
-      if (o.type === "custom-title" && typeof o.customTitle === "string") f.customTitle = o.customTitle;
-      else if (o.type === "ai-title" && typeof o.aiTitle === "string") f.aiTitle = o.aiTitle;
-      else if (o.type === "last-prompt" && typeof o.lastPrompt === "string") f.lastPrompt = o.lastPrompt;
-    }
-    if (o.type === "assistant") f.hasAssistant = true;
-    if (typeof o.entrypoint === "string") f.entrypoint = o.entrypoint;
-    if (typeof o.cwd === "string") {
-      f.cwd = o.cwd;
-      if (slug !== void 0 && f.slugCwd === void 0 && o.cwd.length > 0 && projectSlug(o.cwd) === slug) {
-        f.slugCwd = o.cwd;
-      }
-    }
-  }
-  return f;
-}
-function scanPermissionMode(buf, atBoundary, sessionId) {
-  try {
-    if (buf.lastIndexOf(MODE_MARKER_BYTES) < 0) return { decided: false };
-    const lines = windowLines(buf, atBoundary);
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const line = lines[i];
-      if (!line.includes(MODE_MARKER)) continue;
-      if (line.length > MAX_SCAN_LINE) return { decided: true };
-      let parsed;
-      try {
-        parsed = JSON.parse(line);
-      } catch {
-        return { decided: true };
-      }
-      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return { decided: true };
-      const o = parsed;
-      if (o.sessionId !== void 0 && o.sessionId !== sessionId) continue;
-      if ((o.type === "permission-mode" || o.type === "user") && typeof o.permissionMode === "string") {
-        return { decided: true, mode: o.permissionMode };
-      }
-    }
-    return { decided: false };
-  } catch {
-    return { decided: true };
-  }
-}
-async function readPermissionModeAsync(realPath, sessionId) {
-  try {
-    const w = await readWindowAsync(realPath, "tail", TAIL_BYTES);
-    if (w === void 0) return void 0;
-    const first = scanPermissionMode(w.buf, w.atBoundary, sessionId);
-    if (first.decided) return first.mode;
-    if (w.size <= TAIL_BYTES) return void 0;
-    const wide = await readWindowAsync(realPath, "tail", PERMISSION_MODE_BYTES);
-    if (wide === void 0) return void 0;
-    return scanPermissionMode(wide.buf, wide.atBoundary, sessionId).mode;
-  } catch {
-    return void 0;
-  }
-}
-var NOISE = /^<(local-command-(stdout|stderr)|command-caveat|system-reminder|bash-(input|stdout|stderr))>/;
-var COMMAND_NAME = /<command-name>\/?([^<]{1,80})<\/command-name>/;
-var COMMAND_ARGS = /<command-args>([^<]{0,200})<\/command-args>/;
-function promptLabel(o) {
-  if (o === null || typeof o !== "object") return void 0;
-  const line = o;
-  if (line.type !== "user" || line.isMeta === true) return void 0;
-  const message = line.message;
-  if (message === null || typeof message !== "object") return void 0;
-  const content = message.content;
-  let text;
-  if (typeof content === "string") {
-    text = content;
-  } else if (Array.isArray(content)) {
-    for (const part of content) {
-      if (part === null || typeof part !== "object") continue;
-      const pt = part;
-      if (pt.type === "text" && typeof pt.text === "string") {
-        text = pt.text;
-        break;
-      }
-    }
-  }
-  if (text === void 0) return void 0;
-  const t = text.trim();
-  if (t.length === 0 || NOISE.test(t)) return void 0;
-  if (t.includes("<command-name>")) {
-    const name = COMMAND_NAME.exec(t)?.[1]?.trim();
-    if (name === void 0 || name.length === 0) return void 0;
-    if (TRIVIAL_COMMANDS.has(name)) return void 0;
-    const args = COMMAND_ARGS.exec(t)?.[1]?.trim();
-    return args !== void 0 && args.length > 0 ? `/${name} ${args}` : `/${name}`;
-  }
-  return t;
-}
-function scanHeadFacts(buf, sessionId, slug) {
-  const f = {};
-  for (const line of windowLines(buf, true)) {
-    if (line.length === 0 || line.length > MAX_SCAN_LINE) continue;
-    const isUser = line.includes(USER_MARKER);
-    if (!isUser && !line.includes(CWD_MARKER)) continue;
-    let parsed;
-    try {
-      parsed = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    if (parsed === null || typeof parsed !== "object") continue;
-    const o = parsed;
-    if (o.sessionId !== void 0 && o.sessionId !== sessionId) continue;
-    if (f.prompt === void 0 && isUser) {
-      const label2 = promptLabel(parsed);
-      if (label2 !== void 0) f.prompt = label2;
-    }
-    if (typeof o.cwd === "string" && o.cwd.length > 0) {
-      if (f.firstCwd === void 0) f.firstCwd = o.cwd;
-      if (f.slugCwd === void 0 && projectSlug(o.cwd) === slug) f.slugCwd = o.cwd;
-    }
-    if (f.prompt !== void 0 && f.slugCwd !== void 0) break;
-  }
-  return f;
-}
-function openFlags() {
-  return fs3.constants.O_RDONLY | fs3.constants.O_NONBLOCK | (fs3.constants.O_NOFOLLOW ?? 0);
-}
-function windowRange(size, from, budget) {
-  const b = Math.max(0, budget);
-  const start = from === "tail" ? Math.max(0, size - b) : 0;
-  return { start, want: Math.min(b, size - start) };
-}
-function readWindowSync(realPath, from, budget) {
-  try {
-    const fd = fs3.openSync(realPath, openFlags());
-    try {
-      const st = fs3.fstatSync(fd);
-      if (!st.isFile()) return void 0;
-      const { start, want } = windowRange(st.size, from, budget);
-      const out = Buffer.alloc(want);
-      let filled = 0;
-      while (filled < want) {
-        const n = fs3.readSync(fd, out, filled, want - filled, start + filled);
-        if (n <= 0) break;
-        filled += n;
-      }
-      return {
-        buf: out.subarray(0, filled),
-        atBoundary: start === 0,
-        reachedEof: start + filled >= st.size,
-        size: st.size,
-        mtimeMs: st.mtimeMs
-      };
-    } finally {
-      fs3.closeSync(fd);
-    }
-  } catch {
-    return void 0;
-  }
-}
-async function readWindowAsync(realPath, from, budget) {
-  let fh;
-  try {
-    fh = await fsp.open(realPath, openFlags());
-    const st = await fh.stat();
-    if (!st.isFile()) return void 0;
-    const { start, want } = windowRange(st.size, from, budget);
-    const out = Buffer.alloc(want);
-    let filled = 0;
-    while (filled < want) {
-      const { bytesRead } = await fh.read(out, filled, want - filled, start + filled);
-      if (bytesRead <= 0) break;
-      filled += bytesRead;
-    }
-    return {
-      buf: out.subarray(0, filled),
-      atBoundary: start === 0,
-      reachedEof: start + filled >= st.size,
-      size: st.size,
-      mtimeMs: st.mtimeMs
-    };
-  } catch {
-    return void 0;
-  } finally {
-    if (fh !== void 0) {
-      try {
-        await fh.close();
-      } catch {
-      }
-    }
-  }
-}
-async function readTailFactsAsync(realPath, sessionId, budget = TAIL_BYTES, slug) {
-  try {
-    const w = await readWindowAsync(realPath, "tail", budget);
-    if (w === void 0) return void 0;
-    return { ...scanTailFacts(w.buf, w.atBoundary, sessionId, slug), size: w.size, mtimeMs: w.mtimeMs };
-  } catch {
-    return void 0;
-  }
-}
-async function readHeadFactsAsync(realPath, sessionId, slug, budget = HEAD_BYTES) {
-  try {
-    const w = await readWindowAsync(realPath, "head", budget);
-    if (w === void 0) return void 0;
-    const h = scanHeadFacts(w.buf, sessionId, slug);
-    const final = w.size > Math.max(0, budget) || h.prompt !== void 0 && h.slugCwd !== void 0;
-    const out = { final };
-    if (h.prompt !== void 0) out.prompt = h.prompt;
-    if (h.firstCwd !== void 0) out.firstCwd = h.firstCwd;
-    if (h.slugCwd !== void 0) out.slugCwd = h.slugCwd;
-    return out;
-  } catch {
-    return void 0;
-  }
-}
-function safeSessionId(sessionId) {
-  return typeof sessionId === "string" && SAFE_ID_PATTERN2.test(sessionId) && sessionId !== "." && sessionId !== "..";
-}
-function realRoots(candidates) {
-  const roots = [];
-  for (const c of candidates) {
-    try {
-      roots.push(fs3.realpathSync(c));
-    } catch {
-    }
-  }
-  return roots;
-}
-function allowedRoots() {
-  const candidates = [path2.join(os4.homedir(), ".claude", "projects")];
-  const cfg = process.env.CLAUDE_CONFIG_DIR;
-  if (typeof cfg === "string" && cfg.length > 0) candidates.push(path2.join(cfg, "projects"));
-  return realRoots(candidates);
-}
-function projectRoots() {
-  return [...new Set(allowedRoots())];
-}
-function isInside(root, real) {
-  const rel = path2.relative(root, real);
-  if (rel.length === 0 || path2.isAbsolute(rel)) return false;
-  return rel.split(path2.sep)[0] !== "..";
-}
-function isAllowedTranscriptPath(sessionId, p, roots) {
-  try {
-    if (!safeSessionId(sessionId)) return void 0;
-    if (typeof p !== "string" || p.length === 0 || p.length > MAX_PATH) return void 0;
-    if (!path2.isAbsolute(p)) return void 0;
-    if (path2.normalize(p) !== p) return void 0;
-    const expected = `${sessionId}.jsonl`;
-    if (path2.basename(p) !== expected) return void 0;
-    const real = fs3.realpathSync(p);
-    if (path2.basename(real) !== expected) return void 0;
-    for (const root of roots === void 0 ? allowedRoots() : realRoots(roots)) {
-      if (isInside(root, real)) return real;
-    }
-    return void 0;
-  } catch {
-    return void 0;
-  }
-}
-function readTailCustomTitle(realPath, sessionId, budget = TAIL_BYTES) {
-  try {
-    const window2 = readWindowSync(realPath, "tail", budget);
-    if (window2 === void 0) return void 0;
-    const title = scanCustomTitle(window2.buf, window2.atBoundary, sessionId);
-    return { title, size: window2.size, mtimeMs: window2.mtimeMs };
-  } catch {
-    return void 0;
-  }
-}
-var cache2 = /* @__PURE__ */ new Map();
-function valueOf(e) {
-  if (e === void 0 || e.title === void 0 || e.changedAtMs === void 0) return void 0;
-  return { title: e.title, changedAtMs: e.changedAtMs };
-}
-function readTranscriptTitle(sessionId, transcriptPath, budget = TAIL_BYTES) {
-  try {
-    if (typeof transcriptPath !== "string") {
-      cache2.delete(sessionId);
-      return void 0;
-    }
-    let entry = cache2.get(sessionId);
-    if (entry === void 0 || entry.rawPath !== transcriptPath) {
-      const real = isAllowedTranscriptPath(sessionId, transcriptPath);
-      if (real === void 0) {
-        cache2.delete(sessionId);
-        return void 0;
-      }
-      entry = { rawPath: transcriptPath, realPath: real, size: -1, mtimeMs: -1 };
-      cache2.set(sessionId, entry);
-    }
-    let st;
-    try {
-      st = fs3.statSync(entry.realPath);
-    } catch {
-      cache2.delete(sessionId);
-      return void 0;
-    }
-    if (!st.isFile()) {
-      cache2.delete(sessionId);
-      return void 0;
-    }
-    if (st.size === entry.size && st.mtimeMs === entry.mtimeMs) return valueOf(entry);
-    if (st.size < entry.size) {
-      entry.title = void 0;
-      entry.changedAtMs = void 0;
-      entry.size = -1;
-      entry.mtimeMs = -1;
-    }
-    const r = readTailCustomTitle(entry.realPath, sessionId, budget);
-    if (r === void 0) return valueOf(entry);
-    const baseline = entry.size < 0;
-    if (r.title !== void 0 && r.title !== entry.title) {
-      entry.title = r.title;
-      entry.changedAtMs = baseline ? Number.NEGATIVE_INFINITY : r.mtimeMs;
-    }
-    entry.size = r.size;
-    entry.mtimeMs = r.mtimeMs;
-    return valueOf(entry);
-  } catch {
-    return valueOf(cache2.get(sessionId));
-  }
-}
-function pruneTranscriptTitleCache(keep) {
-  for (const id of [...cache2.keys()]) {
-    if (!keep.has(id)) cache2.delete(id);
-  }
-}
-
-// src/liveness.ts
-import * as fs4 from "node:fs";
-import * as path3 from "node:path";
-import { execFileSync as execFileSync2 } from "node:child_process";
-function defaultStartedProbe(pid) {
-  try {
-    return execFileSync2("ps", ["-o", "lstart=", "-p", String(pid)], {
-      encoding: "utf8",
-      timeout: 1e3
-    }).trim();
-  } catch {
-    return "";
-  }
-}
-function defaultProbe(pid) {
-  try {
-    process.kill(pid, 0);
-    return "alive";
-  } catch (e) {
-    if (e?.code === "EPERM") return "alive";
-    return "dead";
-  }
-}
-function isProcessAlive(pid, probe = defaultProbe, expectedStarted, startedProbe = defaultStartedProbe) {
-  if (typeof pid !== "number" || !Number.isInteger(pid) || pid <= 0) return "unknown";
-  if (probe(pid) !== "alive") return "dead";
-  if (expectedStarted) {
-    const current = startedProbe(pid);
-    if (current && current !== expectedStarted) return "dead";
-  }
-  return "alive";
-}
-function resolveSidecarMs(dir, name) {
-  const file = path3.join(dir, name);
-  let content;
-  try {
-    content = fs4.readFileSync(file, "utf8");
-  } catch {
-    return void 0;
-  }
-  const parsed = Date.parse(content.trim());
-  if (!Number.isNaN(parsed)) return parsed;
-  try {
-    return fs4.statSync(file).mtimeMs;
-  } catch {
-    return void 0;
-  }
-}
-function resolveLastSeen(dir) {
-  return resolveSidecarMs(dir, "heartbeat");
-}
-function staleMs() {
-  return numEnv("CSM_STALE_MS", 12e4);
-}
-function activeMs() {
-  return numEnv("CSM_ACTIVE_MS", 3e4);
-}
-function fmtUptime(startMs, now) {
-  const s = Math.max(0, Math.floor((now - startMs) / 1e3));
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  return `${h}h ${m % 60}m`;
-}
-
-// src/aggregate.ts
-function windowMs() {
-  return numEnv("CSM_WINDOW_MS", 5 * 60 * 1e3);
-}
-function readWindowMs() {
-  return numEnv("CSM_READ_WINDOW_MS", 3e4);
-}
-function skillWindowMs() {
-  return numEnv("CSM_SKILL_WINDOW_MS", 5 * 60 * 1e3);
-}
-function attnWindowMs() {
-  return numEnv("CSM_ATTN_WINDOW_MS", 36e5);
-}
-function runWindowMs() {
-  return numEnv("CSM_RUN_WINDOW_MS", 18e5);
-}
-function idleWaitMs() {
-  return numEnv("CSM_IDLE_WAIT_MS", 1e3);
-}
-function activeFiles(dir, now) {
-  let raw;
-  try {
-    raw = fs5.readFileSync(path4.join(dir, "files.jsonl"), "utf8");
-  } catch {
-    return { files: [] };
-  }
-  const threshold = now - windowMs();
-  const released = /* @__PURE__ */ new Set();
-  const newest = /* @__PURE__ */ new Map();
-  for (const line of raw.split("\n")) {
-    if (line.trim() === "") continue;
-    let evt;
-    try {
-      evt = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    if (typeof evt?.file_path !== "string" || typeof evt?.ts !== "string") continue;
-    if (evt.released) {
-      released.add(evt.file_path);
-      continue;
-    }
-    const tsMs = Date.parse(evt.ts);
-    if (Number.isNaN(tsMs) || tsMs < threshold) continue;
-    const prev = newest.get(evt.file_path);
-    if (prev === void 0 || tsMs > prev) newest.set(evt.file_path, tsMs);
-  }
-  const files = [];
-  let lastActiveMs = -Infinity;
-  for (const [file_path, tsMs] of newest) {
-    if (released.has(file_path)) continue;
-    files.push({ file_path, ts: new Date(tsMs).toISOString() });
-    if (tsMs > lastActiveMs) lastActiveMs = tsMs;
-  }
-  return {
-    files,
-    lastActive: lastActiveMs === -Infinity ? void 0 : new Date(lastActiveMs).toISOString()
-  };
-}
-function activeReads(dir, now) {
-  let raw;
-  try {
-    raw = fs5.readFileSync(path4.join(dir, "reads.jsonl"), "utf8");
-  } catch {
-    return [];
-  }
-  const threshold = now - readWindowMs();
-  const released = /* @__PURE__ */ new Set();
-  const newest = /* @__PURE__ */ new Map();
-  for (const line of raw.split("\n")) {
-    if (line.trim() === "") continue;
-    let evt;
-    try {
-      evt = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    if (typeof evt?.file_path !== "string" || typeof evt?.ts !== "string") continue;
-    if (evt.released) {
-      released.add(evt.file_path);
-      continue;
-    }
-    const tsMs = Date.parse(evt.ts);
-    if (Number.isNaN(tsMs) || tsMs < threshold) continue;
-    const prev = newest.get(evt.file_path);
-    if (prev === void 0 || tsMs > prev) newest.set(evt.file_path, tsMs);
-  }
-  const reads = [];
-  for (const [file_path, tsMs] of newest) {
-    if (released.has(file_path)) continue;
-    reads.push({ file_path, ts: new Date(tsMs).toISOString() });
-  }
-  return reads;
-}
-function readIntent(dir) {
-  try {
-    const parsed = JSON.parse(fs5.readFileSync(path4.join(dir, "intent.txt"), "utf8"));
-    if (typeof parsed?.intent === "string" && parsed.intent.length > 0) {
-      return {
-        intent: parsed.intent,
-        intent_ts: typeof parsed.ts === "string" ? parsed.ts : void 0
-      };
-    }
-    return {};
-  } catch {
-    return {};
-  }
-}
-function readTargetBranch(dir) {
-  try {
-    const parsed = JSON.parse(fs5.readFileSync(path4.join(dir, "target-branch.txt"), "utf8"));
-    if (typeof parsed?.target_branch === "string" && parsed.target_branch.length > 0) {
-      return {
-        target_branch: parsed.target_branch,
-        target_branch_ts: typeof parsed.ts === "string" ? parsed.ts : void 0
-      };
-    }
-    return {};
-  } catch {
-    return {};
-  }
-}
-function readSkill(dir, now) {
-  let raw;
-  try {
-    raw = fs5.readFileSync(path4.join(dir, "skill.jsonl"), "utf8");
-  } catch {
-    return {};
-  }
-  const threshold = now - skillWindowMs();
-  let bestMs = -Infinity;
-  let best;
-  for (const line of raw.split("\n")) {
-    if (line.trim() === "") continue;
-    let e;
-    try {
-      e = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    if (typeof e?.skill !== "string" || typeof e?.ts !== "string") continue;
-    const ms = Date.parse(e.ts);
-    if (Number.isNaN(ms) || ms < threshold) continue;
-    if (ms > bestMs) {
-      bestMs = ms;
-      best = e;
-    }
-  }
-  if (!best) return {};
-  return {
-    skill: best.skill,
-    skill_ts: best.ts,
-    skill_subagent: typeof best.subagent === "string" && best.subagent ? best.subagent : void 0
-  };
-}
-function readAttention(dir) {
-  try {
-    const parsed = JSON.parse(
-      fs5.readFileSync(path4.join(dir, "attention.json"), "utf8")
-    );
-    if (typeof parsed?.type === "string" && parsed.type.length > 0 && typeof parsed.ts === "string") {
-      return { attention_type: parsed.type, attention_ts: parsed.ts };
-    }
-    return {};
-  } catch {
-    return {};
-  }
-}
-function readAsking(dir) {
-  try {
-    const parsed = JSON.parse(
-      fs5.readFileSync(path4.join(dir, "asking.json"), "utf8")
-    );
-    if (typeof parsed?.ts === "string" && parsed.ts.length > 0) {
-      return { asking_ts: parsed.ts };
-    }
-    return {};
-  } catch {
-    return {};
-  }
-}
-function readTurn(dir) {
-  try {
-    const parsed = JSON.parse(fs5.readFileSync(path4.join(dir, "turn.json"), "utf8"));
-    const state = parsed?.state;
-    if ((state === "running" || state === "idle") && typeof parsed.ts === "string" && parsed.ts.length > 0) {
-      const agents = parsed.agents;
-      return Number.isSafeInteger(agents) && agents >= 0 ? { turn_state: state, turn_ts: parsed.ts, turn_agents: agents } : { turn_state: state, turn_ts: parsed.ts };
-    }
-    return {};
-  } catch {
-    return {};
-  }
-}
-function readTitleShard(dir) {
-  try {
-    const parsed = JSON.parse(
-      fs5.readFileSync(path4.join(dir, "title.json"), "utf8")
-    );
-    if (parsed === null || typeof parsed !== "object") return {};
-    const out = {};
-    if (typeof parsed.title === "string" && parsed.title.length > 0) out.title = parsed.title;
-    if (typeof parsed.ts === "string") {
-      const ms = Date.parse(parsed.ts);
-      if (Number.isFinite(ms)) out.tsMs = ms;
-    }
-    if (typeof parsed.transcript_path === "string") out.transcript_path = parsed.transcript_path;
-    return out;
-  } catch {
-    return {};
-  }
-}
-function resolveTitle(h, t) {
-  if (t !== void 0 && (h.tsMs === void 0 || t.changedAtMs > h.tsMs)) return t.title;
-  return h.title;
-}
-function readAll(now = Date.now(), probe = defaultProbe, startedProbe = defaultStartedProbe) {
-  const root = sessionsDir();
-  let ids;
-  try {
-    ids = fs5.readdirSync(root);
-  } catch {
-    return [];
-  }
-  const rows = [];
-  for (const id of ids) {
-    const dir = path4.join(root, id);
-    let state;
-    try {
-      state = JSON.parse(fs5.readFileSync(path4.join(dir, "session.json"), "utf8"));
-    } catch {
-      continue;
-    }
-    const { files, lastActive } = activeFiles(dir, now);
-    const titleShard = readTitleShard(dir);
-    const title = resolveTitle(titleShard, readTranscriptTitle(id, titleShard.transcript_path));
-    const rawReads = activeReads(dir, now);
-    const writeSet = new Set(files.map((f) => f.file_path));
-    const reads = rawReads.filter((r) => !writeSet.has(r.file_path));
-    const heartbeatMs = resolveLastSeen(dir);
-    const lastSeenMs = heartbeatMs ?? Date.parse(lastActive ?? state.start_time);
-    const resumedMs = resolveSidecarMs(dir, "resumed") ?? lastSeenMs;
-    const askResolvedMs = resolveSidecarMs(dir, "ask-resolved") ?? lastSeenMs;
-    const attn = readAttention(dir);
-    const attnMs = attn.attention_ts !== void 0 ? Date.parse(attn.attention_ts) : NaN;
-    const rawWaiting = !Number.isNaN(attnMs) && now - attnMs < attnWindowMs() && attnMs > resumedMs;
-    const ask = readAsking(dir);
-    const askMs = ask.asking_ts !== void 0 ? Date.parse(ask.asking_ts) : NaN;
-    const verdict = isProcessAlive(state.pid, probe, state.pid_started, startedProbe);
-    const procAlive = verdict === "alive";
-    const procDead = verdict === "dead";
-    const asking = !Number.isNaN(askMs) && askMs > askResolvedMs && (procAlive || now - askMs < attnWindowMs());
-    const turn = readTurn(dir);
-    const turnMs = turn.turn_ts !== void 0 ? Date.parse(turn.turn_ts) : NaN;
-    const runRefMs = Math.max(turnMs, heartbeatMs ?? -Infinity);
-    const turnAgents = turn.turn_agents ?? 0;
-    const rawSubagent = turn.turn_state === "idle" && turnAgents > 0 && !Number.isNaN(turnMs) && !procDead && now - runRefMs < runWindowMs();
-    const rawIdleWaiting = turn.turn_state === "idle" && !Number.isNaN(turnMs) && !procDead && now - turnMs >= idleWaitMs() && now - turnMs < attnWindowMs() && // 260927-73b D-03: background agents still working → not waiting on you.
-    !rawSubagent;
-    const notifWaiting = rawWaiting && !(rawSubagent && attn.attention_type === "idle_prompt");
-    const attention = (notifWaiting || rawIdleWaiting) && !asking;
-    const rawRunning = turn.turn_state === "running" && !Number.isNaN(turnMs) && !procDead && now - runRefMs < runWindowMs();
-    const running = rawRunning && !asking && !attention;
-    const subagent = rawSubagent && !asking && !attention;
-    const heartbeatFresh = now - lastSeenMs < staleMs();
-    const needsYouKeepalive = (asking || rawWaiting || rawIdleWaiting) && !procDead;
-    const fresh = heartbeatFresh || needsYouKeepalive || rawRunning || rawSubagent;
-    const alive = fresh || procAlive;
-    const readyToPrune = !fresh && !procAlive;
-    let dotState;
-    if (!fresh || procDead) {
-      dotState = "stale";
-    } else if (running || subagent) {
-      dotState = "active";
-    } else {
-      const touchMs = lastActive ? Date.parse(lastActive) : NaN;
-      const recentTouch = !Number.isNaN(touchMs) && now - touchMs < activeMs();
-      dotState = recentTouch ? "active" : "idle";
-    }
-    rows.push({
-      ...state,
-      files,
-      reads,
-      ...readIntent(dir),
-      // INT-01 additive read-side field (D-01 separate shard)
-      ...readTargetBranch(dir),
-      // TB-02 additive card-only field (D-01/D-BR-01 separate shard)
-      ...readSkill(dir, now),
-      // SKILL-03 additive card-only field (D-01 separate shard)
-      title,
-      // NAME-01 additive card-only field (D-02 shard + D-04 tail)
-      last_active: lastActive,
-      last_seen: heartbeatMs !== void 0 ? new Date(heartbeatMs).toISOString() : state.last_seen,
-      alive,
-      readyToPrune,
-      dotState,
-      // ATTN-02/03 additive card-only fields — pre-gated; type/ts only survive
-      // when the gate held, so the panel needs no re-check. 260927-4tv D-03:
-      // the Notification's type/ts win; idle-waiting alone synthesizes
-      // "idle_prompt" + the turn ts.
-      attention,
-      attention_type: attention ? notifWaiting ? attn.attention_type : "idle_prompt" : void 0,
-      attention_ts: attention ? notifWaiting ? attn.attention_ts : turn.turn_ts : void 0,
-      // 260926-vfm (AQ-02) additive card-only fields — pre-gated, asking wins.
-      asking,
-      asking_ts: asking ? ask.asking_ts : void 0,
-      // 260927-46l additive card-only flag — pre-gated (asking > waiting > running).
-      running,
-      // 260927-73b additive card-only fields — pre-gated (lowest precedence);
-      // the count is present only when subagent is true.
-      subagent,
-      subagent_count: subagent ? turnAgents : void 0
-    });
-  }
-  pruneTranscriptTitleCache(new Set(ids));
-  const key = (r) => Date.parse(r.last_active ?? r.start_time) || 0;
-  rows.sort((a, b) => key(b) - key(a));
-  return rows;
-}
-
-// src/prune.ts
-import { rmSync } from "node:fs";
-function pruneSession(id) {
-  try {
-    rmSync(sessionDir(id), { recursive: true, force: true });
-  } catch {
-  }
-}
+var import_react42 = __toESM(require_react(), 1);
 
 // src/sanitize.ts
 function sanitize(s) {
@@ -37774,6 +36924,82 @@ var import_react36 = __toESM(require_react(), 1);
 var WARP_SESSION_URL_RE = /^(warp|warppreview|warposs):\/\/session\/[0-9a-f]{32}$/;
 function isWarpSessionUrl(raw) {
   return typeof raw === "string" && WARP_SESSION_URL_RE.test(raw);
+}
+
+// src/liveness.ts
+import * as fs3 from "node:fs";
+import * as path from "node:path";
+import { execFileSync as execFileSync2 } from "node:child_process";
+
+// src/env.ts
+function numEnv(name, def) {
+  const raw = process.env[name];
+  if (raw === void 0) return def;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : def;
+}
+
+// src/liveness.ts
+function defaultStartedProbe(pid) {
+  try {
+    return execFileSync2("ps", ["-o", "lstart=", "-p", String(pid)], {
+      encoding: "utf8",
+      timeout: 1e3
+    }).trim();
+  } catch {
+    return "";
+  }
+}
+function defaultProbe(pid) {
+  try {
+    process.kill(pid, 0);
+    return "alive";
+  } catch (e) {
+    if (e?.code === "EPERM") return "alive";
+    return "dead";
+  }
+}
+function isProcessAlive(pid, probe = defaultProbe, expectedStarted, startedProbe = defaultStartedProbe) {
+  if (typeof pid !== "number" || !Number.isInteger(pid) || pid <= 0) return "unknown";
+  if (probe(pid) !== "alive") return "dead";
+  if (expectedStarted) {
+    const current = startedProbe(pid);
+    if (current && current !== expectedStarted) return "dead";
+  }
+  return "alive";
+}
+function resolveSidecarMs(dir, name) {
+  const file = path.join(dir, name);
+  let content;
+  try {
+    content = fs3.readFileSync(file, "utf8");
+  } catch {
+    return void 0;
+  }
+  const parsed = Date.parse(content.trim());
+  if (!Number.isNaN(parsed)) return parsed;
+  try {
+    return fs3.statSync(file).mtimeMs;
+  } catch {
+    return void 0;
+  }
+}
+function resolveLastSeen(dir) {
+  return resolveSidecarMs(dir, "heartbeat");
+}
+function staleMs() {
+  return numEnv("CSM_STALE_MS", 12e4);
+}
+function activeMs() {
+  return numEnv("CSM_ACTIVE_MS", 3e4);
+}
+function fmtUptime(startMs, now) {
+  const s = Math.max(0, Math.floor((now - startMs) / 1e3));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
 }
 
 // src/ports.ts
@@ -37956,8 +37182,8 @@ import { execFile as execFile2 } from "node:child_process";
 import { promisify as promisify2 } from "node:util";
 import { existsSync } from "node:fs";
 import { access } from "node:fs/promises";
-import * as os5 from "node:os";
-import * as path5 from "node:path";
+import * as os3 from "node:os";
+import * as path2 from "node:path";
 var pexec2 = promisify2(execFile2);
 var FAZLAR_VISIBLE_ROWS = 15;
 function phaseScanMs() {
@@ -38018,11 +37244,11 @@ function mergeRoadmapPhases(progress, roadmapStdout) {
 function resolveGsdTools(cwd2 = process.cwd()) {
   const override = process.env.CSM_GSD_TOOLS;
   if (override && existsSync(override)) return override;
-  const rel = path5.join("gsd-core", "bin", "gsd-tools.cjs");
+  const rel = path2.join("gsd-core", "bin", "gsd-tools.cjs");
   const candidates = [];
-  if (process.env.RUNTIME_DIR) candidates.push(path5.join(process.env.RUNTIME_DIR, rel));
-  candidates.push(path5.join(cwd2, ".claude", rel));
-  candidates.push(path5.join(os5.homedir(), ".claude", rel));
+  if (process.env.RUNTIME_DIR) candidates.push(path2.join(process.env.RUNTIME_DIR, rel));
+  candidates.push(path2.join(cwd2, ".claude", rel));
+  candidates.push(path2.join(os3.homedir(), ".claude", rel));
   for (const c of candidates) {
     if (existsSync(c)) return c;
   }
@@ -38077,7 +37303,7 @@ async function resolvePlanningRoots(rows) {
   await Promise.all(
     roots.map(async (root) => {
       try {
-        await access(path5.join(root, ".planning"));
+        await access(path2.join(root, ".planning"));
         out.add(root);
       } catch {
       }
@@ -38095,8 +37321,424 @@ function cycleIndex(i, n, dir) {
 // src/sessions.ts
 import * as fsp2 from "node:fs/promises";
 import { constants as FS } from "node:fs";
-import * as os6 from "node:os";
-import * as path6 from "node:path";
+import * as os5 from "node:os";
+import * as path4 from "node:path";
+
+// src/transcript.ts
+import * as fs4 from "node:fs";
+import * as fsp from "node:fs/promises";
+import * as os4 from "node:os";
+import * as path3 from "node:path";
+var TAIL_BYTES = 256 * 1024;
+var MAX_TITLE_LINE = 4096;
+var HEAD_BYTES = 256 * 1024;
+var MAX_SCAN_LINE = 64 * 1024;
+var PERMISSION_MODE_BYTES = 4 * 1024 * 1024;
+var SESSION_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+var TRIVIAL_COMMANDS = /* @__PURE__ */ new Set([
+  "clear",
+  "reload-plugins",
+  "model",
+  "effort",
+  "compact",
+  "resume",
+  "exit",
+  "config",
+  "help",
+  "status",
+  "cost",
+  "login",
+  "logout"
+]);
+var SAFE_ID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
+var MAX_PATH = 4096;
+var MARKER = '"type":"custom-title"';
+var NEWLINE = 10;
+var META_MARKERS = ['"type":"custom-title"', '"type":"ai-title"', '"type":"last-prompt"'];
+var CARRIER_MARKER = '"entrypoint":"';
+var ASSISTANT_MARKER = '"type":"assistant"';
+var USER_MARKER = '"type":"user"';
+var CWD_MARKER = '"cwd":"';
+var MODE_MARKER = '"permissionMode":"';
+var MODE_MARKER_BYTES = Buffer.from(MODE_MARKER, "utf8");
+function projectSlug(cwd2) {
+  return cwd2.replace(/[^a-zA-Z0-9]/g, "-");
+}
+function windowLines(buf, atBoundary) {
+  let first = 0;
+  if (!atBoundary) {
+    const nl = buf.indexOf(NEWLINE);
+    if (nl < 0) return [];
+    first = nl + 1;
+  }
+  const last = buf.lastIndexOf(NEWLINE);
+  if (last < first) return [];
+  return buf.subarray(first, last).toString("utf8").split("\n");
+}
+function scanCustomTitle(buf, atBoundary, sessionId) {
+  let found;
+  for (const line of windowLines(buf, atBoundary)) {
+    if (line.length === 0 || line.length > MAX_TITLE_LINE) continue;
+    if (!line.includes(MARKER)) continue;
+    let parsed;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (parsed === null || typeof parsed !== "object") continue;
+    const o = parsed;
+    if (o.type !== "custom-title") continue;
+    if (typeof o.customTitle !== "string") continue;
+    if (o.sessionId !== void 0 && o.sessionId !== sessionId) continue;
+    found = o.customTitle;
+  }
+  return found;
+}
+function scanTailFacts(buf, atBoundary, sessionId, slug) {
+  const f = { hasAssistant: false };
+  for (const line of windowLines(buf, atBoundary)) {
+    if (line.length === 0 || line.length > MAX_SCAN_LINE) continue;
+    const isMeta = META_MARKERS.some((m) => line.includes(m));
+    const isCarrier = line.includes(CARRIER_MARKER);
+    const isAssistant = line.includes(ASSISTANT_MARKER);
+    if (!isMeta && !isCarrier && !isAssistant) continue;
+    const metaOk = line.length <= MAX_TITLE_LINE;
+    if (isMeta && !metaOk && !isCarrier && !isAssistant) continue;
+    let parsed;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (parsed === null || typeof parsed !== "object") continue;
+    const o = parsed;
+    if (o.sessionId !== void 0 && o.sessionId !== sessionId) continue;
+    if (metaOk) {
+      if (o.type === "custom-title" && typeof o.customTitle === "string") f.customTitle = o.customTitle;
+      else if (o.type === "ai-title" && typeof o.aiTitle === "string") f.aiTitle = o.aiTitle;
+      else if (o.type === "last-prompt" && typeof o.lastPrompt === "string") f.lastPrompt = o.lastPrompt;
+    }
+    if (o.type === "assistant") f.hasAssistant = true;
+    if (typeof o.entrypoint === "string") f.entrypoint = o.entrypoint;
+    if (typeof o.cwd === "string") {
+      f.cwd = o.cwd;
+      if (slug !== void 0 && f.slugCwd === void 0 && o.cwd.length > 0 && projectSlug(o.cwd) === slug) {
+        f.slugCwd = o.cwd;
+      }
+    }
+  }
+  return f;
+}
+function scanPermissionMode(buf, atBoundary, sessionId) {
+  try {
+    if (buf.lastIndexOf(MODE_MARKER_BYTES) < 0) return { decided: false };
+    const lines = windowLines(buf, atBoundary);
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i];
+      if (!line.includes(MODE_MARKER)) continue;
+      if (line.length > MAX_SCAN_LINE) return { decided: true };
+      let parsed;
+      try {
+        parsed = JSON.parse(line);
+      } catch {
+        return { decided: true };
+      }
+      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return { decided: true };
+      const o = parsed;
+      if (o.sessionId !== void 0 && o.sessionId !== sessionId) continue;
+      if ((o.type === "permission-mode" || o.type === "user") && typeof o.permissionMode === "string") {
+        return { decided: true, mode: o.permissionMode };
+      }
+    }
+    return { decided: false };
+  } catch {
+    return { decided: true };
+  }
+}
+async function readPermissionModeAsync(realPath, sessionId) {
+  try {
+    const w = await readWindowAsync(realPath, "tail", TAIL_BYTES);
+    if (w === void 0) return void 0;
+    const first = scanPermissionMode(w.buf, w.atBoundary, sessionId);
+    if (first.decided) return first.mode;
+    if (w.size <= TAIL_BYTES) return void 0;
+    const wide = await readWindowAsync(realPath, "tail", PERMISSION_MODE_BYTES);
+    if (wide === void 0) return void 0;
+    return scanPermissionMode(wide.buf, wide.atBoundary, sessionId).mode;
+  } catch {
+    return void 0;
+  }
+}
+var NOISE = /^<(local-command-(stdout|stderr)|command-caveat|system-reminder|bash-(input|stdout|stderr))>/;
+var COMMAND_NAME = /<command-name>\/?([^<]{1,80})<\/command-name>/;
+var COMMAND_ARGS = /<command-args>([^<]{0,200})<\/command-args>/;
+function promptLabel(o) {
+  if (o === null || typeof o !== "object") return void 0;
+  const line = o;
+  if (line.type !== "user" || line.isMeta === true) return void 0;
+  const message = line.message;
+  if (message === null || typeof message !== "object") return void 0;
+  const content = message.content;
+  let text;
+  if (typeof content === "string") {
+    text = content;
+  } else if (Array.isArray(content)) {
+    for (const part of content) {
+      if (part === null || typeof part !== "object") continue;
+      const pt = part;
+      if (pt.type === "text" && typeof pt.text === "string") {
+        text = pt.text;
+        break;
+      }
+    }
+  }
+  if (text === void 0) return void 0;
+  const t = text.trim();
+  if (t.length === 0 || NOISE.test(t)) return void 0;
+  if (t.includes("<command-name>")) {
+    const name = COMMAND_NAME.exec(t)?.[1]?.trim();
+    if (name === void 0 || name.length === 0) return void 0;
+    if (TRIVIAL_COMMANDS.has(name)) return void 0;
+    const args = COMMAND_ARGS.exec(t)?.[1]?.trim();
+    return args !== void 0 && args.length > 0 ? `/${name} ${args}` : `/${name}`;
+  }
+  return t;
+}
+function scanHeadFacts(buf, sessionId, slug) {
+  const f = {};
+  for (const line of windowLines(buf, true)) {
+    if (line.length === 0 || line.length > MAX_SCAN_LINE) continue;
+    const isUser = line.includes(USER_MARKER);
+    if (!isUser && !line.includes(CWD_MARKER)) continue;
+    let parsed;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (parsed === null || typeof parsed !== "object") continue;
+    const o = parsed;
+    if (o.sessionId !== void 0 && o.sessionId !== sessionId) continue;
+    if (f.prompt === void 0 && isUser) {
+      const label2 = promptLabel(parsed);
+      if (label2 !== void 0) f.prompt = label2;
+    }
+    if (typeof o.cwd === "string" && o.cwd.length > 0) {
+      if (f.firstCwd === void 0) f.firstCwd = o.cwd;
+      if (f.slugCwd === void 0 && projectSlug(o.cwd) === slug) f.slugCwd = o.cwd;
+    }
+    if (f.prompt !== void 0 && f.slugCwd !== void 0) break;
+  }
+  return f;
+}
+function openFlags() {
+  return fs4.constants.O_RDONLY | fs4.constants.O_NONBLOCK | (fs4.constants.O_NOFOLLOW ?? 0);
+}
+function windowRange(size, from, budget) {
+  const b = Math.max(0, budget);
+  const start = from === "tail" ? Math.max(0, size - b) : 0;
+  return { start, want: Math.min(b, size - start) };
+}
+function readWindowSync(realPath, from, budget) {
+  try {
+    const fd = fs4.openSync(realPath, openFlags());
+    try {
+      const st = fs4.fstatSync(fd);
+      if (!st.isFile()) return void 0;
+      const { start, want } = windowRange(st.size, from, budget);
+      const out = Buffer.alloc(want);
+      let filled = 0;
+      while (filled < want) {
+        const n = fs4.readSync(fd, out, filled, want - filled, start + filled);
+        if (n <= 0) break;
+        filled += n;
+      }
+      return {
+        buf: out.subarray(0, filled),
+        atBoundary: start === 0,
+        reachedEof: start + filled >= st.size,
+        size: st.size,
+        mtimeMs: st.mtimeMs
+      };
+    } finally {
+      fs4.closeSync(fd);
+    }
+  } catch {
+    return void 0;
+  }
+}
+async function readWindowAsync(realPath, from, budget) {
+  let fh;
+  try {
+    fh = await fsp.open(realPath, openFlags());
+    const st = await fh.stat();
+    if (!st.isFile()) return void 0;
+    const { start, want } = windowRange(st.size, from, budget);
+    const out = Buffer.alloc(want);
+    let filled = 0;
+    while (filled < want) {
+      const { bytesRead } = await fh.read(out, filled, want - filled, start + filled);
+      if (bytesRead <= 0) break;
+      filled += bytesRead;
+    }
+    return {
+      buf: out.subarray(0, filled),
+      atBoundary: start === 0,
+      reachedEof: start + filled >= st.size,
+      size: st.size,
+      mtimeMs: st.mtimeMs
+    };
+  } catch {
+    return void 0;
+  } finally {
+    if (fh !== void 0) {
+      try {
+        await fh.close();
+      } catch {
+      }
+    }
+  }
+}
+async function readTailFactsAsync(realPath, sessionId, budget = TAIL_BYTES, slug) {
+  try {
+    const w = await readWindowAsync(realPath, "tail", budget);
+    if (w === void 0) return void 0;
+    return { ...scanTailFacts(w.buf, w.atBoundary, sessionId, slug), size: w.size, mtimeMs: w.mtimeMs };
+  } catch {
+    return void 0;
+  }
+}
+async function readHeadFactsAsync(realPath, sessionId, slug, budget = HEAD_BYTES) {
+  try {
+    const w = await readWindowAsync(realPath, "head", budget);
+    if (w === void 0) return void 0;
+    const h = scanHeadFacts(w.buf, sessionId, slug);
+    const final = w.size > Math.max(0, budget) || h.prompt !== void 0 && h.slugCwd !== void 0;
+    const out = { final };
+    if (h.prompt !== void 0) out.prompt = h.prompt;
+    if (h.firstCwd !== void 0) out.firstCwd = h.firstCwd;
+    if (h.slugCwd !== void 0) out.slugCwd = h.slugCwd;
+    return out;
+  } catch {
+    return void 0;
+  }
+}
+function safeSessionId(sessionId) {
+  return typeof sessionId === "string" && SAFE_ID_PATTERN.test(sessionId) && sessionId !== "." && sessionId !== "..";
+}
+function realRoots(candidates) {
+  const roots = [];
+  for (const c of candidates) {
+    try {
+      roots.push(fs4.realpathSync(c));
+    } catch {
+    }
+  }
+  return roots;
+}
+function allowedRoots() {
+  const candidates = [path3.join(os4.homedir(), ".claude", "projects")];
+  const cfg = process.env.CLAUDE_CONFIG_DIR;
+  if (typeof cfg === "string" && cfg.length > 0) candidates.push(path3.join(cfg, "projects"));
+  return realRoots(candidates);
+}
+function projectRoots() {
+  return [...new Set(allowedRoots())];
+}
+function isInside(root, real) {
+  const rel = path3.relative(root, real);
+  if (rel.length === 0 || path3.isAbsolute(rel)) return false;
+  return rel.split(path3.sep)[0] !== "..";
+}
+function isAllowedTranscriptPath(sessionId, p, roots) {
+  try {
+    if (!safeSessionId(sessionId)) return void 0;
+    if (typeof p !== "string" || p.length === 0 || p.length > MAX_PATH) return void 0;
+    if (!path3.isAbsolute(p)) return void 0;
+    if (path3.normalize(p) !== p) return void 0;
+    const expected = `${sessionId}.jsonl`;
+    if (path3.basename(p) !== expected) return void 0;
+    const real = fs4.realpathSync(p);
+    if (path3.basename(real) !== expected) return void 0;
+    for (const root of roots === void 0 ? allowedRoots() : realRoots(roots)) {
+      if (isInside(root, real)) return real;
+    }
+    return void 0;
+  } catch {
+    return void 0;
+  }
+}
+function readTailCustomTitle(realPath, sessionId, budget = TAIL_BYTES) {
+  try {
+    const window2 = readWindowSync(realPath, "tail", budget);
+    if (window2 === void 0) return void 0;
+    const title = scanCustomTitle(window2.buf, window2.atBoundary, sessionId);
+    return { title, size: window2.size, mtimeMs: window2.mtimeMs };
+  } catch {
+    return void 0;
+  }
+}
+var cache2 = /* @__PURE__ */ new Map();
+function valueOf(e) {
+  if (e === void 0 || e.title === void 0 || e.changedAtMs === void 0) return void 0;
+  return { title: e.title, changedAtMs: e.changedAtMs };
+}
+function readTranscriptTitle(sessionId, transcriptPath, budget = TAIL_BYTES) {
+  try {
+    if (typeof transcriptPath !== "string") {
+      cache2.delete(sessionId);
+      return void 0;
+    }
+    let entry = cache2.get(sessionId);
+    if (entry === void 0 || entry.rawPath !== transcriptPath) {
+      const real = isAllowedTranscriptPath(sessionId, transcriptPath);
+      if (real === void 0) {
+        cache2.delete(sessionId);
+        return void 0;
+      }
+      entry = { rawPath: transcriptPath, realPath: real, size: -1, mtimeMs: -1 };
+      cache2.set(sessionId, entry);
+    }
+    let st;
+    try {
+      st = fs4.statSync(entry.realPath);
+    } catch {
+      cache2.delete(sessionId);
+      return void 0;
+    }
+    if (!st.isFile()) {
+      cache2.delete(sessionId);
+      return void 0;
+    }
+    if (st.size === entry.size && st.mtimeMs === entry.mtimeMs) return valueOf(entry);
+    if (st.size < entry.size) {
+      entry.title = void 0;
+      entry.changedAtMs = void 0;
+      entry.size = -1;
+      entry.mtimeMs = -1;
+    }
+    const r = readTailCustomTitle(entry.realPath, sessionId, budget);
+    if (r === void 0) return valueOf(entry);
+    const baseline = entry.size < 0;
+    if (r.title !== void 0 && r.title !== entry.title) {
+      entry.title = r.title;
+      entry.changedAtMs = baseline ? Number.NEGATIVE_INFINITY : r.mtimeMs;
+    }
+    entry.size = r.size;
+    entry.mtimeMs = r.mtimeMs;
+    return valueOf(entry);
+  } catch {
+    return valueOf(cache2.get(sessionId));
+  }
+}
+function pruneTranscriptTitleCache(keep) {
+  for (const id of [...cache2.keys()]) {
+    if (!keep.has(id)) cache2.delete(id);
+  }
+}
+
+// src/sessions.ts
 var RESUME_LIST_N = 50;
 var RESUME_VISIBLE_ROWS = 10;
 var FOLDER_CAP = 16;
@@ -38137,14 +37779,14 @@ function registryDirs() {
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   const add = (p) => {
-    const r = path6.resolve(p);
+    const r = path4.resolve(p);
     if (seen.has(r)) return;
     seen.add(r);
     out.push(r);
   };
-  add(path6.join(os6.homedir(), ".claude", "sessions"));
+  add(path4.join(os5.homedir(), ".claude", "sessions"));
   const cfg = process.env.CLAUDE_CONFIG_DIR;
-  if (typeof cfg === "string" && cfg.length > 0) add(path6.join(cfg, "sessions"));
+  if (typeof cfg === "string" && cfg.length > 0) add(path4.join(cfg, "sessions"));
   return out;
 }
 function defaultAliveProbe(pid) {
@@ -38190,7 +37832,7 @@ async function readLiveRegistry(dirs, probe = defaultAliveProbe) {
     for (const name of names) {
       const m = REGISTRY_NAME.exec(name);
       if (m === null) continue;
-      const sid = await readRegistryEntry(path6.join(dir, name), Number(m[1]), probe);
+      const sid = await readRegistryEntry(path4.join(dir, name), Number(m[1]), probe);
       if (sid !== void 0) live.add(sid);
     }
   }
@@ -38206,7 +37848,7 @@ async function listCandidates(root) {
   }
   for (const slug of slugs) {
     if (!slug.isDirectory()) continue;
-    await collectSlugFiles(path6.join(root, slug.name), slug.name, out);
+    await collectSlugFiles(path4.join(root, slug.name), slug.name, out);
   }
   return out;
 }
@@ -38221,7 +37863,7 @@ async function collectSlugFiles(dir, slug, out) {
     if (!e.isFile() || !e.name.endsWith(".jsonl")) continue;
     const id = e.name.slice(0, -".jsonl".length);
     if (!SESSION_UUID_PATTERN.test(id)) continue;
-    const p = path6.join(dir, e.name);
+    const p = path4.join(dir, e.name);
     try {
       const st = await fsp2.lstat(p);
       if (!st.isFile()) continue;
@@ -38231,13 +37873,13 @@ async function collectSlugFiles(dir, slug, out) {
   }
 }
 function isSlugComponent(slug) {
-  return typeof slug === "string" && slug.length > 0 && slug.length <= MAX_SLUG_LEN && !slug.includes("/") && !slug.includes(path6.sep) && !slug.includes("\0") && slug !== "." && slug !== "..";
+  return typeof slug === "string" && slug.length > 0 && slug.length <= MAX_SLUG_LEN && !slug.includes("/") && !slug.includes(path4.sep) && !slug.includes("\0") && slug !== "." && slug !== "..";
 }
 async function listSlugCandidates(root, slug) {
   const out = [];
   try {
     if (!isSlugComponent(slug)) return out;
-    const dir = path6.join(root, slug);
+    const dir = path4.join(root, slug);
     const st = await fsp2.lstat(dir);
     if (!st.isDirectory()) return out;
     await collectSlugFiles(dir, slug, out);
@@ -38249,7 +37891,7 @@ var cache3 = /* @__PURE__ */ new Map();
 var titleKeyCache = /* @__PURE__ */ new Map();
 function folderOf(cwd2, slug) {
   if (typeof cwd2 === "string" && cwd2.length > 0) {
-    const base = cleanTitle(path6.basename(cwd2));
+    const base = cleanTitle(path4.basename(cwd2));
     if (base.length > 0) return truncateLabel(base, FOLDER_CAP);
   }
   return truncateLabel(cleanTitle(slug), FOLDER_CAP);
@@ -38862,9 +38504,9 @@ function SessionsPane({
 // src/panel/launch.ts
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import fs6 from "node:fs";
-import os7 from "node:os";
-import path7 from "node:path";
+import fs5 from "node:fs";
+import os6 from "node:os";
+import path5 from "node:path";
 var RESUME_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 var PBCOPY_BIN = "/usr/bin/pbcopy";
 var OSASCRIPT_BIN = "/usr/bin/osascript";
@@ -38930,8 +38572,8 @@ var COMMAND_CWD_FORBIDDEN = /[\\`]/;
 function commandCwd(cwd2) {
   try {
     if (typeof cwd2 !== "string" || cwd2.length < 1 || cwd2.length > MAX_CWD_LEN) return void 0;
-    if (!path7.isAbsolute(cwd2) || path7.normalize(cwd2) !== cwd2) return void 0;
-    if (cwd2.length > 1 && cwd2.endsWith(path7.sep)) return void 0;
+    if (!path5.isAbsolute(cwd2) || path5.normalize(cwd2) !== cwd2) return void 0;
+    if (cwd2.length > 1 && cwd2.endsWith(path5.sep)) return void 0;
     for (const ch of cwd2) {
       const cp = ch.codePointAt(0) ?? 0;
       if (cp <= 31 || cp === 127) return void 0;
@@ -38997,13 +38639,13 @@ function warpTabConfigToml(cwd2, id, marker) {
 }
 function statIsDir(p) {
   try {
-    return fs6.statSync(p).isDirectory();
+    return fs5.statSync(p).isDirectory();
   } catch {
     return false;
   }
 }
 function warpTabConfigDir(home) {
-  return path7.join(home, ".warp", "tab_configs");
+  return path5.join(home, ".warp", "tab_configs");
 }
 var writtenWarpConfigs = /* @__PURE__ */ new Map();
 function writeWarpTabConfig(home, cwd2, id) {
@@ -39013,21 +38655,21 @@ function writeWarpTabConfig(home, cwd2, id) {
     if (typeof cwd2 !== "string" || WARP_UNSAFE_CWD.test(cwd2)) return void 0;
     if (validLaunchCwd(cwd2, statIsDir) === void 0) return void 0;
     const dir = warpTabConfigDir(home);
-    fs6.mkdirSync(dir, { recursive: true, mode: 448 });
+    fs5.mkdirSync(dir, { recursive: true, mode: 448 });
     const nonce = randomBytes(4).toString("hex");
     const stem = warpTabConfigStem(id, process.pid, nonce);
     const marker = warpTabConfigMarker(process.pid, nonce);
-    const file = path7.join(dir, stem + ".toml");
-    tmp = path7.join(dir, `.${stem}.tmp`);
-    fs6.writeFileSync(tmp, warpTabConfigToml(cwd2, id, marker), { flag: "wx", mode: 384 });
-    fs6.renameSync(tmp, file);
+    const file = path5.join(dir, stem + ".toml");
+    tmp = path5.join(dir, `.${stem}.tmp`);
+    fs5.writeFileSync(tmp, warpTabConfigToml(cwd2, id, marker), { flag: "wx", mode: 384 });
+    fs5.renameSync(tmp, file);
     tmp = void 0;
     writtenWarpConfigs.set(file, marker);
     return { stem, file, marker };
   } catch {
     if (tmp !== void 0) {
       try {
-        fs6.unlinkSync(tmp);
+        fs5.unlinkSync(tmp);
       } catch {
       }
     }
@@ -39037,17 +38679,17 @@ function writeWarpTabConfig(home, cwd2, id) {
 function removeWarpTabConfig(file, marker) {
   try {
     let head;
-    const fd = fs6.openSync(file, fs6.constants.O_RDONLY | fs6.constants.O_NOFOLLOW | fs6.constants.O_NONBLOCK);
+    const fd = fs5.openSync(file, fs5.constants.O_RDONLY | fs5.constants.O_NOFOLLOW | fs5.constants.O_NONBLOCK);
     try {
-      if (!fs6.fstatSync(fd).isFile()) return false;
+      if (!fs5.fstatSync(fd).isFile()) return false;
       const buf = Buffer.alloc(REMOVE_READ_BYTES);
-      const n = fs6.readSync(fd, buf, 0, REMOVE_READ_BYTES, 0);
+      const n = fs5.readSync(fd, buf, 0, REMOVE_READ_BYTES, 0);
       head = buf.subarray(0, n).toString("utf8");
     } finally {
-      fs6.closeSync(fd);
+      fs5.closeSync(fd);
     }
     if (head.split("\n")[0] !== marker) return false;
-    fs6.unlinkSync(file);
+    fs5.unlinkSync(file);
     return true;
   } catch {
     return false;
@@ -39098,14 +38740,14 @@ function pidIsAlive(pid) {
   }
 }
 function defaultWarpSweepDeps() {
-  return { homedir: () => os7.homedir(), alive: pidIsAlive };
+  return { homedir: () => os6.homedir(), alive: pidIsAlive };
 }
 function sweepStaleWarpTabConfigs(deps = defaultWarpSweepDeps()) {
   let removed = 0;
   try {
     const dir = warpTabConfigDir(deps.homedir());
     const names = [];
-    const handle = fs6.opendirSync(dir);
+    const handle = fs5.opendirSync(dir);
     try {
       for (let i = 0; i < WARP_SWEEP_MAX_ENTRIES; i++) {
         const ent = handle.readSync();
@@ -39130,7 +38772,7 @@ function sweepStaleWarpTabConfigs(deps = defaultWarpSweepDeps()) {
           alive = true;
         }
         if (alive) continue;
-        if (removeWarpTabConfig(path7.join(dir, name), warpTabConfigMarker(parsed.pid, parsed.nonce))) removed++;
+        if (removeWarpTabConfig(path5.join(dir, name), warpTabConfigMarker(parsed.pid, parsed.nonce))) removed++;
       } catch {
       }
     }
@@ -39187,7 +38829,7 @@ function defaultLaunchDeps() {
   return {
     run: defaultRun,
     isDir: statIsDir,
-    homedir: () => os7.homedir(),
+    homedir: () => os6.homedir(),
     platform: process.platform,
     termProgram: process.env.TERM_PROGRAM,
     later: defaultLater
@@ -39312,62 +38954,6 @@ function applyHolds(rows, holds) {
     out[i] = { ...r, live: true };
   }
   return out ?? rows;
-}
-
-// src/conflicts.ts
-import * as fs7 from "node:fs";
-import * as path8 from "node:path";
-function resolveRealpath(file_path, cwd2, cache4) {
-  const key = `${cwd2 ?? ""} ${file_path}`;
-  const memo = cache4?.get(key);
-  if (memo !== void 0) return memo;
-  const lexical = path8.isAbsolute(file_path) ? file_path : path8.resolve(cwd2 ?? process.cwd(), file_path);
-  let resolved;
-  try {
-    resolved = fs7.realpathSync(lexical);
-  } catch {
-    resolved = lexical;
-  }
-  cache4?.set(key, resolved);
-  return resolved;
-}
-function detectConflicts(rows, now = Date.now()) {
-  void now;
-  const cache4 = /* @__PURE__ */ new Map();
-  const groups = /* @__PURE__ */ new Map();
-  for (const r of rows) {
-    if (!r.alive || r.readyToPrune) continue;
-    for (const f of r.files) {
-      const rp = resolveRealpath(f.file_path, r.cwd, cache4);
-      const touch = Date.parse(f.ts) || 0;
-      let g = groups.get(rp);
-      if (!g) {
-        g = { realpath: rp, sessions: [], lastActive: 0 };
-        groups.set(rp, g);
-      }
-      const existing = g.sessions.find((s) => s.session_id === r.session_id);
-      if (existing) {
-        existing.lastTouch = Math.max(existing.lastTouch, touch);
-      } else {
-        g.sessions.push({
-          session_id: r.session_id,
-          folder: r.folder,
-          branch: r.branch,
-          lastTouch: touch,
-          title: r.title
-        });
-      }
-      g.lastActive = Math.max(g.lastActive, touch);
-    }
-  }
-  const out = [];
-  for (const g of groups.values()) {
-    if (g.sessions.length < 2) continue;
-    g.sessions.sort((a, b) => b.lastTouch - a.lastTouch);
-    out.push(g);
-  }
-  out.sort((a, b) => b.lastActive - a.lastActive);
-  return out;
 }
 
 // src/branch.ts
@@ -39519,14 +39105,461 @@ function startUpdateCheck(opts) {
   };
 }
 
-// src/panel/App.tsx
-var import_jsx_runtime2 = __toESM(require_jsx_runtime(), 1);
-var BRAND = "\u25C6 Concurrent Session Monitor";
+// src/panel/hooks/useRoster.ts
+var import_react38 = __toESM(require_react(), 1);
+
+// src/aggregate.ts
+import * as fs6 from "node:fs";
+import * as path7 from "node:path";
+
+// src/paths.ts
+import * as os7 from "node:os";
+import * as path6 from "node:path";
+var SAFE_ID_PATTERN2 = /^[A-Za-z0-9._-]{1,128}$/;
+function safeId(id) {
+  if (typeof id !== "string") {
+    throw new Error(`Unsafe session id: ${JSON.stringify(id)}`);
+  }
+  if (SAFE_ID_PATTERN2.test(id) && id !== "." && id !== "..") {
+    return id;
+  }
+  let cleaned = id.replace(/[^A-Za-z0-9._-]/g, "_").replace(/\.\.+/g, "_").slice(0, 128);
+  if (cleaned === "" || cleaned === "." || cleaned === "..") {
+    cleaned = "_";
+  }
+  return cleaned;
+}
+function storeRoot() {
+  const override = process.env.CSM_STORE_DIR;
+  if (override) return override;
+  return path6.join(os7.homedir(), ".claude", "csm");
+}
+function sessionsDir() {
+  return path6.join(storeRoot(), "sessions");
+}
+function sessionDir(sessionId) {
+  return path6.join(sessionsDir(), safeId(sessionId));
+}
+
+// src/aggregate.ts
+function windowMs() {
+  return numEnv("CSM_WINDOW_MS", 5 * 60 * 1e3);
+}
+function readWindowMs() {
+  return numEnv("CSM_READ_WINDOW_MS", 3e4);
+}
+function skillWindowMs() {
+  return numEnv("CSM_SKILL_WINDOW_MS", 5 * 60 * 1e3);
+}
+function attnWindowMs() {
+  return numEnv("CSM_ATTN_WINDOW_MS", 36e5);
+}
+function runWindowMs() {
+  return numEnv("CSM_RUN_WINDOW_MS", 18e5);
+}
+function idleWaitMs() {
+  return numEnv("CSM_IDLE_WAIT_MS", 1e3);
+}
+function activeFiles(dir, now) {
+  let raw;
+  try {
+    raw = fs6.readFileSync(path7.join(dir, "files.jsonl"), "utf8");
+  } catch {
+    return { files: [] };
+  }
+  const threshold = now - windowMs();
+  const released = /* @__PURE__ */ new Set();
+  const newest = /* @__PURE__ */ new Map();
+  for (const line of raw.split("\n")) {
+    if (line.trim() === "") continue;
+    let evt;
+    try {
+      evt = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (typeof evt?.file_path !== "string" || typeof evt?.ts !== "string") continue;
+    if (evt.released) {
+      released.add(evt.file_path);
+      continue;
+    }
+    const tsMs = Date.parse(evt.ts);
+    if (Number.isNaN(tsMs) || tsMs < threshold) continue;
+    const prev = newest.get(evt.file_path);
+    if (prev === void 0 || tsMs > prev) newest.set(evt.file_path, tsMs);
+  }
+  const files = [];
+  let lastActiveMs = -Infinity;
+  for (const [file_path, tsMs] of newest) {
+    if (released.has(file_path)) continue;
+    files.push({ file_path, ts: new Date(tsMs).toISOString() });
+    if (tsMs > lastActiveMs) lastActiveMs = tsMs;
+  }
+  return {
+    files,
+    lastActive: lastActiveMs === -Infinity ? void 0 : new Date(lastActiveMs).toISOString()
+  };
+}
+function activeReads(dir, now) {
+  let raw;
+  try {
+    raw = fs6.readFileSync(path7.join(dir, "reads.jsonl"), "utf8");
+  } catch {
+    return [];
+  }
+  const threshold = now - readWindowMs();
+  const released = /* @__PURE__ */ new Set();
+  const newest = /* @__PURE__ */ new Map();
+  for (const line of raw.split("\n")) {
+    if (line.trim() === "") continue;
+    let evt;
+    try {
+      evt = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (typeof evt?.file_path !== "string" || typeof evt?.ts !== "string") continue;
+    if (evt.released) {
+      released.add(evt.file_path);
+      continue;
+    }
+    const tsMs = Date.parse(evt.ts);
+    if (Number.isNaN(tsMs) || tsMs < threshold) continue;
+    const prev = newest.get(evt.file_path);
+    if (prev === void 0 || tsMs > prev) newest.set(evt.file_path, tsMs);
+  }
+  const reads = [];
+  for (const [file_path, tsMs] of newest) {
+    if (released.has(file_path)) continue;
+    reads.push({ file_path, ts: new Date(tsMs).toISOString() });
+  }
+  return reads;
+}
+function readIntent(dir) {
+  try {
+    const parsed = JSON.parse(fs6.readFileSync(path7.join(dir, "intent.txt"), "utf8"));
+    if (typeof parsed?.intent === "string" && parsed.intent.length > 0) {
+      return {
+        intent: parsed.intent,
+        intent_ts: typeof parsed.ts === "string" ? parsed.ts : void 0
+      };
+    }
+    return {};
+  } catch {
+    return {};
+  }
+}
+function readTargetBranch(dir) {
+  try {
+    const parsed = JSON.parse(fs6.readFileSync(path7.join(dir, "target-branch.txt"), "utf8"));
+    if (typeof parsed?.target_branch === "string" && parsed.target_branch.length > 0) {
+      return {
+        target_branch: parsed.target_branch,
+        target_branch_ts: typeof parsed.ts === "string" ? parsed.ts : void 0
+      };
+    }
+    return {};
+  } catch {
+    return {};
+  }
+}
+function readSkill(dir, now) {
+  let raw;
+  try {
+    raw = fs6.readFileSync(path7.join(dir, "skill.jsonl"), "utf8");
+  } catch {
+    return {};
+  }
+  const threshold = now - skillWindowMs();
+  let bestMs = -Infinity;
+  let best;
+  for (const line of raw.split("\n")) {
+    if (line.trim() === "") continue;
+    let e;
+    try {
+      e = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (typeof e?.skill !== "string" || typeof e?.ts !== "string") continue;
+    const ms = Date.parse(e.ts);
+    if (Number.isNaN(ms) || ms < threshold) continue;
+    if (ms > bestMs) {
+      bestMs = ms;
+      best = e;
+    }
+  }
+  if (!best) return {};
+  return {
+    skill: best.skill,
+    skill_ts: best.ts,
+    skill_subagent: typeof best.subagent === "string" && best.subagent ? best.subagent : void 0
+  };
+}
+function readAttention(dir) {
+  try {
+    const parsed = JSON.parse(
+      fs6.readFileSync(path7.join(dir, "attention.json"), "utf8")
+    );
+    if (typeof parsed?.type === "string" && parsed.type.length > 0 && typeof parsed.ts === "string") {
+      return { attention_type: parsed.type, attention_ts: parsed.ts };
+    }
+    return {};
+  } catch {
+    return {};
+  }
+}
+function readAsking(dir) {
+  try {
+    const parsed = JSON.parse(
+      fs6.readFileSync(path7.join(dir, "asking.json"), "utf8")
+    );
+    if (typeof parsed?.ts === "string" && parsed.ts.length > 0) {
+      return { asking_ts: parsed.ts };
+    }
+    return {};
+  } catch {
+    return {};
+  }
+}
+function readTurn(dir) {
+  try {
+    const parsed = JSON.parse(fs6.readFileSync(path7.join(dir, "turn.json"), "utf8"));
+    const state = parsed?.state;
+    if ((state === "running" || state === "idle") && typeof parsed.ts === "string" && parsed.ts.length > 0) {
+      const agents = parsed.agents;
+      return Number.isSafeInteger(agents) && agents >= 0 ? { turn_state: state, turn_ts: parsed.ts, turn_agents: agents } : { turn_state: state, turn_ts: parsed.ts };
+    }
+    return {};
+  } catch {
+    return {};
+  }
+}
+function readTitleShard(dir) {
+  try {
+    const parsed = JSON.parse(
+      fs6.readFileSync(path7.join(dir, "title.json"), "utf8")
+    );
+    if (parsed === null || typeof parsed !== "object") return {};
+    const out = {};
+    if (typeof parsed.title === "string" && parsed.title.length > 0) out.title = parsed.title;
+    if (typeof parsed.ts === "string") {
+      const ms = Date.parse(parsed.ts);
+      if (Number.isFinite(ms)) out.tsMs = ms;
+    }
+    if (typeof parsed.transcript_path === "string") out.transcript_path = parsed.transcript_path;
+    return out;
+  } catch {
+    return {};
+  }
+}
+function resolveTitle(h, t) {
+  if (t !== void 0 && (h.tsMs === void 0 || t.changedAtMs > h.tsMs)) return t.title;
+  return h.title;
+}
+function readAll(now = Date.now(), probe = defaultProbe, startedProbe = defaultStartedProbe) {
+  const root = sessionsDir();
+  let ids;
+  try {
+    ids = fs6.readdirSync(root);
+  } catch {
+    return [];
+  }
+  const rows = [];
+  for (const id of ids) {
+    const dir = path7.join(root, id);
+    let state;
+    try {
+      state = JSON.parse(fs6.readFileSync(path7.join(dir, "session.json"), "utf8"));
+    } catch {
+      continue;
+    }
+    const { files, lastActive } = activeFiles(dir, now);
+    const titleShard = readTitleShard(dir);
+    const title = resolveTitle(titleShard, readTranscriptTitle(id, titleShard.transcript_path));
+    const rawReads = activeReads(dir, now);
+    const writeSet = new Set(files.map((f) => f.file_path));
+    const reads = rawReads.filter((r) => !writeSet.has(r.file_path));
+    const heartbeatMs = resolveLastSeen(dir);
+    const lastSeenMs = heartbeatMs ?? Date.parse(lastActive ?? state.start_time);
+    const resumedMs = resolveSidecarMs(dir, "resumed") ?? lastSeenMs;
+    const askResolvedMs = resolveSidecarMs(dir, "ask-resolved") ?? lastSeenMs;
+    const attn = readAttention(dir);
+    const attnMs = attn.attention_ts !== void 0 ? Date.parse(attn.attention_ts) : NaN;
+    const rawWaiting = !Number.isNaN(attnMs) && now - attnMs < attnWindowMs() && attnMs > resumedMs;
+    const ask = readAsking(dir);
+    const askMs = ask.asking_ts !== void 0 ? Date.parse(ask.asking_ts) : NaN;
+    const verdict = isProcessAlive(state.pid, probe, state.pid_started, startedProbe);
+    const procAlive = verdict === "alive";
+    const procDead = verdict === "dead";
+    const asking = !Number.isNaN(askMs) && askMs > askResolvedMs && (procAlive || now - askMs < attnWindowMs());
+    const turn = readTurn(dir);
+    const turnMs = turn.turn_ts !== void 0 ? Date.parse(turn.turn_ts) : NaN;
+    const runRefMs = Math.max(turnMs, heartbeatMs ?? -Infinity);
+    const turnAgents = turn.turn_agents ?? 0;
+    const rawSubagent = turn.turn_state === "idle" && turnAgents > 0 && !Number.isNaN(turnMs) && !procDead && now - runRefMs < runWindowMs();
+    const rawIdleWaiting = turn.turn_state === "idle" && !Number.isNaN(turnMs) && !procDead && now - turnMs >= idleWaitMs() && now - turnMs < attnWindowMs() && // 260927-73b D-03: background agents still working → not waiting on you.
+    !rawSubagent;
+    const notifWaiting = rawWaiting && !(rawSubagent && attn.attention_type === "idle_prompt");
+    const attention = (notifWaiting || rawIdleWaiting) && !asking;
+    const rawRunning = turn.turn_state === "running" && !Number.isNaN(turnMs) && !procDead && now - runRefMs < runWindowMs();
+    const running = rawRunning && !asking && !attention;
+    const subagent = rawSubagent && !asking && !attention;
+    const heartbeatFresh = now - lastSeenMs < staleMs();
+    const needsYouKeepalive = (asking || rawWaiting || rawIdleWaiting) && !procDead;
+    const fresh = heartbeatFresh || needsYouKeepalive || rawRunning || rawSubagent;
+    const alive = fresh || procAlive;
+    const readyToPrune = !fresh && !procAlive;
+    let dotState;
+    if (!fresh || procDead) {
+      dotState = "stale";
+    } else if (running || subagent) {
+      dotState = "active";
+    } else {
+      const touchMs = lastActive ? Date.parse(lastActive) : NaN;
+      const recentTouch = !Number.isNaN(touchMs) && now - touchMs < activeMs();
+      dotState = recentTouch ? "active" : "idle";
+    }
+    rows.push({
+      ...state,
+      files,
+      reads,
+      ...readIntent(dir),
+      // INT-01 additive read-side field (D-01 separate shard)
+      ...readTargetBranch(dir),
+      // TB-02 additive card-only field (D-01/D-BR-01 separate shard)
+      ...readSkill(dir, now),
+      // SKILL-03 additive card-only field (D-01 separate shard)
+      title,
+      // NAME-01 additive card-only field (D-02 shard + D-04 tail)
+      last_active: lastActive,
+      last_seen: heartbeatMs !== void 0 ? new Date(heartbeatMs).toISOString() : state.last_seen,
+      alive,
+      readyToPrune,
+      dotState,
+      // ATTN-02/03 additive card-only fields — pre-gated; type/ts only survive
+      // when the gate held, so the panel needs no re-check. 260927-4tv D-03:
+      // the Notification's type/ts win; idle-waiting alone synthesizes
+      // "idle_prompt" + the turn ts.
+      attention,
+      attention_type: attention ? notifWaiting ? attn.attention_type : "idle_prompt" : void 0,
+      attention_ts: attention ? notifWaiting ? attn.attention_ts : turn.turn_ts : void 0,
+      // 260926-vfm (AQ-02) additive card-only fields — pre-gated, asking wins.
+      asking,
+      asking_ts: asking ? ask.asking_ts : void 0,
+      // 260927-46l additive card-only flag — pre-gated (asking > waiting > running).
+      running,
+      // 260927-73b additive card-only fields — pre-gated (lowest precedence);
+      // the count is present only when subagent is true.
+      subagent,
+      subagent_count: subagent ? turnAgents : void 0
+    });
+  }
+  pruneTranscriptTitleCache(new Set(ids));
+  const key = (r) => Date.parse(r.last_active ?? r.start_time) || 0;
+  rows.sort((a, b) => key(b) - key(a));
+  return rows;
+}
+
+// src/prune.ts
+import { rmSync } from "node:fs";
+function pruneSession(id) {
+  try {
+    rmSync(sessionDir(id), { recursive: true, force: true });
+  } catch {
+  }
+}
+
+// src/conflicts.ts
+import * as fs7 from "node:fs";
+import * as path8 from "node:path";
+function resolveRealpath(file_path, cwd2, cache4) {
+  const key = `${cwd2 ?? ""} ${file_path}`;
+  const memo = cache4?.get(key);
+  if (memo !== void 0) return memo;
+  const lexical = path8.isAbsolute(file_path) ? file_path : path8.resolve(cwd2 ?? process.cwd(), file_path);
+  let resolved;
+  try {
+    resolved = fs7.realpathSync(lexical);
+  } catch {
+    resolved = lexical;
+  }
+  cache4?.set(key, resolved);
+  return resolved;
+}
+function detectConflicts(rows, now = Date.now()) {
+  void now;
+  const cache4 = /* @__PURE__ */ new Map();
+  const groups = /* @__PURE__ */ new Map();
+  for (const r of rows) {
+    if (!r.alive || r.readyToPrune) continue;
+    for (const f of r.files) {
+      const rp = resolveRealpath(f.file_path, r.cwd, cache4);
+      const touch = Date.parse(f.ts) || 0;
+      let g = groups.get(rp);
+      if (!g) {
+        g = { realpath: rp, sessions: [], lastActive: 0 };
+        groups.set(rp, g);
+      }
+      const existing = g.sessions.find((s) => s.session_id === r.session_id);
+      if (existing) {
+        existing.lastTouch = Math.max(existing.lastTouch, touch);
+      } else {
+        g.sessions.push({
+          session_id: r.session_id,
+          folder: r.folder,
+          branch: r.branch,
+          lastTouch: touch,
+          title: r.title
+        });
+      }
+      g.lastActive = Math.max(g.lastActive, touch);
+    }
+  }
+  const out = [];
+  for (const g of groups.values()) {
+    if (g.sessions.length < 2) continue;
+    g.sessions.sort((a, b) => b.lastTouch - a.lastTouch);
+    out.push(g);
+  }
+  out.sort((a, b) => b.lastActive - a.lastActive);
+  return out;
+}
+
+// src/panel/hooks/usePoll.ts
+var import_react37 = __toESM(require_react(), 1);
+function usePoll(tick, cadence, opts) {
+  const tickRef = import_react37.default.useRef(tick);
+  tickRef.current = tick;
+  const cadenceRef = import_react37.default.useRef(cadence);
+  const immediateRef = import_react37.default.useRef(opts?.immediate === true);
+  const inFlight = import_react37.default.useRef(false);
+  import_react37.default.useEffect(() => {
+    let alive = true;
+    const isAlive = () => alive;
+    const release = () => {
+      inFlight.current = false;
+    };
+    const run2 = () => {
+      if (inFlight.current) return;
+      const result = tickRef.current(isAlive);
+      if (result && typeof result.then === "function") {
+        inFlight.current = true;
+        result.then(release, release);
+      }
+    };
+    if (immediateRef.current) run2();
+    const c = cadenceRef.current;
+    const t = setInterval(run2, typeof c === "function" ? c() : c);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, []);
+}
+
+// src/panel/hooks/useRoster.ts
 var POLL_MS = 750;
-var RESUME_FLASH_MS = 3e3;
-var CARD_LINES = 4;
-var HEADER_LINES = 3;
-var PORTS_LINES = 10;
 function graceMs() {
   return numEnv("CSM_GRACE_MS", 1200);
 }
@@ -39564,6 +39597,85 @@ function reconcile(seen, rows, now) {
   const conflicts = detectConflicts(rows, now);
   return { display, live: liveCount, idle: idleCount, conflicts };
 }
+function useRoster() {
+  const seen = import_react38.default.useRef(/* @__PURE__ */ new Map());
+  const [state, setState] = import_react38.default.useState(
+    () => reconcile(seen.current, readAll(), Date.now())
+  );
+  usePoll(
+    () => {
+      setState(reconcile(seen.current, readAll(), Date.now()));
+    },
+    POLL_MS,
+    { immediate: false }
+  );
+  return state;
+}
+
+// src/panel/hooks/usePorts.ts
+var import_react39 = __toESM(require_react(), 1);
+function usePorts() {
+  const [ports, setPorts] = import_react39.default.useState([]);
+  usePoll(
+    (alive) => scanPorts().then(
+      (p) => {
+        if (alive()) setPorts(p);
+      },
+      () => {
+        if (alive()) setPorts([]);
+      }
+    ),
+    () => portScanMs(),
+    { immediate: true }
+  );
+  return ports;
+}
+
+// src/panel/hooks/useBranches.ts
+var import_react40 = __toESM(require_react(), 1);
+function useBranches(liveRowsRef) {
+  const [branches, setBranches] = import_react40.default.useState(() => /* @__PURE__ */ new Map());
+  usePoll(
+    (alive) => scanBranches(liveRowsRef.current).then(
+      (m) => {
+        if (alive()) setBranches(m);
+      },
+      () => {
+        if (alive()) setBranches(/* @__PURE__ */ new Map());
+      }
+    ),
+    () => branchScanMs(),
+    { immediate: true }
+  );
+  return branches;
+}
+
+// src/panel/hooks/useUpdateCheck.ts
+var import_react41 = __toESM(require_react(), 1);
+function useUpdateCheck() {
+  const [updateTo, setUpdateTo] = import_react41.default.useState(null);
+  const { stdout } = useStdout();
+  import_react41.default.useEffect(
+    () => startUpdateCheck({
+      installed: installedVersion(),
+      // Ink 8 types useStdout().stdout as a generic writable stream, so the
+      // TTY flag is read through a guard. It stays Ink's own stdout (never the
+      // global process stream), which keeps the injected test stdout honored.
+      isTTY: "isTTY" in stdout && stdout.isTTY === true,
+      onResult: setUpdateTo
+    }),
+    []
+  );
+  return updateTo;
+}
+
+// src/panel/App.tsx
+var import_jsx_runtime2 = __toESM(require_jsx_runtime(), 1);
+var BRAND = "\u25C6 Concurrent Session Monitor";
+var RESUME_FLASH_MS = 3e3;
+var CARD_LINES = 4;
+var HEADER_LINES = 3;
+var PORTS_LINES = 10;
 function shortId2(session_id) {
   return sanitize(String(session_id).slice(0, 8));
 }
@@ -39592,87 +39704,25 @@ function PanelKeyboard({
   return null;
 }
 function App2() {
-  const seen = import_react37.default.useRef(/* @__PURE__ */ new Map());
-  const [state, setState] = import_react37.default.useState(
-    () => reconcile(seen.current, readAll(), Date.now())
-  );
-  import_react37.default.useEffect(() => {
-    const timer = setInterval(
-      () => setState(reconcile(seen.current, readAll(), Date.now())),
-      POLL_MS
-    );
-    return () => clearInterval(timer);
-  }, []);
-  const [ports, setPorts] = import_react37.default.useState([]);
-  const scanning = import_react37.default.useRef(false);
-  import_react37.default.useEffect(() => {
-    let alive = true;
-    const tick = () => {
-      if (scanning.current) return;
-      scanning.current = true;
-      scanPorts().then((p) => {
-        if (alive) setPorts(p);
-      }).catch(() => {
-        if (alive) setPorts([]);
-      }).finally(() => {
-        scanning.current = false;
-      });
-    };
-    tick();
-    const t = setInterval(tick, portScanMs());
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
-  }, []);
-  const [branches, setBranches] = import_react37.default.useState(() => /* @__PURE__ */ new Map());
-  const scanningBranches = import_react37.default.useRef(false);
-  import_react37.default.useEffect(() => {
-    let alive = true;
-    const tick = () => {
-      if (scanningBranches.current) return;
-      scanningBranches.current = true;
-      scanBranches(liveRowsRef.current).then((m) => {
-        if (alive) setBranches(m);
-      }).catch(() => {
-        if (alive) setBranches(/* @__PURE__ */ new Map());
-      }).finally(() => {
-        scanningBranches.current = false;
-      });
-    };
-    tick();
-    const t = setInterval(tick, branchScanMs());
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
-  }, []);
-  const [updateTo, setUpdateTo] = import_react37.default.useState(null);
-  const { stdout } = useStdout();
-  import_react37.default.useEffect(
-    () => startUpdateCheck({
-      installed: installedVersion(),
-      // Ink 8 types useStdout().stdout as a generic writable stream, so the
-      // TTY flag is read through a guard. It stays Ink's own stdout (never the
-      // global process stream), which keeps the injected test stdout honored.
-      isTTY: "isTTY" in stdout && stdout.isTTY === true,
-      onResult: setUpdateTo
-    }),
-    []
-  );
+  const state = useRoster();
+  const liveRows = state.display.filter((d) => !d.ended).map((d) => d.row);
+  const liveRowsRef = import_react42.default.useRef(liveRows);
+  liveRowsRef.current = liveRows;
+  const ports = usePorts();
+  const branches = useBranches(liveRowsRef);
+  const updateTo = useUpdateCheck();
   const { rows: termRows, columns: termCols } = use_window_size_default();
   const capacity = Math.max(1, termRows - HEADER_LINES - PORTS_LINES);
   const compact = state.display.length * CARD_LINES > capacity;
-  const liveRows = state.display.filter((d) => !d.ended).map((d) => d.row);
-  const [progress, setProgress] = import_react37.default.useState(() => /* @__PURE__ */ new Map());
-  const [planningRoots, setPlanningRoots] = import_react37.default.useState(() => /* @__PURE__ */ new Set());
-  const [focusedIndex, setFocusedIndex] = import_react37.default.useState(0);
-  const [scrollOffset, setScrollOffset] = import_react37.default.useState(0);
-  const scanningPhases = import_react37.default.useRef(false);
-  const shimRef = import_react37.default.useRef(void 0);
+  const [progress, setProgress] = import_react42.default.useState(() => /* @__PURE__ */ new Map());
+  const [planningRoots, setPlanningRoots] = import_react42.default.useState(() => /* @__PURE__ */ new Set());
+  const [focusedIndex, setFocusedIndex] = import_react42.default.useState(0);
+  const [scrollOffset, setScrollOffset] = import_react42.default.useState(0);
+  const scanningPhases = import_react42.default.useRef(false);
+  const shimRef = import_react42.default.useRef(void 0);
   if (shimRef.current === void 0) shimRef.current = resolveGsdTools();
-  const mounted = import_react37.default.useRef(false);
-  import_react37.default.useEffect(() => {
+  const mounted = import_react42.default.useRef(false);
+  import_react42.default.useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
@@ -39683,11 +39733,9 @@ function App2() {
   const focusRoot = focusSet.length ? focusSet[idx].root : null;
   const focusProgress = focusRoot ? progress.get(focusRoot) ?? null : null;
   const totalPhases = focusProgress ? focusProgress.phases.length : 0;
-  const liveRowsRef = import_react37.default.useRef(liveRows);
-  liveRowsRef.current = liveRows;
-  const focusedIndexRef = import_react37.default.useRef(focusedIndex);
+  const focusedIndexRef = import_react42.default.useRef(focusedIndex);
   focusedIndexRef.current = focusedIndex;
-  import_react37.default.useEffect(() => {
+  import_react42.default.useEffect(() => {
     const tick = () => {
       if (scanningPhases.current) return;
       scanningPhases.current = true;
@@ -39716,45 +39764,45 @@ function App2() {
       clearInterval(t);
     };
   }, [focusedIndex]);
-  import_react37.default.useEffect(() => {
+  import_react42.default.useEffect(() => {
     setScrollOffset(0);
   }, [idx]);
-  const [rightPane, setRightPane] = import_react37.default.useState("fazlar");
-  const [resumeRows, setResumeRows] = import_react37.default.useState(null);
-  const [selId, setSelId] = import_react37.default.useState(null);
-  const [resumeOffset, setResumeOffset] = import_react37.default.useState(0);
-  const [resumeStatus, setResumeStatus] = import_react37.default.useState(null);
-  const scanningResume = import_react37.default.useRef(false);
-  const resumeScanGen = import_react37.default.useRef(0);
-  const resumeTickRef = import_react37.default.useRef(null);
-  const rightPaneRef = import_react37.default.useRef(rightPane);
+  const [rightPane, setRightPane] = import_react42.default.useState("fazlar");
+  const [resumeRows, setResumeRows] = import_react42.default.useState(null);
+  const [selId, setSelId] = import_react42.default.useState(null);
+  const [resumeOffset, setResumeOffset] = import_react42.default.useState(0);
+  const [resumeStatus, setResumeStatus] = import_react42.default.useState(null);
+  const scanningResume = import_react42.default.useRef(false);
+  const resumeScanGen = import_react42.default.useRef(0);
+  const resumeTickRef = import_react42.default.useRef(null);
+  const rightPaneRef = import_react42.default.useRef(rightPane);
   rightPaneRef.current = rightPane;
-  const resumeRowsRef = import_react37.default.useRef(resumeRows);
+  const resumeRowsRef = import_react42.default.useRef(resumeRows);
   resumeRowsRef.current = resumeRows;
-  const selIdRef = import_react37.default.useRef(selId);
+  const selIdRef = import_react42.default.useRef(selId);
   selIdRef.current = selId;
-  const selIdxRef = import_react37.default.useRef(0);
+  const selIdxRef = import_react42.default.useRef(0);
   if (resumeRows !== null && selId !== null) {
     const i = resumeRows.findIndex((r) => r.id === selId);
     if (i >= 0) selIdxRef.current = i;
   }
-  const resumeOffsetRef = import_react37.default.useRef(resumeOffset);
+  const resumeOffsetRef = import_react42.default.useRef(resumeOffset);
   resumeOffsetRef.current = resumeOffset;
-  const launchHolds = import_react37.default.useRef(/* @__PURE__ */ new Map());
-  const holdToken = import_react37.default.useRef(0);
-  const [, setHoldVersion] = import_react37.default.useState(0);
+  const launchHolds = import_react42.default.useRef(/* @__PURE__ */ new Map());
+  const holdToken = import_react42.default.useRef(0);
+  const [, setHoldVersion] = import_react42.default.useState(0);
   const bumpHolds = () => {
     if (mounted.current) setHoldVersion((v) => v + 1);
   };
-  const flashTimer = import_react37.default.useRef(null);
-  import_react37.default.useEffect(
+  const flashTimer = import_react42.default.useRef(null);
+  import_react42.default.useEffect(
     () => () => {
       if (flashTimer.current) clearTimeout(flashTimer.current);
       flashTimer.current = null;
     },
     []
   );
-  import_react37.default.useEffect(() => {
+  import_react42.default.useEffect(() => {
     if (rightPane !== "oturumlar") return void 0;
     const gen = ++resumeScanGen.current;
     const tick = () => {
@@ -39783,7 +39831,7 @@ function App2() {
       if (resumeTickRef.current === tick) resumeTickRef.current = null;
     };
   }, [rightPane]);
-  import_react37.default.useEffect(() => {
+  import_react42.default.useEffect(() => {
     if (resumeRows === null) return;
     const r = reconcileSelection(resumeRows, selIdRef.current, selIdxRef.current);
     selIdRef.current = r.selId;
@@ -39819,7 +39867,7 @@ function App2() {
     return rows.find((r) => r.id === id) ?? null;
   };
   const isLive = (row) => row.live || launchHolds.current.has(row.id);
-  const enterSeq = import_react37.default.useRef(0);
+  const enterSeq = import_react42.default.useRef(0);
   const onToggle = () => {
     const next = rightPaneRef.current === "fazlar" ? "oturumlar" : "fazlar";
     rightPaneRef.current = next;
@@ -40024,8 +40072,8 @@ function Root({
   enableSplash = process.stdout.isTTY === true,
   splashMs = DEFAULT_SPLASH_MS
 } = {}) {
-  const [showSplash, setShowSplash] = import_react38.default.useState(enableSplash);
-  import_react38.default.useEffect(() => {
+  const [showSplash, setShowSplash] = import_react43.default.useState(enableSplash);
+  import_react43.default.useEffect(() => {
     if (!showSplash) return;
     const timer = setTimeout(() => setShowSplash(false), splashMs);
     return () => clearTimeout(timer);
@@ -40035,7 +40083,7 @@ function Root({
 
 // src/panel/main.tsx
 function run() {
-  return render_default((0, import_react39.createElement)(Root), { alternateScreen: true });
+  return render_default((0, import_react44.createElement)(Root), { alternateScreen: true });
 }
 
 // src/panel/registration.ts
