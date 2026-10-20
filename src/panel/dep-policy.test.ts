@@ -121,3 +121,49 @@ describe("dependency policy (single Ink, no focus manager, no new runtime deps)"
     }
   });
 });
+
+// Phase 9 plan 09-13 (UI-SPEC Typography): v2 dim text is always an explicit hex
+// from the token table, never Ink's faint attribute (terminals render it
+// inconsistently, and it cannot be told apart from the idle tokens). The scan
+// covers every non-test file under src/panel/ui/ plus src/panel/PanelApp.tsx.
+// Splash.tsx is shared with the legacy panel (whose tagline keeps the faint
+// attribute), so it is excluded; Splash.test.tsx covers its v2 branch.
+
+/** The Ink faint-attribute prop name, built here so it reads as data. */
+const FAINT_PROP = ["dim", "Color"].join("");
+const FAINT_RE = new RegExp(String.raw`\b${FAINT_PROP}\b`);
+
+/** Drop block and line comments so doc prose naming the prop is not a hit. */
+function stripComments(text: string): string {
+  return text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/[^\n]*/g, "$1");
+}
+
+/** The v2 sources the faint rule applies to, repo-relative. */
+function v2Sources(): string[] {
+  return nonTestSources().filter(
+    (rel) => rel.startsWith("src/panel/ui/") || rel === "src/panel/PanelApp.tsx",
+  );
+}
+
+describe("v2 typography policy (no faint attribute)", () => {
+  it("the scan really sees the v2 sources", () => {
+    const files = v2Sources();
+    expect(files).toContain("src/panel/PanelApp.tsx");
+    expect(files).toContain("src/panel/ui/palette.ts");
+    expect(files.some((f) => f.includes(".test."))).toBe(false);
+  });
+
+  it("the matcher flags real usage and ignores comments", () => {
+    expect(FAINT_RE.test(stripComments(`<Text ${FAINT_PROP}>x</Text>`))).toBe(true);
+    expect(FAINT_RE.test(stripComments(`{ color: c, ${FAINT_PROP}: true }`))).toBe(true);
+    expect(FAINT_RE.test(stripComments(`/** renders \`${FAINT_PROP}\` */\nconst a = 1;`))).toBe(false);
+    expect(FAINT_RE.test(stripComments(`// ${FAINT_PROP}\nconst a = 1;`))).toBe(false);
+    // the legacy splash (excluded from the scan) is a real hit, so the matcher works
+    expect(FAINT_RE.test(stripComments(readRoot("src/panel/Splash.tsx")))).toBe(true);
+  });
+
+  it("no non-test file under src/panel/ui/, nor src/panel/PanelApp.tsx, uses the faint attribute", () => {
+    const offenders = v2Sources().filter((rel) => FAINT_RE.test(stripComments(readRoot(rel))));
+    expect(offenders, `v2 sources using the faint attribute: ${offenders.join(", ")}`).toEqual([]);
+  });
+});

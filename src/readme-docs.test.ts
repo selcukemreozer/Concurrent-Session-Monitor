@@ -23,7 +23,7 @@ function readRel(rel: string): string {
 
 const README = readRel("../README.md");
 
-/** The 16 live, user-facing CSM_* env knobs (source-verified). */
+/** The 17 live, user-facing CSM_* env knobs (source-verified). */
 const ENV_KNOBS = [
   "CSM_STORE_DIR",
   "CSM_STALE_MS",
@@ -41,6 +41,7 @@ const ENV_KNOBS = [
   "CSM_RESUME_SCAN_MS",
   "CSM_GSD_TOOLS",
   "CSM_UPDATE_CHECK",
+  "CSM_UI",
 ] as const;
 
 /** Reserved knobs: documented as inert, never as a row of the active table. */

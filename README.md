@@ -244,6 +244,7 @@ back to the default. Times are in milliseconds.
 | `CSM_RESUME_SCAN_MS` | `10000` (10 s) | Cadence of the recent-sessions scan feeding the OTURUMLAR pane. It runs only while OTURUMLAR is visible (press `r`). Values below `1000` (1 s) are raised to `1000`. |
 | `CSM_GSD_TOOLS` | auto-detected | Absolute path to the `gsd-tools` binary used by the phases pane. Set it to override auto-detection. |
 | `CSM_UPDATE_CHECK` | on | Set to `0` (or `false`/`off`) to disable the panel's update check; no network request is made. See [Update notice](#update-notice). |
+| `CSM_UI` | unset (current panel) | Set to `v2` to open the new panel shell, a preview in 1.7.0. It draws the new layout with sample data, a live header and one focus model: Tab / Shift+Tab, Esc, r, space, q. Any other value keeps the current panel. |
 
 ### Reserved (not yet wired)
 

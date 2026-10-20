@@ -115,7 +115,7 @@ var require_react_production = __commonJS({
     assign(pureComponentPrototype, Component.prototype);
     pureComponentPrototype.isPureReactComponent = true;
     var isArrayImpl = Array.isArray;
-    function noop2() {
+    function noop3() {
     }
     var ReactSharedInternals = { H: null, A: null, T: null, S: null };
     var hasOwnProperty = Object.prototype.hasOwnProperty;
@@ -152,7 +152,7 @@ var require_react_production = __commonJS({
         case "rejected":
           throw thenable.reason;
         default:
-          switch ("string" === typeof thenable.status ? thenable.then(noop2, noop2) : (thenable.status = "pending", thenable.then(
+          switch ("string" === typeof thenable.status ? thenable.then(noop3, noop3) : (thenable.status = "pending", thenable.then(
             function(fulfilledValue) {
               "pending" === thenable.status && (thenable.status = "fulfilled", thenable.value = fulfilledValue);
             },
@@ -290,7 +290,7 @@ var require_react_production = __commonJS({
       try {
         var returnValue = scope(), onStartTransitionFinish = ReactSharedInternals.S;
         null !== onStartTransitionFinish && onStartTransitionFinish(currentTransition, returnValue);
-        "object" === typeof returnValue && null !== returnValue && "function" === typeof returnValue.then && returnValue.then(noop2, reportGlobalError);
+        "object" === typeof returnValue && null !== returnValue && "function" === typeof returnValue.then && returnValue.then(noop3, reportGlobalError);
       } catch (error) {
         reportGlobalError(error);
       } finally {
@@ -545,7 +545,7 @@ var require_react_development = __commonJS({
         this.refs = emptyObject;
         this.updater = updater || ReactNoopUpdateQueue;
       }
-      function noop2() {
+      function noop3() {
       }
       function testStringCoercion(value) {
         return "" + value;
@@ -738,7 +738,7 @@ var require_react_development = __commonJS({
           case "rejected":
             throw thenable.reason;
           default:
-            switch ("string" === typeof thenable.status ? thenable.then(noop2, noop2) : (thenable.status = "pending", thenable.then(
+            switch ("string" === typeof thenable.status ? thenable.then(noop3, noop3) : (thenable.status = "pending", thenable.then(
               function(fulfilledValue) {
                 "pending" === thenable.status && (thenable.status = "fulfilled", thenable.value = fulfilledValue);
               },
@@ -846,8 +846,8 @@ var require_react_development = __commonJS({
       function lazyInitializer(payload) {
         if (-1 === payload._status) {
           var resolveDebugValue = null, rejectDebugValue = null, ioInfo = payload._ioInfo;
-          null != ioInfo && (ioInfo.start = ioInfo.end = performance.now(), ioInfo.value = new Promise(function(resolve3, reject) {
-            resolveDebugValue = resolve3;
+          null != ioInfo && (ioInfo.start = ioInfo.end = performance.now(), ioInfo.value = new Promise(function(resolve4, reject) {
+            resolveDebugValue = resolve4;
             rejectDebugValue = reject;
           }));
           ioInfo = payload._result;
@@ -873,7 +873,7 @@ var require_react_development = __commonJS({
                 payload._status = 2;
                 payload._result = error;
                 var _ioInfo2 = payload._ioInfo;
-                null != _ioInfo2 && (_ioInfo2.end = performance.now(), _ioInfo2.value.then(noop2, noop2), rejectDebugValue(error), _ioInfo2.value.status = "rejected", _ioInfo2.value.reason = error);
+                null != _ioInfo2 && (_ioInfo2.end = performance.now(), _ioInfo2.value.then(noop3, noop3), rejectDebugValue(error), _ioInfo2.value.status = "rejected", _ioInfo2.value.reason = error);
                 void 0 === thenable.status && (thenable.status = "rejected", thenable.reason = error);
               }
             }
@@ -913,7 +913,7 @@ var require_react_development = __commonJS({
         try {
           var returnValue = scope(), onStartTransitionFinish = ReactSharedInternals.S;
           null !== onStartTransitionFinish && onStartTransitionFinish(currentTransition, returnValue);
-          "object" === typeof returnValue && null !== returnValue && "function" === typeof returnValue.then && (ReactSharedInternals.asyncTransitions++, returnValue.then(releaseAsyncTransition, releaseAsyncTransition), returnValue.then(noop2, reportGlobalError));
+          "object" === typeof returnValue && null !== returnValue && "function" === typeof returnValue.then && (ReactSharedInternals.asyncTransitions++, returnValue.then(releaseAsyncTransition, releaseAsyncTransition), returnValue.then(noop3, reportGlobalError));
         } catch (error) {
           reportGlobalError(error);
         } finally {
@@ -963,21 +963,21 @@ var require_react_development = __commonJS({
         );
         actScopeDepth = prevActScopeDepth;
       }
-      function recursivelyFlushAsyncActWork(returnValue, resolve3, reject) {
+      function recursivelyFlushAsyncActWork(returnValue, resolve4, reject) {
         var queue = ReactSharedInternals.actQueue;
         if (null !== queue)
           if (0 !== queue.length)
             try {
               flushActQueue(queue);
               enqueueTask(function() {
-                return recursivelyFlushAsyncActWork(returnValue, resolve3, reject);
+                return recursivelyFlushAsyncActWork(returnValue, resolve4, reject);
               });
               return;
             } catch (error) {
               ReactSharedInternals.thrownErrors.push(error);
             }
           else ReactSharedInternals.actQueue = null;
-        0 < ReactSharedInternals.thrownErrors.length ? (queue = aggregateErrors(ReactSharedInternals.thrownErrors), ReactSharedInternals.thrownErrors.length = 0, reject(queue)) : resolve3(returnValue);
+        0 < ReactSharedInternals.thrownErrors.length ? (queue = aggregateErrors(ReactSharedInternals.thrownErrors), ReactSharedInternals.thrownErrors.length = 0, reject(queue)) : resolve4(returnValue);
       }
       function flushActQueue(queue) {
         if (!isFlushing) {
@@ -1165,7 +1165,7 @@ var require_react_development = __commonJS({
             ));
           });
           return {
-            then: function(resolve3, reject) {
+            then: function(resolve4, reject) {
               didAwaitActCall = true;
               thenable.then(
                 function(returnValue) {
@@ -1175,7 +1175,7 @@ var require_react_development = __commonJS({
                       flushActQueue(queue), enqueueTask(function() {
                         return recursivelyFlushAsyncActWork(
                           returnValue,
-                          resolve3,
+                          resolve4,
                           reject
                         );
                       });
@@ -1189,7 +1189,7 @@ var require_react_development = __commonJS({
                       ReactSharedInternals.thrownErrors.length = 0;
                       reject(_thrownError);
                     }
-                  } else resolve3(returnValue);
+                  } else resolve4(returnValue);
                 },
                 function(error) {
                   popActScope(prevActQueue, prevActScopeDepth);
@@ -1211,15 +1211,15 @@ var require_react_development = __commonJS({
         if (0 < ReactSharedInternals.thrownErrors.length)
           throw callback = aggregateErrors(ReactSharedInternals.thrownErrors), ReactSharedInternals.thrownErrors.length = 0, callback;
         return {
-          then: function(resolve3, reject) {
+          then: function(resolve4, reject) {
             didAwaitActCall = true;
             0 === prevActScopeDepth ? (ReactSharedInternals.actQueue = queue, enqueueTask(function() {
               return recursivelyFlushAsyncActWork(
                 returnValue$jscomp$0,
-                resolve3,
+                resolve4,
                 reject
               );
-            })) : resolve3(returnValue$jscomp$0);
+            })) : resolve4(returnValue$jscomp$0);
           }
         };
       };
@@ -1892,17 +1892,17 @@ var require_scheduler_production = __commonJS({
         localSetImmediate(performWorkUntilDeadline);
       };
     else if ("undefined" !== typeof MessageChannel) {
-      channel = new MessageChannel(), port = channel.port2;
+      channel = new MessageChannel(), port2 = channel.port2;
       channel.port1.onmessage = performWorkUntilDeadline;
       schedulePerformWorkUntilDeadline = function() {
-        port.postMessage(null);
+        port2.postMessage(null);
       };
     } else
       schedulePerformWorkUntilDeadline = function() {
         localSetTimeout(performWorkUntilDeadline, 0);
       };
     var channel;
-    var port;
+    var port2;
     function requestHostTimeout(callback, ms) {
       taskTimeoutID = localSetTimeout(function() {
         callback(exports.unstable_now());
@@ -2156,10 +2156,10 @@ var require_scheduler_development = __commonJS({
           localSetImmediate(performWorkUntilDeadline);
         };
       else if ("undefined" !== typeof MessageChannel) {
-        var channel = new MessageChannel(), port = channel.port2;
+        var channel = new MessageChannel(), port2 = channel.port2;
         channel.port1.onmessage = performWorkUntilDeadline;
         schedulePerformWorkUntilDeadline = function() {
-          port.postMessage(null);
+          port2.postMessage(null);
         };
       } else
         schedulePerformWorkUntilDeadline = function() {
@@ -2291,7 +2291,7 @@ var require_react_reconciler_production = __commonJS({
       function createFiber(tag, pendingProps, key, mode) {
         return new FiberNode(tag, pendingProps, key, mode);
       }
-      function noop2() {
+      function noop3() {
       }
       function formatProdErrorMessage(code) {
         var url = "https://react.dev/errors/" + code;
@@ -3362,8 +3362,8 @@ var require_react_reconciler_production = __commonJS({
           currentEntangledActionThenable = {
             status: "pending",
             value: void 0,
-            then: function(resolve3) {
-              entangledListeners.push(resolve3);
+            then: function(resolve4) {
+              entangledListeners.push(resolve4);
             }
           };
         }
@@ -3386,8 +3386,8 @@ var require_react_reconciler_production = __commonJS({
           status: "pending",
           value: null,
           reason: null,
-          then: function(resolve3) {
-            listeners.push(resolve3);
+          then: function(resolve4) {
+            listeners.push(resolve4);
           }
         };
         thenable.then(
@@ -3786,9 +3786,9 @@ var require_react_reconciler_production = __commonJS({
         }
         function reconcileChildrenIterator(returnFiber, currentFirstChild, newChildren, lanes) {
           if (null == newChildren) throw Error(formatProdErrorMessage(151));
-          for (var resultingFirstChild = null, previousNewFiber = null, oldFiber = currentFirstChild, newIdx = currentFirstChild = 0, nextOldFiber = null, step = newChildren.next(); null !== oldFiber && !step.done; newIdx++, step = newChildren.next()) {
+          for (var resultingFirstChild = null, previousNewFiber = null, oldFiber = currentFirstChild, newIdx = currentFirstChild = 0, nextOldFiber = null, step2 = newChildren.next(); null !== oldFiber && !step2.done; newIdx++, step2 = newChildren.next()) {
             oldFiber.index > newIdx ? (nextOldFiber = oldFiber, oldFiber = null) : nextOldFiber = oldFiber.sibling;
-            var newFiber = updateSlot(returnFiber, oldFiber, step.value, lanes);
+            var newFiber = updateSlot(returnFiber, oldFiber, step2.value, lanes);
             if (null === newFiber) {
               null === oldFiber && (oldFiber = nextOldFiber);
               break;
@@ -3799,28 +3799,28 @@ var require_react_reconciler_production = __commonJS({
             previousNewFiber = newFiber;
             oldFiber = nextOldFiber;
           }
-          if (step.done)
+          if (step2.done)
             return deleteRemainingChildren(returnFiber, oldFiber), isHydrating && pushTreeFork(returnFiber, newIdx), resultingFirstChild;
           if (null === oldFiber) {
-            for (; !step.done; newIdx++, step = newChildren.next())
-              step = createChild(returnFiber, step.value, lanes), null !== step && (currentFirstChild = placeChild(
-                step,
+            for (; !step2.done; newIdx++, step2 = newChildren.next())
+              step2 = createChild(returnFiber, step2.value, lanes), null !== step2 && (currentFirstChild = placeChild(
+                step2,
                 currentFirstChild,
                 newIdx
-              ), null === previousNewFiber ? resultingFirstChild = step : previousNewFiber.sibling = step, previousNewFiber = step);
+              ), null === previousNewFiber ? resultingFirstChild = step2 : previousNewFiber.sibling = step2, previousNewFiber = step2);
             isHydrating && pushTreeFork(returnFiber, newIdx);
             return resultingFirstChild;
           }
-          for (oldFiber = mapRemainingChildren(oldFiber); !step.done; newIdx++, step = newChildren.next())
-            step = updateFromMap(
+          for (oldFiber = mapRemainingChildren(oldFiber); !step2.done; newIdx++, step2 = newChildren.next())
+            step2 = updateFromMap(
               oldFiber,
               returnFiber,
               newIdx,
-              step.value,
+              step2.value,
               lanes
-            ), null !== step && (shouldTrackSideEffects && (nextOldFiber = step.alternate, null !== nextOldFiber && oldFiber.delete(
+            ), null !== step2 && (shouldTrackSideEffects && (nextOldFiber = step2.alternate, null !== nextOldFiber && oldFiber.delete(
               null === nextOldFiber.key ? newIdx : nextOldFiber.key
-            )), currentFirstChild = placeChild(step, currentFirstChild, newIdx), null === previousNewFiber ? resultingFirstChild = step : previousNewFiber.sibling = step, previousNewFiber = step);
+            )), currentFirstChild = placeChild(step2, currentFirstChild, newIdx), null === previousNewFiber ? resultingFirstChild = step2 : previousNewFiber.sibling = step2, previousNewFiber = step2);
           shouldTrackSideEffects && oldFiber.forEach(function(child) {
             return deleteChild(returnFiber, child);
           });
@@ -10573,11 +10573,11 @@ var require_react_reconciler_production = __commonJS({
       }
       var exports2 = {};
       "use strict";
-      var React19 = require_react(), Scheduler = require_scheduler(), assign = Object.assign, REACT_LEGACY_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.element"), REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = /* @__PURE__ */ Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = /* @__PURE__ */ Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = /* @__PURE__ */ Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = /* @__PURE__ */ Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = /* @__PURE__ */ Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = /* @__PURE__ */ Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = /* @__PURE__ */ Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = /* @__PURE__ */ Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = /* @__PURE__ */ Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = /* @__PURE__ */ Symbol.for("react.memo"), REACT_LAZY_TYPE = /* @__PURE__ */ Symbol.for("react.lazy");
+      var React21 = require_react(), Scheduler = require_scheduler(), assign = Object.assign, REACT_LEGACY_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.element"), REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = /* @__PURE__ */ Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = /* @__PURE__ */ Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = /* @__PURE__ */ Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = /* @__PURE__ */ Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = /* @__PURE__ */ Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = /* @__PURE__ */ Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = /* @__PURE__ */ Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = /* @__PURE__ */ Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = /* @__PURE__ */ Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = /* @__PURE__ */ Symbol.for("react.memo"), REACT_LAZY_TYPE = /* @__PURE__ */ Symbol.for("react.lazy");
       /* @__PURE__ */ Symbol.for("react.scope");
       var REACT_ACTIVITY_TYPE = /* @__PURE__ */ Symbol.for("react.activity"), REACT_LEGACY_HIDDEN_TYPE = /* @__PURE__ */ Symbol.for("react.legacy_hidden");
       /* @__PURE__ */ Symbol.for("react.tracing_marker");
-      var REACT_MEMO_CACHE_SENTINEL = /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel"), REACT_VIEW_TRANSITION_TYPE = /* @__PURE__ */ Symbol.for("react.view_transition"), REACT_RECOVERABLE_TYPE = /* @__PURE__ */ Symbol.for("react.recoverable"), MAYBE_ITERATOR_SYMBOL = Symbol.iterator, REACT_OPTIMISTIC_KEY = /* @__PURE__ */ Symbol.for("react.optimistic_key"), REACT_CLIENT_REFERENCE = /* @__PURE__ */ Symbol.for("react.client.reference"), isArrayImpl = Array.isArray, ReactSharedInternals = React19.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, rendererVersion = $$$config.rendererVersion, rendererPackageName = $$$config.rendererPackageName, extraDevToolsConfig = $$$config.extraDevToolsConfig, getPublicInstance = $$$config.getPublicInstance, getRootHostContext = $$$config.getRootHostContext, getChildHostContext = $$$config.getChildHostContext, prepareForCommit = $$$config.prepareForCommit, resetAfterCommit = $$$config.resetAfterCommit, createInstance = $$$config.createInstance;
+      var REACT_MEMO_CACHE_SENTINEL = /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel"), REACT_VIEW_TRANSITION_TYPE = /* @__PURE__ */ Symbol.for("react.view_transition"), REACT_RECOVERABLE_TYPE = /* @__PURE__ */ Symbol.for("react.recoverable"), MAYBE_ITERATOR_SYMBOL = Symbol.iterator, REACT_OPTIMISTIC_KEY = /* @__PURE__ */ Symbol.for("react.optimistic_key"), REACT_CLIENT_REFERENCE = /* @__PURE__ */ Symbol.for("react.client.reference"), isArrayImpl = Array.isArray, ReactSharedInternals = React21.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, rendererVersion = $$$config.rendererVersion, rendererPackageName = $$$config.rendererPackageName, extraDevToolsConfig = $$$config.extraDevToolsConfig, getPublicInstance = $$$config.getPublicInstance, getRootHostContext = $$$config.getRootHostContext, getChildHostContext = $$$config.getChildHostContext, prepareForCommit = $$$config.prepareForCommit, resetAfterCommit = $$$config.resetAfterCommit, createInstance = $$$config.createInstance;
       $$$config.cloneMutableInstance;
       var appendInitialChild = $$$config.appendInitialChild, finalizeInitialChildren = $$$config.finalizeInitialChildren, shouldSetTextContent = $$$config.shouldSetTextContent, createTextInstance = $$$config.createTextInstance;
       $$$config.cloneMutableTextInstance;
@@ -11313,7 +11313,7 @@ var require_react_reconciler_production = __commonJS({
           queue,
           pendingState,
           NotPendingTransition,
-          null === action ? noop2 : function() {
+          null === action ? noop3 : function() {
             var stateHook = ensureFormComponentIsStateful(formFiber);
             null === stateHook.next && (stateHook = formFiber.alternate.memoizedState);
             dispatchSetStateInternal(
@@ -11441,7 +11441,7 @@ var require_react_reconciler_development = __commonJS({
           "Context can only be read while React is rendering. In classes, you can read it in the render method or getDerivedStateFromProps. In function components, you can read it directly in the function body, but not inside Hooks like useReducer() or useMemo()."
         );
       }
-      function noop2() {
+      function noop3() {
       }
       function warnForMissingKey() {
       }
@@ -13940,8 +13940,8 @@ var require_react_reconciler_development = __commonJS({
           currentEntangledActionThenable = {
             status: "pending",
             value: void 0,
-            then: function(resolve3) {
-              entangledListeners.push(resolve3);
+            then: function(resolve4) {
+              entangledListeners.push(resolve4);
             }
           };
         }
@@ -13964,8 +13964,8 @@ var require_react_reconciler_development = __commonJS({
           status: "pending",
           value: null,
           reason: null,
-          then: function(resolve3) {
-            listeners.push(resolve3);
+          then: function(resolve4) {
+            listeners.push(resolve4);
           }
         };
         thenable.then(
@@ -14578,9 +14578,9 @@ var require_react_reconciler_development = __commonJS({
         function reconcileChildrenIterator(returnFiber, currentFirstChild, newChildren, lanes) {
           if (null == newChildren)
             throw Error("An iterable object provided no iterator.");
-          for (var resultingFirstChild = null, previousNewFiber = null, oldFiber = currentFirstChild, newIdx = currentFirstChild = 0, nextOldFiber = null, knownKeys = null, step = newChildren.next(); null !== oldFiber && !step.done; newIdx++, step = newChildren.next()) {
+          for (var resultingFirstChild = null, previousNewFiber = null, oldFiber = currentFirstChild, newIdx = currentFirstChild = 0, nextOldFiber = null, knownKeys = null, step2 = newChildren.next(); null !== oldFiber && !step2.done; newIdx++, step2 = newChildren.next()) {
             oldFiber.index > newIdx ? (nextOldFiber = oldFiber, oldFiber = null) : nextOldFiber = oldFiber.sibling;
-            var newFiber = updateSlot(returnFiber, oldFiber, step.value, lanes);
+            var newFiber = updateSlot(returnFiber, oldFiber, step2.value, lanes);
             if (null === newFiber) {
               null === oldFiber && (oldFiber = nextOldFiber);
               break;
@@ -14588,7 +14588,7 @@ var require_react_reconciler_development = __commonJS({
             knownKeys = warnOnInvalidKey(
               returnFiber,
               newFiber,
-              step.value,
+              step2.value,
               knownKeys
             );
             shouldTrackSideEffects && oldFiber && null === newFiber.alternate && deleteChild(returnFiber, oldFiber);
@@ -14597,14 +14597,14 @@ var require_react_reconciler_development = __commonJS({
             previousNewFiber = newFiber;
             oldFiber = nextOldFiber;
           }
-          if (step.done)
+          if (step2.done)
             return deleteRemainingChildren(returnFiber, oldFiber), isHydrating && pushTreeFork(returnFiber, newIdx), resultingFirstChild;
           if (null === oldFiber) {
-            for (; !step.done; newIdx++, step = newChildren.next())
-              oldFiber = createChild(returnFiber, step.value, lanes), null !== oldFiber && (knownKeys = warnOnInvalidKey(
+            for (; !step2.done; newIdx++, step2 = newChildren.next())
+              oldFiber = createChild(returnFiber, step2.value, lanes), null !== oldFiber && (knownKeys = warnOnInvalidKey(
                 returnFiber,
                 oldFiber,
-                step.value,
+                step2.value,
                 knownKeys
               ), currentFirstChild = placeChild(
                 oldFiber,
@@ -14614,19 +14614,19 @@ var require_react_reconciler_development = __commonJS({
             isHydrating && pushTreeFork(returnFiber, newIdx);
             return resultingFirstChild;
           }
-          for (oldFiber = mapRemainingChildren(oldFiber); !step.done; newIdx++, step = newChildren.next())
+          for (oldFiber = mapRemainingChildren(oldFiber); !step2.done; newIdx++, step2 = newChildren.next())
             nextOldFiber = updateFromMap(
               oldFiber,
               returnFiber,
               newIdx,
-              step.value,
+              step2.value,
               lanes
             ), null !== nextOldFiber && (knownKeys = warnOnInvalidKey(
               returnFiber,
               nextOldFiber,
-              step.value,
+              step2.value,
               knownKeys
-            ), shouldTrackSideEffects && (step = nextOldFiber.alternate, null !== step && oldFiber.delete(null === step.key ? newIdx : step.key)), currentFirstChild = placeChild(
+            ), shouldTrackSideEffects && (step2 = nextOldFiber.alternate, null !== step2 && oldFiber.delete(null === step2.key ? newIdx : step2.key)), currentFirstChild = placeChild(
               nextOldFiber,
               currentFirstChild,
               newIdx
@@ -17731,8 +17731,8 @@ var require_react_reconciler_development = __commonJS({
             }
           else if (suspenseContext = getIteratorFn(newChildren), "function" === typeof suspenseContext) {
             if (suspenseContext = suspenseContext.call(newChildren))
-              for (var step = suspenseContext.next(), _i = 0; !step.done; step = suspenseContext.next()) {
-                if (!validateSuspenseListNestedChild(step.value, _i)) break a;
+              for (var step2 = suspenseContext.next(), _i = 0; !step2.done; step2 = suspenseContext.next()) {
+                if (!validateSuspenseListNestedChild(step2.value, _i)) break a;
                 _i++;
               }
           } else
@@ -23841,7 +23841,7 @@ var require_react_reconciler_development = __commonJS({
       }
       function isCompatibleFamilyForHotReloading(fiber, element) {
         if (null === resolveFamily) return false;
-        var resolve3 = resolveFamily, prevType = fiber.elementType;
+        var resolve4 = resolveFamily, prevType = fiber.elementType;
         element = element.type;
         var needsCompareFamilies = false, $$typeofNextType = "object" === typeof element && null !== element ? element.$$typeof : null;
         switch (fiber.tag) {
@@ -23861,7 +23861,7 @@ var require_react_reconciler_development = __commonJS({
           default:
             return false;
         }
-        return needsCompareFamilies && (fiber = resolve3(prevType), void 0 !== fiber && fiber === resolve3(element)) ? true : false;
+        return needsCompareFamilies && (fiber = resolve4(prevType), void 0 !== fiber && fiber === resolve4(element)) ? true : false;
       }
       function markFailedErrorBoundaryForHotReloading(fiber) {
         null !== resolveFamily && "function" === typeof WeakSet && (null === failedBoundaries && (failedBoundaries = /* @__PURE__ */ new WeakSet()), failedBoundaries.add(fiber));
@@ -23887,10 +23887,10 @@ var require_react_reconciler_development = __commonJS({
           }
           if (null === resolveFamily)
             throw Error("Expected resolveFamily to be set during hot reload.");
-          var resolve3 = resolveFamily;
+          var resolve4 = resolveFamily;
           type = elementType = false;
-          null !== candidateType && (candidateType = resolve3(candidateType), void 0 !== candidateType && (staleFamilies.has(candidateType) ? type = true : updatedFamilies.has(candidateType) && (1 === tag ? type = true : elementType = true)));
-          type || null === _fiber || (tag = resolve3(_fiber), void 0 !== tag && staleFamilies.has(tag) ? type = true : "object" === typeof _fiber && _fiber.$$typeof === REACT_LAZY_TYPE && (tag = _fiber._payload, 1 === tag._status && (tag = resolve3(tag._result.default), void 0 !== tag && staleFamilies.has(tag) && (type = true))));
+          null !== candidateType && (candidateType = resolve4(candidateType), void 0 !== candidateType && (staleFamilies.has(candidateType) ? type = true : updatedFamilies.has(candidateType) && (1 === tag ? type = true : elementType = true)));
+          type || null === _fiber || (tag = resolve4(_fiber), void 0 !== tag && staleFamilies.has(tag) ? type = true : "object" === typeof _fiber && _fiber.$$typeof === REACT_LAZY_TYPE && (tag = _fiber._payload, 1 === tag._status && (tag = resolve4(tag._result.default), void 0 !== tag && staleFamilies.has(tag) && (type = true))));
           null !== failedBoundaries && (failedBoundaries.has(fiber) || null !== alternate && failedBoundaries.has(alternate)) && (type = true);
           type && (fiber._debugNeedsRemount = true);
           if (type || elementType)
@@ -24216,11 +24216,11 @@ var require_react_reconciler_development = __commonJS({
       }
       var exports2 = {};
       "use strict";
-      var React19 = require_react(), Scheduler = require_scheduler(), assign = Object.assign, REACT_LEGACY_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.element"), REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = /* @__PURE__ */ Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = /* @__PURE__ */ Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = /* @__PURE__ */ Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = /* @__PURE__ */ Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = /* @__PURE__ */ Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = /* @__PURE__ */ Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = /* @__PURE__ */ Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = /* @__PURE__ */ Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = /* @__PURE__ */ Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = /* @__PURE__ */ Symbol.for("react.memo"), REACT_LAZY_TYPE = /* @__PURE__ */ Symbol.for("react.lazy");
+      var React21 = require_react(), Scheduler = require_scheduler(), assign = Object.assign, REACT_LEGACY_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.element"), REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = /* @__PURE__ */ Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = /* @__PURE__ */ Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = /* @__PURE__ */ Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = /* @__PURE__ */ Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = /* @__PURE__ */ Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = /* @__PURE__ */ Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = /* @__PURE__ */ Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = /* @__PURE__ */ Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = /* @__PURE__ */ Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = /* @__PURE__ */ Symbol.for("react.memo"), REACT_LAZY_TYPE = /* @__PURE__ */ Symbol.for("react.lazy");
       /* @__PURE__ */ Symbol.for("react.scope");
       var REACT_ACTIVITY_TYPE = /* @__PURE__ */ Symbol.for("react.activity"), REACT_LEGACY_HIDDEN_TYPE = /* @__PURE__ */ Symbol.for("react.legacy_hidden");
       /* @__PURE__ */ Symbol.for("react.tracing_marker");
-      var REACT_MEMO_CACHE_SENTINEL = /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel"), REACT_VIEW_TRANSITION_TYPE = /* @__PURE__ */ Symbol.for("react.view_transition"), REACT_RECOVERABLE_TYPE = /* @__PURE__ */ Symbol.for("react.recoverable"), MAYBE_ITERATOR_SYMBOL = Symbol.iterator, REACT_OPTIMISTIC_KEY = /* @__PURE__ */ Symbol.for("react.optimistic_key"), REACT_CLIENT_REFERENCE = /* @__PURE__ */ Symbol.for("react.client.reference"), isArrayImpl = Array.isArray, ReactSharedInternals = React19.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, rendererVersion = $$$config.rendererVersion, rendererPackageName = $$$config.rendererPackageName, extraDevToolsConfig = $$$config.extraDevToolsConfig, getPublicInstance = $$$config.getPublicInstance, getRootHostContext = $$$config.getRootHostContext, getChildHostContext = $$$config.getChildHostContext, prepareForCommit = $$$config.prepareForCommit, resetAfterCommit = $$$config.resetAfterCommit, createInstance = $$$config.createInstance;
+      var REACT_MEMO_CACHE_SENTINEL = /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel"), REACT_VIEW_TRANSITION_TYPE = /* @__PURE__ */ Symbol.for("react.view_transition"), REACT_RECOVERABLE_TYPE = /* @__PURE__ */ Symbol.for("react.recoverable"), MAYBE_ITERATOR_SYMBOL = Symbol.iterator, REACT_OPTIMISTIC_KEY = /* @__PURE__ */ Symbol.for("react.optimistic_key"), REACT_CLIENT_REFERENCE = /* @__PURE__ */ Symbol.for("react.client.reference"), isArrayImpl = Array.isArray, ReactSharedInternals = React21.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, rendererVersion = $$$config.rendererVersion, rendererPackageName = $$$config.rendererPackageName, extraDevToolsConfig = $$$config.extraDevToolsConfig, getPublicInstance = $$$config.getPublicInstance, getRootHostContext = $$$config.getRootHostContext, getChildHostContext = $$$config.getChildHostContext, prepareForCommit = $$$config.prepareForCommit, resetAfterCommit = $$$config.resetAfterCommit, createInstance = $$$config.createInstance;
       $$$config.cloneMutableInstance;
       var appendInitialChild = $$$config.appendInitialChild, finalizeInitialChildren = $$$config.finalizeInitialChildren, shouldSetTextContent = $$$config.shouldSetTextContent, createTextInstance = $$$config.createTextInstance;
       $$$config.cloneMutableTextInstance;
@@ -26146,7 +26146,7 @@ var require_react_reconciler_development = __commonJS({
           queue,
           pendingState,
           NotPendingTransition,
-          null === action ? noop2 : function() {
+          null === action ? noop3 : function() {
             null === ReactSharedInternals.T && console.error(
               "requestFormReset was called outside a transition or action. To fix, move to an action, or wrap with startTransition."
             );
@@ -26266,21 +26266,21 @@ var init_rdc_stub = __esm({
 var isDevToolsReachable, is_devtools_reachable_default;
 var init_is_devtools_reachable = __esm({
   "node_modules/ink/build/is-devtools-reachable.js"() {
-    isDevToolsReachable = async (url = "ws://localhost:8097", timeoutMs = 2e3) => new Promise((resolve3) => {
+    isDevToolsReachable = async (url = "ws://localhost:8097", timeoutMs = 2e3) => new Promise((resolve4) => {
       const socket = new WebSocket(url);
       const timeout = setTimeout(() => {
-        resolve3(false);
+        resolve4(false);
         socket.close();
       }, timeoutMs);
       timeout.unref();
       socket.addEventListener("open", () => {
         clearTimeout(timeout);
         socket.close();
-        resolve3(true);
+        resolve4(true);
       });
       socket.addEventListener("error", () => {
         clearTimeout(timeout);
-        resolve3(false);
+        resolve4(false);
       });
     });
     is_devtools_reachable_default = isDevToolsReachable;
@@ -26869,18 +26869,18 @@ var require_react_jsx_runtime_development = __commonJS({
       function isValidElement(object) {
         return "object" === typeof object && null !== object && object.$$typeof === REACT_ELEMENT_TYPE;
       }
-      var React19 = require_react(), REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = /* @__PURE__ */ Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = /* @__PURE__ */ Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = /* @__PURE__ */ Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = /* @__PURE__ */ Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = /* @__PURE__ */ Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = /* @__PURE__ */ Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = /* @__PURE__ */ Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = /* @__PURE__ */ Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = /* @__PURE__ */ Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = /* @__PURE__ */ Symbol.for("react.memo"), REACT_LAZY_TYPE = /* @__PURE__ */ Symbol.for("react.lazy"), REACT_ACTIVITY_TYPE = /* @__PURE__ */ Symbol.for("react.activity"), REACT_VIEW_TRANSITION_TYPE = /* @__PURE__ */ Symbol.for("react.view_transition"), REACT_CLIENT_REFERENCE = /* @__PURE__ */ Symbol.for("react.client.reference"), ReactSharedInternals = React19.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, hasOwnProperty = Object.prototype.hasOwnProperty, isArrayImpl = Array.isArray, createTask = console.createTask ? console.createTask : function() {
+      var React21 = require_react(), REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = /* @__PURE__ */ Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = /* @__PURE__ */ Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = /* @__PURE__ */ Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = /* @__PURE__ */ Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = /* @__PURE__ */ Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = /* @__PURE__ */ Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = /* @__PURE__ */ Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = /* @__PURE__ */ Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = /* @__PURE__ */ Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = /* @__PURE__ */ Symbol.for("react.memo"), REACT_LAZY_TYPE = /* @__PURE__ */ Symbol.for("react.lazy"), REACT_ACTIVITY_TYPE = /* @__PURE__ */ Symbol.for("react.activity"), REACT_VIEW_TRANSITION_TYPE = /* @__PURE__ */ Symbol.for("react.view_transition"), REACT_CLIENT_REFERENCE = /* @__PURE__ */ Symbol.for("react.client.reference"), ReactSharedInternals = React21.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, hasOwnProperty = Object.prototype.hasOwnProperty, isArrayImpl = Array.isArray, createTask = console.createTask ? console.createTask : function() {
         return null;
       };
-      React19 = {
+      React21 = {
         react_stack_bottom_frame: function(callStackForError) {
           return callStackForError();
         }
       };
       var specialPropKeyWarningShown;
       var didWarnAboutElementRef = {};
-      var unknownOwnerDebugStack = React19.react_stack_bottom_frame.bind(
-        React19,
+      var unknownOwnerDebugStack = React21.react_stack_bottom_frame.bind(
+        React21,
         UnknownOwner
       )();
       var unknownOwnerDebugTask = createTask(getTaskName(UnknownOwner));
@@ -26937,7 +26937,7 @@ var require_jsx_runtime = __commonJS({
 });
 
 // src/panel/main.tsx
-var import_react44 = __toESM(require_react(), 1);
+var import_react46 = __toESM(require_react(), 1);
 
 // node_modules/ink/build/render.js
 import { Stream } from "node:stream";
@@ -27359,8 +27359,8 @@ var loadYoga = (() => {
     var ea = h.print || console.log.bind(console), v = h.printErr || console.warn.bind(console);
     Object.assign(h, da);
     da = null;
-    var w;
-    h.wasmBinary && (w = h.wasmBinary);
+    var w2;
+    h.wasmBinary && (w2 = h.wasmBinary);
     var noExitRuntime = h.noExitRuntime || true;
     "object" != typeof WebAssembly && x("no native wasm support detected");
     var fa, ha = false;
@@ -27421,7 +27421,7 @@ var loadYoga = (() => {
     function wa() {
       var a = H;
       try {
-        if (a == H && w) return new Uint8Array(w);
+        if (a == H && w2) return new Uint8Array(w2);
         if (ua(a)) try {
           var b = xa(a.slice(37)), c = new Uint8Array(b.length);
           for (a = 0; a < b.length; ++a) c[a] = b.charCodeAt(a);
@@ -27438,7 +27438,7 @@ var loadYoga = (() => {
       }
     }
     function ya() {
-      return w || "function" != typeof fetch ? Promise.resolve().then(function() {
+      return w2 || "function" != typeof fetch ? Promise.resolve().then(function() {
         return wa();
       }) : fetch(H, { credentials: "same-origin" }).then(function(a) {
         if (!a.ok) throw "failed to load wasm binary file at '" + H + "'";
@@ -27760,19 +27760,19 @@ var loadYoga = (() => {
         k = true;
         break;
       }
-      var m = "void" !== b[0].name, l = f - 2, n = Array(l), p = [], r = [];
+      var m = "void" !== b[0].name, l = f - 2, n = Array(l), p = [], r2 = [];
       return function() {
         arguments.length !== l && L("function " + a + " called with " + arguments.length + " arguments, expected " + l + " args!");
-        r.length = 0;
+        r2.length = 0;
         p.length = g ? 2 : 1;
         p[0] = e;
         if (g) {
-          var u = b[1].toWireType(r, this);
+          var u = b[1].toWireType(r2, this);
           p[1] = u;
         }
-        for (var t = 0; t < l; ++t) n[t] = b[t + 2].toWireType(r, arguments[t]), p.push(n[t]);
+        for (var t = 0; t < l; ++t) n[t] = b[t + 2].toWireType(r2, arguments[t]), p.push(n[t]);
         t = d.apply(null, p);
-        if (k) Wa(r);
+        if (k) Wa(r2);
         else for (var y = g ? 1 : 2; y < b.length; y++) {
           var B = 1 === y ? u : n[y - 2];
           null !== b[y].V && b[y].V(B);
@@ -28059,8 +28059,8 @@ var loadYoga = (() => {
         V([a], f, (g) => {
           var k = {};
           e.forEach((m, l) => {
-            var n = g[l], p = m.ra, r = m.sa, u = g[l + e.length], t = m.ya, y = m.Aa;
-            k[m.oa] = { read: (B) => n.fromWireType(p(r, B)), write: (B, ba) => {
+            var n = g[l], p = m.ra, r2 = m.sa, u = g[l + e.length], t = m.ya, y = m.Aa;
+            k[m.oa] = { read: (B) => n.fromWireType(p(r2, B)), write: (B, ba) => {
               var I = [];
               t(
                 y,
@@ -28108,12 +28108,12 @@ var loadYoga = (() => {
           V: null
         });
       },
-      f: function(a, b, c, d, e, f, g, k, m, l, n, p, r) {
+      f: function(a, b, c, d, e, f, g, k, m, l, n, p, r2) {
         n = N(n);
         f = Z(e, f);
         k && (k = Z(g, k));
         l && (l = Z(m, l));
-        r = Z(p, r);
+        r2 = Z(p, r2);
         var u = Aa(n);
         bb(u, function() {
           nb("Cannot construct " + n + " due to unbound types", [d]);
@@ -28133,7 +28133,7 @@ var loadYoga = (() => {
           });
           var ba = Object.create(B, { constructor: { value: t } });
           t.prototype = ba;
-          var I = new cb(n, t, ba, r, y, f, k, l);
+          var I = new cb(n, t, ba, r2, y, f, k, l);
           y = new Y(n, I, true, false);
           B = new Y(n + "*", I, false, false);
           var lb = new Y(n + " const*", I, false, true);
@@ -28158,9 +28158,9 @@ var loadYoga = (() => {
           b.startsWith("@@") && (b = Symbol[b.substring(2)]);
           var p = m.N.constructor;
           void 0 === p[b] ? (l.Z = c - 1, p[b] = l) : (ab(p, b, n), p[b].S[c - 1] = l);
-          V([], k, function(r) {
-            r = ob(n, [r[0], null].concat(r.slice(1)), null, f, g);
-            void 0 === p[b].S ? (r.Z = c - 1, p[b] = r) : p[b].S[c - 1] = r;
+          V([], k, function(r2) {
+            r2 = ob(n, [r2[0], null].concat(r2.slice(1)), null, f, g);
+            void 0 === p[b].S ? (r2.Z = c - 1, p[b] = r2) : p[b].S[c - 1] = r2;
             return [];
           });
           return [];
@@ -28201,11 +28201,11 @@ var loadYoga = (() => {
           var p = l.name + "." + b;
           b.startsWith("@@") && (b = Symbol[b.substring(2)]);
           k && l.N.ja.push(b);
-          var r = l.N.X, u = r[b];
-          void 0 === u || void 0 === u.S && u.className !== l.name && u.Z === c - 2 ? (n.Z = c - 2, n.className = l.name, r[b] = n) : (ab(r, b, p), r[b].S[c - 2] = n);
+          var r2 = l.N.X, u = r2[b];
+          void 0 === u || void 0 === u.S && u.className !== l.name && u.Z === c - 2 ? (n.Z = c - 2, n.className = l.name, r2[b] = n) : (ab(r2, b, p), r2[b].S[c - 2] = n);
           V([], m, function(t) {
             t = ob(p, t, l, f, g);
-            void 0 === r[b].S ? (t.Z = c - 2, r[b] = t) : r[b].S[c - 2] = t;
+            void 0 === r2[b].S ? (t.Z = c - 2, r2[b] = t) : r2[b].S[c - 2] = t;
             return [];
           });
           return [];
@@ -28345,9 +28345,9 @@ var loadYoga = (() => {
           var k = 1;
         } else 4 === b && (d = wb, e = xb, f = yb, g = () => E, k = 2);
         W(a, { name: c, fromWireType: function(m) {
-          for (var l = E[m >> 2], n = g(), p, r = m + 4, u = 0; u <= l; ++u) {
+          for (var l = E[m >> 2], n = g(), p, r2 = m + 4, u = 0; u <= l; ++u) {
             var t = m + 4 + u * b;
-            if (u == l || 0 == n[t >> k]) r = d(r, t - r), void 0 === p ? p = r : (p += String.fromCharCode(0), p += r), r = t + b;
+            if (u == l || 0 == n[t >> k]) r2 = d(r2, t - r2), void 0 === p ? p = r2 : (p += String.fromCharCode(0), p += r2), r2 = t + b;
           }
           S(m);
           return p;
@@ -28508,7 +28508,7 @@ var loadYoga = (() => {
         v("Module.instantiateWasm callback failed with error: " + e), ca(e);
       }
       (function() {
-        return w || "function" != typeof WebAssembly.instantiateStreaming || ua(H) || "function" != typeof fetch ? c(b) : fetch(H, { credentials: "same-origin" }).then(function(e) {
+        return w2 || "function" != typeof WebAssembly.instantiateStreaming || ua(H) || "function" != typeof fetch ? c(b) : fetch(H, { credentials: "same-origin" }).then(function(e) {
           return WebAssembly.instantiateStreaming(e, d).then(b, function(f) {
             v("wasm streaming compile failed: " + f);
             v("falling back to ArrayBuffer instantiation");
@@ -29370,22 +29370,22 @@ var forEachSegment = (string, onPlainText, onEscape = () => {
   }
 };
 var getWidth = (string) => {
-  let plainText = "";
+  let plainText2 = "";
   forEachSegment(string, (part) => {
-    plainText += part;
+    plainText2 += part;
   });
-  return getStringWidth(plainText);
+  return getStringWidth(plainText2);
 };
 var getTokens = (string) => {
   const tokens = [];
-  forEachSegment(string, (plainText) => {
-    if (ASCII_PRINTABLE_REGEX.test(plainText)) {
-      for (const character of plainText) {
+  forEachSegment(string, (plainText2) => {
+    if (ASCII_PRINTABLE_REGEX.test(plainText2)) {
+      for (const character of plainText2) {
         tokens.push({ value: character, width: 1 });
       }
       return;
     }
-    for (const { segment } of segmenter2.segment(plainText)) {
+    for (const { segment } of segmenter2.segment(plainText2)) {
       tokens.push({ value: segment, width: getStringWidth(segment) });
     }
   }, (escape2) => {
@@ -29396,8 +29396,8 @@ var getTokens = (string) => {
 var splitWords = (string) => {
   let currentWord = { value: "", plainText: "" };
   const words = [currentWord];
-  forEachSegment(string, (plainText) => {
-    const parts = plainText.split(" ");
+  forEachSegment(string, (plainText2) => {
+    const parts = plainText2.split(" ");
     currentWord.value += parts[0];
     currentWord.plainText += parts[0];
     for (let index = 1; index < parts.length; index++) {
@@ -29607,8 +29607,8 @@ var stringVisibleTrimSpacesRight = (string) => {
     return string;
   }
   const segments = [];
-  forEachSegment(string, (plainText) => {
-    segments.push({ value: plainText, isEscape: false });
+  forEachSegment(string, (plainText2) => {
+    segments.push({ value: plainText2, isEscape: false });
   }, (escape2) => {
     segments.push({ value: escape2, isEscape: true });
   });
@@ -29635,8 +29635,8 @@ var expandTabs = (line) => {
   let visible = 0;
   let expandedLine = "";
   let plainTextSinceTab = "";
-  const expandPlainText = (plainText) => {
-    const segments = plainText.split("	");
+  const expandPlainText = (plainText2) => {
+    const segments = plainText2.split("	");
     for (const [index, segment] of segments.entries()) {
       expandedLine += segment;
       plainTextSinceTab += segment;
@@ -29673,11 +29673,11 @@ var restoreStylesAcrossRows = (preString) => {
         index++;
         continue;
       }
-      const { groups } = escape2;
-      if (groups.sgr !== void 0) {
-        applySgrParameters(groups.sgr, activeStyles);
-      } else if (groups.uri !== void 0) {
-        activeHyperlink = groups.uri.length === 0 ? void 0 : { parameters: groups.parameters, uri: groups.uri };
+      const { groups: groups2 } = escape2;
+      if (groups2.sgr !== void 0) {
+        applySgrParameters(groups2.sgr, activeStyles);
+      } else if (groups2.uri !== void 0) {
+        activeHyperlink = groups2.uri.length === 0 ? void 0 : { parameters: groups2.parameters, uri: groups2.uri };
       }
       index += escape2[0].length;
       continue;
@@ -29770,8 +29770,8 @@ var exec = (string, columns, options = {}) => {
 };
 var normalizeText = (string) => {
   let normalizedString = "";
-  forEachSegment(string, (plainText) => {
-    normalizedString += plainText.normalize();
+  forEachSegment(string, (plainText2) => {
+    normalizedString += plainText2.normalize();
   }, (escape2) => {
     normalizedString += escape2;
   });
@@ -30072,17 +30072,17 @@ var QuickLRU = class extends Map {
     if (!(newSize && newSize > 0)) {
       throw new TypeError("`maxSize` must be a number greater than 0");
     }
-    const items = [...this.#entriesAscending()];
-    const removeCount = items.length - newSize;
+    const items2 = [...this.#entriesAscending()];
+    const removeCount = items2.length - newSize;
     if (removeCount < 0) {
-      this.#cache = new Map(items);
+      this.#cache = new Map(items2);
       this.#oldCache = /* @__PURE__ */ new Map();
-      this.#size = items.length;
+      this.#size = items2.length;
     } else {
       if (removeCount > 0) {
-        this.#emitEvictions(items.slice(0, removeCount));
+        this.#emitEvictions(items2.slice(0, removeCount));
       }
-      this.#oldCache = new Map(items.slice(removeCount));
+      this.#oldCache = new Map(items2.slice(removeCount));
       this.#cache = /* @__PURE__ */ new Map();
       this.#size = 0;
     }
@@ -30093,13 +30093,13 @@ var QuickLRU = class extends Map {
     if (!requested || requested <= 0) {
       return;
     }
-    const items = [...this.#entriesAscending()];
-    const evictCount = Math.trunc(Math.min(requested, Math.max(items.length - 1, 0)));
+    const items2 = [...this.#entriesAscending()];
+    const evictCount = Math.trunc(Math.min(requested, Math.max(items2.length - 1, 0)));
     if (evictCount <= 0) {
       return;
     }
-    this.#emitEvictions(items.slice(0, evictCount));
-    this.#oldCache = new Map(items.slice(evictCount));
+    this.#emitEvictions(items2.slice(0, evictCount));
+    this.#oldCache = new Map(items2.slice(evictCount));
     this.#cache = /* @__PURE__ */ new Map();
     this.#size = 0;
   }
@@ -30132,18 +30132,18 @@ var QuickLRU = class extends Map {
     }
   }
   *entriesDescending() {
-    let items = [...this.#cache];
-    for (let i = items.length - 1; i >= 0; --i) {
-      const item = items[i];
+    let items2 = [...this.#cache];
+    for (let i = items2.length - 1; i >= 0; --i) {
+      const item = items2[i];
       const [key, value] = item;
       const deleted = this.#deleteIfExpired(key, value);
       if (deleted === false) {
         yield [key, value.value];
       }
     }
-    items = [...this.#oldCache];
-    for (let i = items.length - 1; i >= 0; --i) {
-      const item = items[i];
+    items2 = [...this.#oldCache];
+    for (let i = items2.length - 1; i >= 0; --i) {
+      const item = items2[i];
       const [key, value] = item;
       if (!this.#cache.has(key)) {
         const deleted = this.#deleteIfExpired(key, value);
@@ -31221,7 +31221,7 @@ var CC_SEMI = ";".charCodeAt(0);
 var CC_M = "m".charCodeAt(0);
 var ESCAPES3 = /* @__PURE__ */ new Set([CC_ESC, 155]);
 var linkCodePrefix = `${ESC2}${OSC2}8;`;
-var linkCodePrefixCharCodes = linkCodePrefix.split("").map((char) => char.charCodeAt(0));
+var linkCodePrefixCharCodes = linkCodePrefix.split("").map((char2) => char2.charCodeAt(0));
 var linkEndCode = `${ESC2}${OSC2}8;;${BEL2}`;
 var linkEndCodeST = `${ESC2}${OSC2}8;;${ESC2}${BACKSLASH}`;
 var linkEndCodeC1ST = `${ESC2}${OSC2}8;;${C1_ST}`;
@@ -31340,15 +31340,15 @@ function styledCharsFromTokens(tokens) {
 function styledCharsToString(chars) {
   let ret = "";
   for (let i = 0; i < chars.length; i++) {
-    const char = chars[i];
+    const char2 = chars[i];
     if (i === 0) {
-      ret += ansiCodesToString(char.styles);
+      ret += ansiCodesToString(char2.styles);
     } else {
-      ret += ansiCodesToString(diffAnsiCodes(chars[i - 1].styles, char.styles));
+      ret += ansiCodesToString(diffAnsiCodes(chars[i - 1].styles, char2.styles));
     }
-    ret += char.value;
+    ret += char2.value;
     if (i === chars.length - 1) {
-      ret += ansiCodesToString(diffAnsiCodes(char.styles, []));
+      ret += ansiCodesToString(diffAnsiCodes(char2.styles, []));
     }
   }
   return ret;
@@ -33634,7 +33634,7 @@ var intersectBound = (a, b, tighter) => {
   }
   return b === void 0 ? a : tighter(a, b);
 };
-var isClipEmpty = (clip) => clip.x1 !== void 0 && clip.x2 !== void 0 && clip.x1 >= clip.x2 || clip.y1 !== void 0 && clip.y2 !== void 0 && clip.y1 >= clip.y2;
+var isClipEmpty = (clip2) => clip2.x1 !== void 0 && clip2.x2 !== void 0 && clip2.x1 >= clip2.x2 || clip2.y1 !== void 0 && clip2.y2 !== void 0 && clip2.y1 >= clip2.y2;
 var intersectClips = (outer, inner) => {
   if (!outer) {
     return inner;
@@ -33689,7 +33689,7 @@ var Output = class {
     this.width = width;
     this.height = height;
   }
-  applyWriteOperation(output, operation, clip) {
+  applyWriteOperation(output, operation, clip2) {
     const { text, transformers } = operation;
     let { x, y } = operation;
     const characterLines = [[]];
@@ -33701,42 +33701,42 @@ var Output = class {
       }
     }
     let lines = characterLines.map((line) => styledCharsToString(line));
-    if (clip) {
-      if (isClipEmpty(clip)) {
+    if (clip2) {
+      if (isClipEmpty(clip2)) {
         return;
       }
-      const shouldClipHorizontally = typeof clip?.x1 === "number" && typeof clip?.x2 === "number";
-      const shouldClipVertically = typeof clip?.y1 === "number" && typeof clip?.y2 === "number";
+      const shouldClipHorizontally = typeof clip2?.x1 === "number" && typeof clip2?.x2 === "number";
+      const shouldClipVertically = typeof clip2?.y1 === "number" && typeof clip2?.y2 === "number";
       if (shouldClipHorizontally) {
         const width = this.caches.getWidestLine(text);
-        if (x + width < clip.x1 || x > clip.x2) {
+        if (x + width < clip2.x1 || x > clip2.x2) {
           return;
         }
       }
       if (shouldClipVertically) {
         const height = lines.length;
-        if (y + height < clip.y1 || y > clip.y2) {
+        if (y + height < clip2.y1 || y > clip2.y2) {
           return;
         }
       }
       if (shouldClipHorizontally) {
         lines = lines.map((line) => {
-          const from = x < clip.x1 ? clip.x1 - x : 0;
+          const from = x < clip2.x1 ? clip2.x1 - x : 0;
           const width = this.caches.getStringWidth(line);
-          const to = x + width > clip.x2 ? clip.x2 - x : width;
+          const to = x + width > clip2.x2 ? clip2.x2 - x : width;
           return this.sliceLineToColumns(line, from, to);
         });
-        if (x < clip.x1) {
-          x = clip.x1;
+        if (x < clip2.x1) {
+          x = clip2.x1;
         }
       }
       if (shouldClipVertically) {
-        const from = y < clip.y1 ? clip.y1 - y : 0;
+        const from = y < clip2.y1 ? clip2.y1 - y : 0;
         const height = lines.length;
-        const to = y + height > clip.y2 ? clip.y2 - y : height;
+        const to = y + height > clip2.y2 ? clip2.y2 - y : height;
         lines = lines.slice(from, to);
-        if (y < clip.y1) {
-          y = clip.y1;
+        if (y < clip2.y1) {
+          y = clip2.y1;
         }
       }
     }
@@ -33790,10 +33790,10 @@ var Output = class {
       transformers
     });
   }
-  clip(clip) {
+  clip(clip2) {
     this.operations.push({
       type: "clip",
-      clip
+      clip: clip2
     });
   }
   unclip() {
@@ -35852,8 +35852,8 @@ var RootNodeContext_default = RootNodeContext;
 // node_modules/ink/build/ink.js
 var noop = () => {
 };
-var yieldImmediate = async () => new Promise((resolve3) => {
-  setImmediate(resolve3);
+var yieldImmediate = async () => new Promise((resolve4) => {
+  setImmediate(resolve4);
 });
 var isWindowsConsole = process12.platform === "win32";
 var homeAndEraseDown = base_exports.cursorTo(0, 0) + base_exports.eraseDown;
@@ -36115,8 +36115,8 @@ var Ink = class {
       };
     }
     this.initKittyKeyboard();
-    this.exitPromise = new Promise((resolve3, reject) => {
-      this.resolveExitPromise = resolve3;
+    this.exitPromise = new Promise((resolve4, reject) => {
+      this.resolveExitPromise = resolve4;
       this.rejectExitPromise = reject;
     });
     void this.exitPromise.catch(noop);
@@ -36582,9 +36582,9 @@ var Ink = class {
     settleThrottle(this.throttledOnRender, canWriteToStdout);
     settleThrottle(this.throttledLog, canWriteToStdout);
     if (canWriteToStdout) {
-      await new Promise((resolve3) => {
+      await new Promise((resolve4) => {
         this.options.stdout.write("", () => {
-          resolve3();
+          resolve4();
         });
       });
       return;
@@ -36795,6 +36795,9 @@ var import_react25 = __toESM(require_react(), 1);
 
 // node_modules/ink/build/hooks/use-app.js
 var import_react26 = __toESM(require_react(), 1);
+function useApp() {
+  return (0, import_react26.use)(AppContext_default);
+}
 
 // node_modules/ink/build/hooks/use-stdout.js
 var import_react27 = __toESM(require_react(), 1);
@@ -36843,7 +36846,7 @@ var use_window_size_default = useWindowSize;
 var import_react35 = __toESM(require_react(), 1);
 
 // src/panel/Root.tsx
-var import_react43 = __toESM(require_react(), 1);
+var import_react45 = __toESM(require_react(), 1);
 
 // src/panel/App.tsx
 var import_react42 = __toESM(require_react(), 1);
@@ -37105,24 +37108,24 @@ async function scanProgress(root, gsdTools) {
 function buildFocusSet(rows, planningRoots) {
   const seen = /* @__PURE__ */ new Set();
   const out = [];
-  for (const r of rows) {
-    if (!r.alive || typeof r.cwd !== "string") continue;
-    const root = r.cwd;
+  for (const r2 of rows) {
+    if (!r2.alive || typeof r2.cwd !== "string") continue;
+    const root = r2.cwd;
     if (seen.has(root)) continue;
     if (!planningRoots.has(root)) continue;
     seen.add(root);
-    out.push({ root, name: r.folder });
+    out.push({ root, name: r2.folder });
   }
   return out;
 }
 async function resolvePlanningRoots(rows) {
   const roots = [];
   const seen = /* @__PURE__ */ new Set();
-  for (const r of rows) {
-    if (!r.alive || typeof r.cwd !== "string") continue;
-    if (seen.has(r.cwd)) continue;
-    seen.add(r.cwd);
-    roots.push(r.cwd);
+  for (const r2 of rows) {
+    if (!r2.alive || typeof r2.cwd !== "string") continue;
+    if (seen.has(r2.cwd)) continue;
+    seen.add(r2.cwd);
+    roots.push(r2.cwd);
   }
   const out = /* @__PURE__ */ new Set();
   await Promise.all(
@@ -37283,11 +37286,11 @@ function scanPermissionMode(buf, atBoundary, sessionId) {
 }
 async function readPermissionModeAsync(realPath, sessionId) {
   try {
-    const w = await readWindowAsync(realPath, "tail", TAIL_BYTES);
-    if (w === void 0) return void 0;
-    const first = scanPermissionMode(w.buf, w.atBoundary, sessionId);
+    const w2 = await readWindowAsync(realPath, "tail", TAIL_BYTES);
+    if (w2 === void 0) return void 0;
+    const first = scanPermissionMode(w2.buf, w2.atBoundary, sessionId);
     if (first.decided) return first.mode;
-    if (w.size <= TAIL_BYTES) return void 0;
+    if (w2.size <= TAIL_BYTES) return void 0;
     const wide = await readWindowAsync(realPath, "tail", PERMISSION_MODE_BYTES);
     if (wide === void 0) return void 0;
     return scanPermissionMode(wide.buf, wide.atBoundary, sessionId).mode;
@@ -37427,19 +37430,19 @@ async function readWindowAsync(realPath, from, budget) {
 }
 async function readTailFactsAsync(realPath, sessionId, budget = TAIL_BYTES, slug) {
   try {
-    const w = await readWindowAsync(realPath, "tail", budget);
-    if (w === void 0) return void 0;
-    return { ...scanTailFacts(w.buf, w.atBoundary, sessionId, slug), size: w.size, mtimeMs: w.mtimeMs };
+    const w2 = await readWindowAsync(realPath, "tail", budget);
+    if (w2 === void 0) return void 0;
+    return { ...scanTailFacts(w2.buf, w2.atBoundary, sessionId, slug), size: w2.size, mtimeMs: w2.mtimeMs };
   } catch {
     return void 0;
   }
 }
 async function readHeadFactsAsync(realPath, sessionId, slug, budget = HEAD_BYTES) {
   try {
-    const w = await readWindowAsync(realPath, "head", budget);
-    if (w === void 0) return void 0;
-    const h = scanHeadFacts(w.buf, sessionId, slug);
-    const final = w.size > Math.max(0, budget) || h.prompt !== void 0 && h.slugCwd !== void 0;
+    const w2 = await readWindowAsync(realPath, "head", budget);
+    if (w2 === void 0) return void 0;
+    const h = scanHeadFacts(w2.buf, sessionId, slug);
+    const final = w2.size > Math.max(0, budget) || h.prompt !== void 0 && h.slugCwd !== void 0;
     const out = { final };
     if (h.prompt !== void 0) out.prompt = h.prompt;
     if (h.firstCwd !== void 0) out.firstCwd = h.firstCwd;
@@ -37543,15 +37546,15 @@ function readTranscriptTitle(sessionId, transcriptPath, budget = TAIL_BYTES) {
       entry.size = -1;
       entry.mtimeMs = -1;
     }
-    const r = readTailCustomTitle(entry.realPath, sessionId, budget);
-    if (r === void 0) return valueOf(entry);
+    const r2 = readTailCustomTitle(entry.realPath, sessionId, budget);
+    if (r2 === void 0) return valueOf(entry);
     const baseline = entry.size < 0;
-    if (r.title !== void 0 && r.title !== entry.title) {
-      entry.title = r.title;
-      entry.changedAtMs = baseline ? Number.NEGATIVE_INFINITY : r.mtimeMs;
+    if (r2.title !== void 0 && r2.title !== entry.title) {
+      entry.title = r2.title;
+      entry.changedAtMs = baseline ? Number.NEGATIVE_INFINITY : r2.mtimeMs;
     }
-    entry.size = r.size;
-    entry.mtimeMs = r.mtimeMs;
+    entry.size = r2.size;
+    entry.mtimeMs = r2.mtimeMs;
     return valueOf(entry);
   } catch {
     return valueOf(cache2.get(sessionId));
@@ -37604,10 +37607,10 @@ function registryDirs() {
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   const add = (p) => {
-    const r = path4.resolve(p);
-    if (seen.has(r)) return;
-    seen.add(r);
-    out.push(r);
+    const r2 = path4.resolve(p);
+    if (seen.has(r2)) return;
+    seen.add(r2);
+    out.push(r2);
   };
   add(path4.join(os5.homedir(), ".claude", "sessions"));
   const cfg = process.env.CLAUDE_CONFIG_DIR;
@@ -37849,18 +37852,18 @@ async function siblingTitleKey(c, roots) {
   if (hit !== void 0 && hit.size === c.size && hit.mtimeMs === c.mtimeMs) return hit.key;
   const real = isAllowedTranscriptPath(c.id, c.path, roots);
   if (real === void 0) return void 0;
-  const w = await readWindowAsync(real, "tail", TAIL_BYTES);
-  if (w === void 0) return void 0;
-  const key = resumeNameKey(scanCustomTitle(w.buf, w.atBoundary, c.id));
+  const w2 = await readWindowAsync(real, "tail", TAIL_BYTES);
+  if (w2 === void 0) return void 0;
+  const key = resumeNameKey(scanCustomTitle(w2.buf, w2.atBoundary, c.id));
   if (titleKeyCache.size >= TITLE_KEY_CACHE_MAX) titleKeyCache.clear();
-  titleKeyCache.set(c.path, { size: w.size, mtimeMs: w.mtimeMs, key });
+  titleKeyCache.set(c.path, { size: w2.size, mtimeMs: w2.mtimeMs, key });
   return key;
 }
 async function uniqueResumeName(id, slug, cwd2, realPath, gathered, roots, now) {
   try {
-    const w = await readWindowAsync(realPath, "tail", TAIL_BYTES);
-    if (w === void 0) return void 0;
-    const title = scanCustomTitle(w.buf, w.atBoundary, id);
+    const w2 = await readWindowAsync(realPath, "tail", TAIL_BYTES);
+    if (w2 === void 0) return void 0;
+    const title = scanCustomTitle(w2.buf, w2.atBoundary, id);
     if (!isSafeResumeName(title)) return void 0;
     if (typeof cwd2 !== "string" || projectSlug(cwd2) !== slug) return void 0;
     const key = resumeNameKey(title);
@@ -37906,7 +37909,7 @@ async function resumeExtras(row, opts = {}) {
 function reconcileSelection(rows, selId, prevIdx) {
   if (rows.length === 0) return { selId: null, idx: -1 };
   if (selId !== null) {
-    const i = rows.findIndex((r) => r.id === selId);
+    const i = rows.findIndex((r2) => r2.id === selId);
     if (i >= 0) return { selId, idx: i };
   }
   const idx = Math.min(rows.length - 1, Math.max(0, Number.isFinite(prevIdx) ? Math.trunc(prevIdx) : 0));
@@ -37920,6 +37923,71 @@ function followOffset(idx, offset, total, visible) {
 }
 
 // src/panel/ui/glyphs.ts
+var V2 = {
+  brand: "\u25C6",
+  // agent states
+  asking: "?",
+  waiting: "\u25C9",
+  running: "\u25B6",
+  subagent: "\u21BB",
+  spinner: ["\u280B", "\u2819", "\u2839", "\u2838", "\u283C", "\u2834", "\u2826", "\u2827", "\u2807", "\u280F"],
+  // file activity
+  conflict: "!",
+  write: "\u270E",
+  read: "\u25E6",
+  join: "\u2715",
+  // edges and caps
+  edgeTop: "\u2584",
+  edgeBottom: "\u2580",
+  rowMark: "\u258C",
+  capL: "\u2590",
+  capR: "\u258C",
+  // light box
+  vline: "\u2502",
+  hline: "\u2500",
+  cornerBL: "\u2514",
+  cornerBR: "\u2518",
+  // heavy box
+  heavyV: "\u2503",
+  heavyH: "\u2501",
+  heavyTL: "\u250F",
+  heavyTR: "\u2513",
+  heavyBL: "\u2517",
+  heavyBR: "\u251B",
+  dashed: "\u2504",
+  group: "\u25A0",
+  // phases
+  phaseDone: "\u25CF",
+  phaseCurrent: "\u25C9",
+  phasePending: "\u25CB",
+  more: "\u22EE",
+  idleDot: "\u25CF",
+  // cursors
+  cursor: "\u276F",
+  sessionCursor: "\u25B8",
+  // ports
+  owner: "\u21B3",
+  exposed: "\u21E1",
+  // card text
+  intent: "\xBB",
+  prompt: "\u203A",
+  branch: "\u2387",
+  // arrows
+  up: "\u2191",
+  down: "\u2193",
+  left: "\u2190",
+  right: "\u2192",
+  enter: "\u23CE",
+  // notices
+  keysOff: "\u2328",
+  update: "\u2B06",
+  // misc
+  ok: "\u2713",
+  ellipsis: "\u2026",
+  sep: "\xB7",
+  times: "\xD7",
+  guess: "~"
+};
 var DOT = "\u25CF";
 var READ_GLYPH = "\u25C7";
 var READ_COLOR = "blue";
@@ -38034,8 +38102,8 @@ function splitHostPort(name) {
   if (name.startsWith("[")) {
     const rb = name.lastIndexOf("]");
     const host = name.slice(1, rb);
-    const port = Number(name.slice(rb + 2));
-    return { host, port };
+    const port2 = Number(name.slice(rb + 2));
+    return { host, port: port2 };
   }
   const c = name.lastIndexOf(":");
   return { host: name.slice(0, c), port: Number(name.slice(c + 1)) };
@@ -38049,15 +38117,15 @@ function isExposed(host) {
 }
 function livePidMap(rows) {
   const m = /* @__PURE__ */ new Map();
-  for (const r of rows) {
-    if (r.alive && !r.readyToPrune && typeof r.pid === "number") m.set(r.pid, r);
+  for (const r2 of rows) {
+    if (r2.alive && !r2.readyToPrune && typeof r2.pid === "number") m.set(r2.pid, r2);
   }
   return m;
 }
 function attribute(p, live) {
   for (const pid of p.ancestryPids) {
-    const r = live.get(pid);
-    if (r) return r;
+    const r2 = live.get(pid);
+    if (r2) return r2;
   }
   return null;
 }
@@ -38088,9 +38156,9 @@ async function scanPorts(uid = process.getuid?.()) {
   const byKey = /* @__PURE__ */ new Map();
   for (const s of socks) {
     if (APPLE_AGENT_DENYLIST.has(s.command)) continue;
-    const { host, port } = splitHostPort(s.name);
-    if (!Number.isInteger(port)) continue;
-    const key = `${port} ${s.pid}`;
+    const { host, port: port2 } = splitHostPort(s.name);
+    if (!Number.isInteger(port2)) continue;
+    const key = `${port2} ${s.pid}`;
     const exposed = isExposed(host);
     const prev = byKey.get(key);
     if (prev) {
@@ -38100,7 +38168,7 @@ async function scanPorts(uid = process.getuid?.()) {
     const chain = ancestryChain(s.pid, ppid);
     const { origin, tty: tty3 } = classifyOrigin(chain, procs);
     const entry = {
-      port,
+      port: port2,
       pid: s.pid,
       command: s.command,
       exposed,
@@ -38155,10 +38223,10 @@ function groupPorts(ports, rows) {
     }
     g.ports.push(p);
   }
-  const groups = [...sessionGroups.values()];
-  if (warp.length > 0) groups.push({ key: " warp", heading: WARP_HEADING, ports: warp });
-  if (other.length > 0) groups.push({ key: " other", heading: OTHER_HEADING, ports: other });
-  return groups;
+  const groups2 = [...sessionGroups.values()];
+  if (warp.length > 0) groups2.push({ key: " warp", heading: WARP_HEADING, ports: warp });
+  if (other.length > 0) groups2.push({ key: " other", heading: OTHER_HEADING, ports: other });
+  return groups2;
 }
 function confirmPrompt(c) {
   const head = c.signal === "SIGKILL" ? "kill SIGKILL :" : "kill :";
@@ -38194,7 +38262,7 @@ function SessionCard({ s }) {
   const reads = s.reads ?? [];
   const name = displayName(s.title);
   const writeParts = s.files.map((f) => splitPath(f.file_path));
-  const readParts = reads.map((r) => splitPath(r.file_path));
+  const readParts = reads.map((r2) => splitPath(r2.file_path));
   const W = Math.max(
     0,
     ...writeParts.map((p) => sanitize(p.name).length),
@@ -38246,14 +38314,14 @@ function SessionCard({ s }) {
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: d })
           ] }, f.file_path);
         }),
-        reads.map((r, i) => {
+        reads.map((r2, i) => {
           const { name: name2, dir } = readParts[i];
           const left = READ_GLYPH + " " + sanitize(name2);
           const d = sanitize(dir);
-          return d === "" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: READ_COLOR, children: "  " + left }, "r:" + r.file_path) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Text, { color: READ_COLOR, children: [
+          return d === "" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: READ_COLOR, children: "  " + left }, "r:" + r2.file_path) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Text, { color: READ_COLOR, children: [
             "  " + left.padEnd(W) + " | ",
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: d })
-          ] }, "r:" + r.file_path);
+          ] }, "r:" + r2.file_path);
         })
       ]
     }
@@ -38341,13 +38409,13 @@ function PortsPane({
     1,
     ...ports.map((p) => (p.exposed ? EXPOSED_GLYPH + " exposed" : "local").length)
   );
-  const groups = groupPorts(ports, rows);
-  const total = groups.reduce((n, g) => n + g.ports.length, 0);
+  const groups2 = groupPorts(ports, rows);
+  const total = groups2.reduce((n, g) => n + g.ports.length, 0);
   const more = Math.max(0, total - PORTS_CAP);
   let budget = PORTS_CAP;
   let flat = 0;
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Box_default, { flexDirection: "column", children: [
-    groups.map((g) => {
+    groups2.map((g) => {
       if (budget <= 0) return null;
       const shown = g.ports.slice(0, budget);
       budget -= shown.length;
@@ -38414,23 +38482,23 @@ function PhasesPane({
   if (progress === null || progress.phases.length === 0) {
     return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Box_default, { flexDirection: "column", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: "no roadmap" + hint }) });
   }
-  const phases = progress.phases;
-  const total = phases.length;
-  const completed = phases.filter(phaseComplete).length;
-  const currentIdx = phases.findIndex((p) => !phaseComplete(p));
+  const phases2 = progress.phases;
+  const total = phases2.length;
+  const completed = phases2.filter(phaseComplete).length;
+  const currentIdx = phases2.findIndex((p) => !phaseComplete(p));
   const NAME_CAP2 = 36;
-  const numWidth = Math.max(1, ...phases.map((p) => sanitize(String(p.number)).length));
-  const nameWidth = Math.min(NAME_CAP2, Math.max(1, ...phases.map((p) => sanitize(String(p.name)).length)));
+  const numWidth = Math.max(1, ...phases2.map((p) => sanitize(String(p.number)).length));
+  const nameWidth = Math.min(NAME_CAP2, Math.max(1, ...phases2.map((p) => sanitize(String(p.name)).length)));
   const plansWidth = Math.max(
     1,
-    ...phases.map((p) => (sanitize(String(p.plans)) + "/" + sanitize(String(p.summaries))).length)
+    ...phases2.map((p) => (sanitize(String(p.plans)) + "/" + sanitize(String(p.summaries))).length)
   );
   const name = sanitize(progress.milestone_name);
   const version = sanitize(progress.milestone_version);
   const pct = sanitize(String(progress.percent));
   const milestoneLine = `${name}${version ? " " + version : ""} \xB7 ${completed}/${total} phases \xB7 ${pct}%`;
   const start = Math.min(Math.max(0, scrollOffset), Math.max(0, total - FAZLAR_VISIBLE_ROWS));
-  const windowPhases = phases.slice(start, start + FAZLAR_VISIBLE_ROWS);
+  const windowPhases = phases2.slice(start, start + FAZLAR_VISIBLE_ROWS);
   const above = start;
   const below = total - (start + windowPhases.length);
   const hasMore = total > FAZLAR_VISIBLE_ROWS;
@@ -38499,7 +38567,7 @@ function SessionsPane({
   const indicator = `  ${above > 0 ? "\u25B2" + above + " " : ""}${below > 0 ? "\u25BC" + below + " " : ""}${start + 1}\u2013${start + windowRows.length}/${total}`;
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Box_default, { flexDirection: "column", children: [
     heading,
-    windowRows.map((r) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SessionRowLine, { row: r, selected: r.id === cursorId, now }, r.id)),
+    windowRows.map((r2) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SessionRowLine, { row: r2, selected: r2.id === cursorId, now }, r2.id)),
     hasMore ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: sanitize(indicator) }) : null,
     statusLine
   ] });
@@ -38797,14 +38865,14 @@ function defaultLater(fn, ms) {
   }
 }
 function defaultRun(cmd, args, opts) {
-  return new Promise((resolve3) => {
+  return new Promise((resolve4) => {
     let done = false;
     let timer;
     const finish = (ok) => {
       if (done) return;
       done = true;
       if (timer !== void 0) clearTimeout(timer);
-      resolve3({ ok });
+      resolve4({ ok });
     };
     try {
       const child = spawn(cmd, [...args], {
@@ -38841,16 +38909,16 @@ function defaultLaunchDeps() {
 }
 async function copyCommand(line, deps) {
   try {
-    const r = await deps.run(PBCOPY_BIN, [], { input: line, timeoutMs: PBCOPY_TIMEOUT_MS });
-    return r?.ok === true;
+    const r2 = await deps.run(PBCOPY_BIN, [], { input: line, timeoutMs: PBCOPY_TIMEOUT_MS });
+    return r2?.ok === true;
   } catch {
     return false;
   }
 }
 async function runOk(deps, cmd, args, timeoutMs) {
   try {
-    const r = await deps.run(cmd, args, { timeoutMs });
-    return r?.ok === true;
+    const r2 = await deps.run(cmd, args, { timeoutMs });
+    return r2?.ok === true;
   } catch {
     return false;
   }
@@ -38934,7 +39002,7 @@ function settleLaunch(holds, id, token, ok) {
 function settleHolds(holds, rows, scanStartedAt) {
   if (holds.size === 0) return false;
   const liveById = /* @__PURE__ */ new Map();
-  for (const r of rows) liveById.set(r.id, r.live);
+  for (const r2 of rows) liveById.set(r2.id, r2.live);
   let dropped = false;
   for (const [id, hold] of holds) {
     if (hold.inFlight) continue;
@@ -38952,10 +39020,10 @@ function applyHolds(rows, holds) {
   if (holds.size === 0) return rows;
   let out = null;
   for (let i = 0; i < rows.length; i++) {
-    const r = rows[i];
-    if (r.live || !holds.has(r.id)) continue;
+    const r2 = rows[i];
+    if (r2.live || !holds.has(r2.id)) continue;
     if (out === null) out = rows.slice();
-    out[i] = { ...r, live: true };
+    out[i] = { ...r2, live: true };
   }
   return out ?? rows;
 }
@@ -38969,8 +39037,8 @@ function branchScanMs() {
 }
 async function scanBranches(rows) {
   const cwds = /* @__PURE__ */ new Set();
-  for (const r of rows) {
-    if (typeof r.cwd === "string" && r.cwd.length > 0) cwds.add(r.cwd);
+  for (const r2 of rows) {
+    if (typeof r2.cwd === "string" && r2.cwd.length > 0) cwds.add(r2.cwd);
   }
   const out = /* @__PURE__ */ new Map();
   await Promise.all(
@@ -39006,10 +39074,10 @@ function normalizeVersion(v) {
   return VERSION_RE.test(v) ? v : null;
 }
 function isNewer(remote, installed) {
-  const r = normalizeVersion(remote);
+  const r2 = normalizeVersion(remote);
   const i = normalizeVersion(installed);
-  if (r === null || i === null) return false;
-  const a = r.split(".").map(Number);
+  if (r2 === null || i === null) return false;
+  const a = r2.split(".").map(Number);
   const b = i.split(".").map(Number);
   for (let k = 0; k < 3; k++) {
     if (a[k] !== b[k]) return a[k] > b[k];
@@ -39331,8 +39399,8 @@ function readTurn(dir) {
     const parsed = JSON.parse(fs6.readFileSync(path7.join(dir, "turn.json"), "utf8"));
     const state = parsed?.state;
     if ((state === "running" || state === "idle") && typeof parsed.ts === "string" && parsed.ts.length > 0) {
-      const agents = parsed.agents;
-      return Number.isSafeInteger(agents) && agents >= 0 ? { turn_state: state, turn_ts: parsed.ts, turn_agents: agents } : { turn_state: state, turn_ts: parsed.ts };
+      const agents2 = parsed.agents;
+      return Number.isSafeInteger(agents2) && agents2 >= 0 ? { turn_state: state, turn_ts: parsed.ts, turn_agents: agents2 } : { turn_state: state, turn_ts: parsed.ts };
     }
     return {};
   } catch {
@@ -39383,7 +39451,7 @@ function readAll(now = Date.now(), probe = defaultProbe, startedProbe = defaultS
     const title = resolveTitle(titleShard, readTranscriptTitle(id, titleShard.transcript_path));
     const rawReads = activeReads(dir, now);
     const writeSet = new Set(files.map((f) => f.file_path));
-    const reads = rawReads.filter((r) => !writeSet.has(r.file_path));
+    const reads = rawReads.filter((r2) => !writeSet.has(r2.file_path));
     const heartbeatMs = resolveLastSeen(dir);
     const lastSeenMs = heartbeatMs ?? Date.parse(lastActive ?? state.start_time);
     const resumedMs = resolveSidecarMs(dir, "resumed") ?? lastSeenMs;
@@ -39460,7 +39528,7 @@ function readAll(now = Date.now(), probe = defaultProbe, startedProbe = defaultS
     });
   }
   pruneTranscriptTitleCache(new Set(ids));
-  const key = (r) => Date.parse(r.last_active ?? r.start_time) || 0;
+  const key = (r2) => Date.parse(r2.last_active ?? r2.start_time) || 0;
   rows.sort((a, b) => key(b) - key(a));
   return rows;
 }
@@ -39494,34 +39562,34 @@ function resolveRealpath(file_path, cwd2, cache4) {
 function detectConflicts(rows, now = Date.now()) {
   void now;
   const cache4 = /* @__PURE__ */ new Map();
-  const groups = /* @__PURE__ */ new Map();
-  for (const r of rows) {
-    if (!r.alive || r.readyToPrune) continue;
-    for (const f of r.files) {
-      const rp = resolveRealpath(f.file_path, r.cwd, cache4);
+  const groups2 = /* @__PURE__ */ new Map();
+  for (const r2 of rows) {
+    if (!r2.alive || r2.readyToPrune) continue;
+    for (const f of r2.files) {
+      const rp = resolveRealpath(f.file_path, r2.cwd, cache4);
       const touch = Date.parse(f.ts) || 0;
-      let g = groups.get(rp);
+      let g = groups2.get(rp);
       if (!g) {
         g = { realpath: rp, sessions: [], lastActive: 0 };
-        groups.set(rp, g);
+        groups2.set(rp, g);
       }
-      const existing = g.sessions.find((s) => s.session_id === r.session_id);
+      const existing = g.sessions.find((s) => s.session_id === r2.session_id);
       if (existing) {
         existing.lastTouch = Math.max(existing.lastTouch, touch);
       } else {
         g.sessions.push({
-          session_id: r.session_id,
-          folder: r.folder,
-          branch: r.branch,
+          session_id: r2.session_id,
+          folder: r2.folder,
+          branch: r2.branch,
           lastTouch: touch,
-          title: r.title
+          title: r2.title
         });
       }
       g.lastActive = Math.max(g.lastActive, touch);
     }
   }
   const out = [];
-  for (const g of groups.values()) {
+  for (const g of groups2.values()) {
     if (g.sessions.length < 2) continue;
     g.sessions.sort((a, b) => b.lastTouch - a.lastTouch);
     out.push(g);
@@ -39568,11 +39636,11 @@ function graceMs() {
   return numEnv("CSM_GRACE_MS", 1200);
 }
 function reconcile(seen, rows, now) {
-  const live = new Map(rows.map((r) => [r.session_id, r]));
-  for (const [id, r] of live) {
-    const dead = !r.alive || r.readyToPrune;
+  const live = new Map(rows.map((r2) => [r2.session_id, r2]));
+  for (const [id, r2] of live) {
+    const dead = !r2.alive || r2.readyToPrune;
     const prev = seen.get(id);
-    seen.set(id, { row: r, endedAt: dead ? prev?.endedAt ?? now : void 0 });
+    seen.set(id, { row: r2, endedAt: dead ? prev?.endedAt ?? now : void 0 });
   }
   for (const [id, entry] of seen) {
     if (!live.has(id) && entry.endedAt == null) {
@@ -39587,17 +39655,17 @@ function reconcile(seen, rows, now) {
     }
   }
   const display = [];
-  for (const r of rows) {
-    const entry = seen.get(r.session_id);
+  for (const r2 of rows) {
+    const entry = seen.get(r2.session_id);
     if (!entry) continue;
-    display.push({ id: r.session_id, row: entry.row, ended: entry.endedAt != null });
+    display.push({ id: r2.session_id, row: entry.row, ended: entry.endedAt != null });
   }
   for (const [id, entry] of seen) {
     if (live.has(id)) continue;
     display.push({ id, row: entry.row, ended: true });
   }
-  const liveCount = rows.filter((r) => r.alive).length;
-  const idleCount = rows.filter((r) => r.dotState === "idle").length;
+  const liveCount = rows.filter((r2) => r2.alive).length;
+  const idleCount = rows.filter((r2) => r2.dotState === "idle").length;
   const conflicts = detectConflicts(rows, now);
   return { display, live: liveCount, idle: idleCount, conflicts };
 }
@@ -39787,7 +39855,7 @@ function App2() {
   selIdRef.current = selId;
   const selIdxRef = import_react42.default.useRef(0);
   if (resumeRows !== null && selId !== null) {
-    const i = resumeRows.findIndex((r) => r.id === selId);
+    const i = resumeRows.findIndex((r2) => r2.id === selId);
     if (i >= 0) selIdxRef.current = i;
   }
   const resumeOffsetRef = import_react42.default.useRef(resumeOffset);
@@ -39815,7 +39883,7 @@ function App2() {
       const startedAt = Date.now();
       discoverSessions({
         n: RESUME_LIST_N,
-        liveIds: new Set(liveRowsRef.current.map((r) => r.session_id))
+        liveIds: new Set(liveRowsRef.current.map((r2) => r2.session_id))
       }).then((rows) => {
         if (!mounted.current || gen !== resumeScanGen.current) return;
         if (settleHolds(launchHolds.current, rows, startedAt)) bumpHolds();
@@ -39837,12 +39905,12 @@ function App2() {
   }, [rightPane]);
   import_react42.default.useEffect(() => {
     if (resumeRows === null) return;
-    const r = reconcileSelection(resumeRows, selIdRef.current, selIdxRef.current);
-    selIdRef.current = r.selId;
-    if (r.idx >= 0) selIdxRef.current = r.idx;
-    const off = followOffset(Math.max(0, r.idx), resumeOffsetRef.current, resumeRows.length, RESUME_VISIBLE_ROWS);
+    const r2 = reconcileSelection(resumeRows, selIdRef.current, selIdxRef.current);
+    selIdRef.current = r2.selId;
+    if (r2.idx >= 0) selIdxRef.current = r2.idx;
+    const off = followOffset(Math.max(0, r2.idx), resumeOffsetRef.current, resumeRows.length, RESUME_VISIBLE_ROWS);
     resumeOffsetRef.current = off;
-    setSelId(r.selId);
+    setSelId(r2.selId);
     setResumeOffset(off);
   }, [resumeRows]);
   const { isRawModeSupported } = use_stdin_default();
@@ -39851,12 +39919,12 @@ function App2() {
     flashTimer.current = null;
     setResumeStatus(null);
   };
-  const showResult = (r) => {
+  const showResult = (r2) => {
     if (!mounted.current) return;
     if (flashTimer.current) clearTimeout(flashTimer.current);
     flashTimer.current = null;
-    setResumeStatus(r.message);
-    if (r.ok) {
+    setResumeStatus(r2.message);
+    if (r2.ok) {
       flashTimer.current = setTimeout(() => {
         flashTimer.current = null;
         if (mounted.current) setResumeStatus(null);
@@ -39868,7 +39936,7 @@ function App2() {
     const rows = resumeRowsRef.current;
     const id = selIdRef.current;
     if (rows === null || id === null) return null;
-    return rows.find((r) => r.id === id) ?? null;
+    return rows.find((r2) => r2.id === id) ?? null;
   };
   const isLive = (row) => row.live || launchHolds.current.has(row.id);
   const enterSeq = import_react42.default.useRef(0);
@@ -39890,10 +39958,10 @@ function App2() {
     }
     const rows = resumeRowsRef.current;
     if (rows === null || rows.length === 0) return;
-    const found = rows.findIndex((r) => r.id === selIdRef.current);
+    const found = rows.findIndex((r2) => r2.id === selIdRef.current);
     const cur = found >= 0 ? found : Math.min(rows.length - 1, Math.max(0, selIdxRef.current));
-    const step = page ? RESUME_VISIBLE_ROWS : 1;
-    const next = Math.min(rows.length - 1, Math.max(0, cur + dir * step));
+    const step2 = page ? RESUME_VISIBLE_ROWS : 1;
+    const next = Math.min(rows.length - 1, Math.max(0, cur + dir * step2));
     const id = rows[next].id;
     const off = followOffset(next, resumeOffsetRef.current, rows.length, RESUME_VISIBLE_ROWS);
     selIdRef.current = id;
@@ -39934,13 +40002,13 @@ function App2() {
     bumpHolds();
     readLiveRegistry(registryDirs()).catch(() => /* @__PURE__ */ new Set()).then((registry) => {
       const fresh = new Set(registry);
-      for (const r of liveRowsRef.current) fresh.add(r.session_id);
+      for (const r2 of liveRowsRef.current) fresh.add(r2.session_id);
       return openResume({ id, cwd: row.cwd, live: fresh.has(id) });
     }).then(
-      (r) => {
-        settleLaunch(launchHolds.current, id, token, r.ok);
+      (r2) => {
+        settleLaunch(launchHolds.current, id, token, r2.ok);
         bumpHolds();
-        showResult(r);
+        showResult(r2);
       },
       () => {
         settleLaunch(launchHolds.current, id, token, false);
@@ -40038,8 +40106,2007 @@ function App2() {
   ] });
 }
 
-// src/panel/Splash.tsx
+// src/panel/PanelApp.tsx
+var import_react44 = __toESM(require_react(), 1);
+
+// src/panel/hooks/useUiTick.ts
+var import_react43 = __toESM(require_react(), 1);
+var UI_TICK_MS = 250;
+var TICKER_TICKS = 2;
+function animStep(a, paused, tickerTicks = TICKER_TICKS) {
+  const tick = a.tick + 1;
+  const n = Math.max(1, Math.floor(tickerTicks));
+  const step2 = !paused && tick % n === 0 ? a.step + 1 : a.step;
+  return { tick, step: step2 };
+}
+function useUiTick(o) {
+  const tickMs = o.tickMs ?? UI_TICK_MS;
+  const [anim, setAnim] = import_react43.default.useState({ tick: 0, step: 0 });
+  const pausedRef = import_react43.default.useRef(o.paused);
+  pausedRef.current = o.paused;
+  import_react43.default.useEffect(() => {
+    if (!o.active) return void 0;
+    const t = setInterval(() => {
+      setAnim((a) => animStep(a, pausedRef.current));
+    }, tickMs);
+    return () => clearInterval(t);
+  }, [o.active, tickMs]);
+  return anim;
+}
+
+// src/panel/ui/text.ts
+function cellWidth(s) {
+  return stringWidth(s);
+}
+var segmenter6;
+function graphemes2(s) {
+  if (segmenter6 === void 0) {
+    segmenter6 = typeof Intl !== "undefined" && typeof Intl.Segmenter === "function" ? new Intl.Segmenter(void 0, { granularity: "grapheme" }) : null;
+  }
+  if (segmenter6 === null) return Array.from(s);
+  return Array.from(segmenter6.segment(s), (x) => x.segment);
+}
+function isControlCp(cp) {
+  return cp <= 31 || cp === 127 || cp >= 128 && cp <= 159;
+}
+var ASCII_WS = /[\t\n\v\f\r ]+/g;
+function oneLine(raw) {
+  return sanitize(String(raw).replace(ASCII_WS, " ")).trim();
+}
+function truncateEnd(s, cells) {
+  if (cells <= 0) return "";
+  if (cellWidth(s) <= cells) return s;
+  const budget = cells - 1;
+  let out = "";
+  let w2 = 0;
+  for (const g of graphemes2(s)) {
+    const gw = cellWidth(g);
+    if (w2 + gw > budget) break;
+    out += g;
+    w2 += gw;
+  }
+  return out + ELLIPSIS;
+}
+function truncateStart(s, cells) {
+  if (cells <= 0) return "";
+  if (cellWidth(s) <= cells) return s;
+  const budget = cells - 1;
+  const gs = graphemes2(s);
+  let out = "";
+  let w2 = 0;
+  for (let i = gs.length - 1; i >= 0; i--) {
+    const g = gs[i];
+    const gw = cellWidth(g);
+    if (w2 + gw > budget) break;
+    out = g + out;
+    w2 += gw;
+  }
+  return ELLIPSIS + out;
+}
+function plainText(raw, cells) {
+  return truncateEnd(oneLine(raw), cells);
+}
+function pathText(raw, cells) {
+  return truncateStart(oneLine(raw), cells);
+}
+function nameText(raw, cells) {
+  const clean = cleanTitle(raw);
+  if (clean === "") return "";
+  return truncateEnd(truncateLabel(clean), cells);
+}
+
+// src/panel/ui/palette.ts
+var PALETTE = {
+  bg: "#1b1b19",
+  fg: "#d6d3cb",
+  hi: "#f5f3ec",
+  dim: "#85827a",
+  dim2: "#5c5a54",
+  edge: "#3a3936",
+  idle: "#4a4945",
+  logo: "#E8C24A",
+  asking: "#E86AD9",
+  waiting: "#F2B33D",
+  running: "#5FD47A",
+  subagent: "#40E0D0",
+  red: "#F0545A",
+  redBg: "#3a1a1b",
+  askBg: "#241822",
+  blue: "#6FA8FF",
+  live: "#4f9a62"
+};
+function stateColor(s) {
+  return PALETTE[s];
+}
+
+// src/panel/ui/draw/header.ts
+var pad2 = (n) => String(n).padStart(2, "0");
+function fmtClock24(ms) {
+  const d = new Date(ms);
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+var plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+var BRAND_END = 6;
+var SEP2 = " \xB7 ";
+function drawHeader(scr, cols, h) {
+  const y = 0;
+  const agentsText = plural(h.agents, "agent", "agents");
+  const chips = [
+    { n: h.asking, text: ` ${h.asking} asking `, bg: PALETTE.asking },
+    { n: h.waiting, text: ` ${h.waiting} waiting `, bg: PALETTE.waiting },
+    { n: h.conflicts, text: ` ${plural(h.conflicts, "conflict", "conflicts")} `, bg: PALETTE.red }
+  ].filter((c) => c.n > 0);
+  const chipsW = chips.reduce((s, c) => s + 1 + cellWidth(c.text), 0);
+  const clock = plainText(h.clock, cols);
+  const update = h.update ? plainText(h.update, cols) : "";
+  let showAgents = true;
+  let showClock = clock !== "";
+  let showUpdate = update !== "";
+  const leftEnd = () => showAgents ? BRAND_END + 3 + cellWidth(agentsText) + 1 + chipsW : BRAND_END + 1 + chipsW;
+  const rightW = () => {
+    let w2 = showClock ? cellWidth(clock) : 0;
+    if (showUpdate) w2 += cellWidth(update) + (showClock ? SEP2.length : 0);
+    return w2;
+  };
+  const fits = () => {
+    const rw2 = rightW();
+    return rw2 === 0 ? leftEnd() <= cols - 1 : cols - 1 - rw2 >= leftEnd() + 1;
+  };
+  if (showUpdate && !fits()) showUpdate = false;
+  if (showClock && !fits()) showClock = false;
+  if (showAgents && !fits()) showAgents = false;
+  scr.put(1, y, V2.brand, { fg: PALETTE.logo });
+  let x = scr.put(3, y, "CSM", { fg: PALETTE.hi, bold: true });
+  x = showAgents ? scr.put(x + 3, y, agentsText, { fg: PALETTE.dim }) + 1 : x + 1;
+  for (const c of chips) x = scr.put(x + 1, y, c.text, { fg: PALETTE.bg, bg: c.bg, bold: true });
+  const rw = rightW();
+  if (rw === 0) return;
+  let rx = cols - 1 - rw;
+  if (showUpdate) {
+    rx = scr.put(rx, y, update, { fg: PALETTE.dim, bold: true });
+    if (showClock) rx = scr.put(rx, y, SEP2, { fg: PALETTE.dim });
+  }
+  if (showClock) scr.put(rx, y, clock, { fg: PALETTE.dim });
+}
+
+// src/panel/ui/headerModel.ts
+function headerFromRoster(r2, updateTo, nowMs) {
+  const live = r2.display.filter((d) => !d.ended);
+  return {
+    agents: live.length,
+    asking: live.filter((d) => d.row.asking === true).length,
+    waiting: live.filter((d) => d.row.attention === true && d.row.asking !== true).length,
+    conflicts: r2.conflicts.length,
+    clock: fmtClock24(nowMs),
+    update: updateLabel(updateTo)
+  };
+}
+
+// src/panel/ui/uiState.ts
+var initialUi = {
+  focus: "agents",
+  rightTab: "phases",
+  filesPaused: false,
+  mode: "normal",
+  selectedAgentId: null
+};
+var FOCUS_ORDER = ["agents", "right", "ports"];
+function step(focus, delta) {
+  const n = FOCUS_ORDER.length;
+  const i = FOCUS_ORDER.indexOf(focus);
+  return FOCUS_ORDER[((i + delta) % n + n) % n];
+}
+function uiReducer(s, a) {
+  switch (a.t) {
+    case "focusNext":
+      return { ...s, focus: step(s.focus, 1), mode: "normal" };
+    case "focusPrev":
+      return { ...s, focus: step(s.focus, -1), mode: "normal" };
+    case "focusAgents":
+      return { ...s, focus: "agents" };
+    case "clearSelection":
+      return { ...s, selectedAgentId: null };
+    case "select":
+      return { ...s, selectedAgentId: a.id };
+    case "closeOverlay":
+      return { ...s, mode: "normal" };
+    case "toggleRight":
+      if (s.mode !== "normal") return s;
+      return { ...s, rightTab: s.rightTab === "phases" ? "sessions" : "phases" };
+    case "toggleFiles":
+      return { ...s, filesPaused: !s.filesPaused };
+    case "quit":
+    case "noop":
+      return s;
+  }
+}
+
+// src/panel/ui/keymap.ts
+var NORMAL = ["agents", "agentsSelected", "phases", "sessions", "ports"];
+var OVERLAYS = ["menu", "confirm", "confirmKill"];
+var NOT_EDIT = [...NORMAL, ...OVERLAYS];
+var plain = (key) => !key.ctrl && !key.meta;
+var char = (c) => (input, key) => plain(key) && input === c;
+var anyArrow = (_, k) => !!(k.upArrow || k.downArrow || k.leftArrow || k.rightArrow);
+var upDown = (_, k) => !!(k.upArrow || k.downArrow);
+var leftRight = (_, k) => !!(k.leftArrow || k.rightArrow);
+var esc = (_, k) => !!k.escape;
+var enter = (_, k) => !!k.return;
+var noop2 = (id) => () => ({ t: "noop", binding: id });
+var KEYMAP = [
+  {
+    id: "close",
+    built: 9,
+    contexts: OVERLAYS,
+    match: (i, k) => !!k.escape || plain(k) && i === "q",
+    action: () => ({ t: "closeOverlay" })
+  },
+  {
+    id: "editCancel",
+    built: 12,
+    contexts: ["edit"],
+    match: esc,
+    action: noop2("editCancel")
+  },
+  {
+    id: "editSave",
+    built: 12,
+    contexts: ["edit"],
+    match: enter,
+    action: noop2("editSave")
+  },
+  {
+    id: "focus",
+    built: 9,
+    contexts: NOT_EDIT,
+    match: (_, k) => !!k.tab && !k.shift,
+    action: () => ({ t: "focusNext" })
+  },
+  {
+    id: "focusPrev",
+    built: 9,
+    contexts: NOT_EDIT,
+    match: (_, k) => !!k.tab && !!k.shift,
+    action: () => ({ t: "focusPrev" })
+  },
+  {
+    id: "menuCycle",
+    built: 11,
+    contexts: ["menu"],
+    match: leftRight,
+    action: noop2("menuCycle")
+  },
+  {
+    id: "menuSelect",
+    built: 11,
+    contexts: ["menu"],
+    match: enter,
+    action: noop2("menuSelect")
+  },
+  {
+    id: "confirmYes",
+    built: 11,
+    contexts: ["confirm"],
+    match: (i, k) => plain(k) && i === "y" || !!k.return,
+    action: noop2("confirmYes")
+  },
+  {
+    id: "confirmNo",
+    built: 11,
+    contexts: ["confirm", "confirmKill"],
+    match: char("n"),
+    action: noop2("confirmNo")
+  },
+  {
+    id: "sigkillYes",
+    built: 11,
+    contexts: ["confirmKill"],
+    match: char("y"),
+    action: noop2("sigkillYes")
+  },
+  {
+    id: "clearSelection",
+    built: 10,
+    contexts: ["agentsSelected"],
+    match: esc,
+    action: () => ({ t: "clearSelection" })
+  },
+  {
+    id: "toAgents",
+    built: 9,
+    contexts: ["phases", "sessions", "ports"],
+    match: esc,
+    action: () => ({ t: "focusAgents" })
+  },
+  {
+    id: "toggleRight",
+    built: 9,
+    contexts: NORMAL,
+    match: char("r"),
+    action: () => ({ t: "toggleRight" })
+  },
+  {
+    id: "pause",
+    built: 9,
+    contexts: NORMAL,
+    match: char(" "),
+    action: () => ({ t: "toggleFiles" })
+  },
+  {
+    id: "quit",
+    built: 9,
+    contexts: NORMAL,
+    match: char("q"),
+    action: () => ({ t: "quit" })
+  },
+  {
+    id: "agentsSelect",
+    built: 10,
+    contexts: ["agents"],
+    match: anyArrow,
+    action: noop2("agentsSelect")
+  },
+  {
+    id: "agentsMove",
+    built: 10,
+    contexts: ["agentsSelected"],
+    match: anyArrow,
+    action: noop2("agentsMove")
+  },
+  {
+    id: "agentsGoto",
+    built: 10,
+    contexts: ["agentsSelected"],
+    match: enter,
+    action: noop2("agentsGoto")
+  },
+  {
+    id: "phasesBrowse",
+    built: 10,
+    contexts: ["phases"],
+    match: upDown,
+    action: noop2("phasesBrowse")
+  },
+  {
+    id: "phasesProject",
+    built: 10,
+    contexts: ["phases"],
+    match: leftRight,
+    action: noop2("phasesProject")
+  },
+  {
+    id: "sessionsBrowse",
+    built: 10,
+    contexts: ["sessions"],
+    match: upDown,
+    action: noop2("sessionsBrowse")
+  },
+  {
+    id: "sessionsCopy",
+    built: 10,
+    contexts: ["sessions"],
+    match: enter,
+    action: noop2("sessionsCopy")
+  },
+  {
+    id: "sessionsOpen",
+    built: 10,
+    contexts: ["sessions"],
+    match: char("o"),
+    action: noop2("sessionsOpen")
+  },
+  {
+    id: "portsBrowse",
+    built: 10,
+    contexts: ["ports"],
+    match: upDown,
+    action: noop2("portsBrowse")
+  },
+  {
+    id: "portsActions",
+    built: 11,
+    contexts: ["ports"],
+    match: enter,
+    action: noop2("portsActions")
+  }
+];
+var TAB_FOCUS = { binding: "focus", key: "tab", label: "focus" };
+var Q_QUIT = { binding: "quit", key: "q", label: "quit" };
+var ESC_AGENTS = { binding: "toAgents", key: "esc", label: "agents" };
+var FOOTER_HINTS = {
+  agents: [
+    TAB_FOCUS,
+    { binding: "agentsSelect", key: "\u2190\u2191\u2193\u2192", label: "select agent" },
+    {
+      binding: "pause",
+      key: "space",
+      label: (ui) => ui.filesPaused ? "resume files" : "pause files"
+    },
+    {
+      binding: "toggleRight",
+      key: "r",
+      label: (ui) => ui.rightTab === "phases" ? "sessions" : "phases"
+    },
+    Q_QUIT
+  ],
+  agentsSelected: [
+    { binding: "agentsGoto", key: "\u23CE", label: "go to pane" },
+    { binding: "agentsMove", key: "\u2190\u2191\u2193\u2192", label: "move" },
+    { binding: "clearSelection", key: "esc", label: "clear" },
+    TAB_FOCUS,
+    Q_QUIT
+  ],
+  phases: [
+    { binding: "phasesBrowse", key: "\u2191\u2193", label: "browse phases" },
+    { binding: "phasesProject", key: "\u2190\u2192", label: "project" },
+    { binding: "toggleRight", key: "r", label: "sessions" },
+    ESC_AGENTS,
+    TAB_FOCUS,
+    Q_QUIT
+  ],
+  sessions: [
+    { binding: "sessionsBrowse", key: "\u2191\u2193", label: "select session" },
+    { binding: "sessionsCopy", key: "\u23CE", label: "copy resume" },
+    { binding: "sessionsOpen", key: "o", label: "new window" },
+    { binding: "toggleRight", key: "r", label: "phases" },
+    ESC_AGENTS,
+    Q_QUIT
+  ],
+  ports: [
+    { binding: "portsBrowse", key: "\u2191\u2193", label: "browse ports" },
+    { binding: "portsActions", key: "\u23CE", label: "actions" },
+    ESC_AGENTS,
+    TAB_FOCUS,
+    Q_QUIT
+  ],
+  menu: [
+    { binding: "menuCycle", key: "\u2190\u2192", label: "choose" },
+    { binding: "menuSelect", key: "\u23CE", label: "select" },
+    { binding: "close", key: "esc", label: "close" }
+  ],
+  confirm: [
+    { binding: "confirmYes", key: "y", label: "stop" },
+    { binding: "confirmNo", key: "n / esc", label: "cancel" }
+  ],
+  confirmKill: [
+    { binding: "sigkillYes", key: "y", label: "force stop" },
+    { binding: "confirmNo", key: "n / esc", label: "cancel" }
+  ],
+  edit: [
+    { binding: "editSave", key: "\u23CE", label: "save" },
+    { binding: "editCancel", key: "esc", label: "cancel" }
+  ]
+};
+function contextOf(ui) {
+  if (ui.mode !== "normal") return ui.mode;
+  switch (ui.focus) {
+    case "agents":
+      return ui.selectedAgentId === null ? "agents" : "agentsSelected";
+    case "right":
+      return ui.rightTab;
+    case "ports":
+      return "ports";
+  }
+}
+function hintsFor(ui) {
+  return FOOTER_HINTS[contextOf(ui)].map((h) => ({
+    binding: h.binding,
+    key: h.key,
+    label: typeof h.label === "function" ? h.label(ui) : h.label
+  }));
+}
+function resolve3(input, key, ui) {
+  const ctx = contextOf(ui);
+  for (const b of KEYMAP) {
+    if (b.contexts.includes(ctx) && b.match(input, key)) return b.action(ui);
+  }
+  return null;
+}
+
+// src/panel/ui/screen.ts
+function cleanStyle(st) {
+  const out = {};
+  if (st?.fg !== void 0) out.fg = st.fg;
+  if (st?.bg !== void 0) out.bg = st.bg;
+  if (st?.bold === true) out.bold = true;
+  return out;
+}
+function sameStyle(a, b) {
+  return a.fg === b.fg && a.bg === b.bg && a.bold === true === (b.bold === true);
+}
+function hasControl(g) {
+  for (const ch of g) {
+    if (isControlCp(ch.codePointAt(0) ?? 0)) return true;
+  }
+  return false;
+}
+var Screen = class {
+  constructor(cols, rows) {
+    this.cols = cols;
+    this.rows = rows;
+    this.grid = [];
+    for (let y = 0; y < rows; y++) {
+      const row = [];
+      for (let x = 0; x < cols; x++) row.push({ ch: " ", st: {} });
+      this.grid.push(row);
+    }
+  }
+  cols;
+  rows;
+  grid;
+  /**
+   * Write `text` at cell (x, y). Graphemes outside the grid are clipped (a wide
+   * grapheme that would cross the right edge is dropped whole); control and
+   * zero-width graphemes are skipped. Returns the x just after the text, as if
+   * nothing had been clipped.
+   */
+  put(x, y, text, st) {
+    const style = cleanStyle(st);
+    const row = y >= 0 && y < this.rows ? this.grid[y] : void 0;
+    let cx = x;
+    for (const g of graphemes2(String(text))) {
+      if (hasControl(g)) continue;
+      const w2 = cellWidth(g);
+      if (w2 <= 0) continue;
+      if (row && cx >= 0 && cx + w2 <= this.cols) this.write(row, cx, g, w2, style);
+      cx += w2;
+    }
+    return cx;
+  }
+  /** Set the background of the in-range cells [x, x + w) on row y; characters stay. */
+  fill(x, y, w2, bg) {
+    if (y < 0 || y >= this.rows) return;
+    const row = this.grid[y];
+    const from = Math.max(0, x);
+    const to = Math.min(this.cols, x + w2);
+    for (let i = from; i < to; i++) {
+      const cell = row[i];
+      if (cell) row[i] = { ch: cell.ch, st: { ...cell.st, bg } };
+    }
+  }
+  /**
+   * The grid as styled lines (at most `height` and at most `rows`): same-style
+   * runs merged, wide-grapheme tails skipped, trailing unstyled blanks trimmed
+   * (a blank with a bg is kept). An all-blank row is an empty Line.
+   */
+  toLines(height = this.rows) {
+    const n = Math.max(0, Math.min(height, this.rows));
+    const lines = [];
+    for (let y = 0; y < n; y++) {
+      const row = this.grid[y];
+      let end = row.length;
+      while (end > 0) {
+        const c = row[end - 1];
+        if (c && c.ch === " " && c.st.bg === void 0) end--;
+        else break;
+      }
+      const line = [];
+      for (let i = 0; i < end; i++) {
+        const c = row[i];
+        if (!c) continue;
+        const last = line[line.length - 1];
+        if (last && sameStyle(last, c.st)) last.text += c.ch;
+        else line.push({ text: c.ch, ...c.st });
+      }
+      lines.push(line);
+    }
+    return lines;
+  }
+  /** Place grapheme g (width w) at column x, repairing any wide pair it splits. */
+  write(row, x, g, w2, st) {
+    let q = x + w2;
+    if (q < this.cols && row[q] === null) {
+      let h = q - 1;
+      while (h > 0 && row[h] === null) h--;
+      const headSt = row[h]?.st ?? {};
+      while (q < this.cols && row[q] === null) {
+        row[q] = { ch: " ", st: { ...headSt } };
+        q++;
+      }
+    }
+    if (row[x] === null) {
+      let h = x - 1;
+      while (h > 0 && row[h] === null) h--;
+      const headSt = row[h]?.st ?? {};
+      for (let i = h; i < x; i++) row[i] = { ch: " ", st: { ...headSt } };
+    }
+    row[x] = { ch: g, st: { ...st } };
+    for (let i = 1; i < w2; i++) row[x + i] = null;
+  }
+};
+
+// src/panel/ui/geometry.ts
+var MIN_COLS = 60;
+var MIN_ROWS = 16;
+var CARD_W = 47;
+var CARD_H = 7;
+var CARD_PITCH_X = 49;
+var CARD_PITCH_Y = 8;
+var RW_MIN = 64;
+var RW_MAX = 90;
+var W3_MIN_COLS = 214;
+var W2_MIN_COLS = 165;
+var S2_MIN_COLS = 100;
+var GUTTER = 5;
+function clamp(n, lo, hi) {
+  return Math.min(hi, Math.max(lo, n));
+}
+function toCells(n) {
+  return Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : 0;
+}
+function cardsWidth(n) {
+  return CARD_W * n + 2 * (n - 1);
+}
+function geometry(cols, rows) {
+  const c = toCells(cols);
+  const r2 = toCells(rows);
+  if (c < MIN_COLS || r2 < MIN_ROWS) {
+    return { mode: "small", cols: c, rows: r2, split: false, cardCols: 0, LW: c, RW: c, RX: 0, divX: null, band: null };
+  }
+  if (c >= W2_MIN_COLS) {
+    const n = c >= W3_MIN_COLS ? 3 : 2;
+    const RW = clamp(c - cardsWidth(n) - GUTTER, RW_MIN, RW_MAX);
+    const LW = c - GUTTER - RW;
+    return {
+      mode: n === 3 ? "W3" : "W2",
+      cols: c,
+      rows: r2,
+      split: true,
+      cardCols: n,
+      LW,
+      RW,
+      RX: LW + GUTTER,
+      divX: LW + 2,
+      band: null
+    };
+  }
+  const fit = Math.floor((c + 2) / CARD_PITCH_X);
+  if (c >= S2_MIN_COLS) {
+    const leftW = Math.floor((c - GUTTER) / 2);
+    const rightX = leftW + GUTTER;
+    return {
+      mode: "S2",
+      cols: c,
+      rows: r2,
+      split: false,
+      cardCols: Math.min(3, fit),
+      LW: c,
+      RW: c,
+      RX: 0,
+      divX: null,
+      band: { leftW, divX: leftW + 2, rightX, rightW: c - rightX }
+    };
+  }
+  return { mode: "S1", cols: c, rows: r2, split: false, cardCols: fit, LW: c, RW: c, RX: 0, divX: null, band: null };
+}
+
+// src/panel/ui/layout.ts
+function toRows(n) {
+  return Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : 0;
+}
+function allocate(total, demands, growOrder) {
+  let remaining = toRows(total);
+  const out = {};
+  const byId = /* @__PURE__ */ new Map();
+  for (const d of demands) {
+    if (byId.has(d.id)) continue;
+    byId.set(d.id, d);
+    const max = toRows(d.max);
+    const min = Math.min(toRows(d.min), max);
+    const grant = Math.min(min, remaining);
+    out[d.id] = grant;
+    remaining -= grant;
+  }
+  const order = growOrder ?? demands.map((d) => d.id);
+  const grown = /* @__PURE__ */ new Set();
+  for (const id of order) {
+    if (remaining <= 0) break;
+    const d = byId.get(id);
+    if (!d || grown.has(id)) continue;
+    grown.add(id);
+    const cur = out[id];
+    const max = toRows(d.max);
+    const min = Math.min(toRows(d.min), max);
+    if (cur < min) continue;
+    const room = Math.min(max - cur, remaining);
+    if (room <= 0) continue;
+    const step2 = d.step !== void 0 && Number.isFinite(d.step) && d.step >= 1 ? Math.trunc(d.step) : 1;
+    const add = Math.floor(room / step2) * step2;
+    out[id] = cur + add;
+    remaining -= add;
+  }
+  return out;
+}
+
+// src/panel/ui/draw/title.ts
+var SAMPLE_CHIP = " sample ";
+var CHIP_STYLE = { fg: PALETTE.fg, bg: PALETTE.edge };
+var INVERSE = { fg: PALETTE.bg, bg: PALETTE.hi, bold: true };
+var CAP = { fg: PALETTE.hi };
+function clip(s, cells) {
+  if (cells <= 0) return "";
+  if (cellWidth(s) <= cells) return s;
+  let out = "";
+  let w2 = 0;
+  for (const g of graphemes2(s)) {
+    const gw = cellWidth(g);
+    if (w2 + gw > cells) break;
+    out += g;
+    w2 += gw;
+  }
+  return out;
+}
+function putIn(scr, x, y, text, st, end) {
+  const t = clip(text, end - x);
+  if (t === "") return Math.max(x, Math.min(end, x + cellWidth(text)));
+  scr.put(x, y, t, st);
+  return x + cellWidth(t);
+}
+function putInverse(scr, x, y, label2, end) {
+  let cx = putIn(scr, x, y, V2.capL, CAP, end);
+  cx = putIn(scr, cx, y, label2, INVERSE, end);
+  return putIn(scr, cx, y, V2.capR, CAP, end);
+}
+function drawTitle(scr, x, y, w2, o) {
+  const end = x + w2;
+  let cx;
+  if (o.focused) {
+    cx = putInverse(scr, x, y, o.label, end);
+  } else {
+    cx = putIn(scr, x + 1, y, o.label, { fg: PALETTE.dim, bold: true }, end) + 1;
+  }
+  if (o.sample) cx = putIn(scr, cx, y, SAMPLE_CHIP, CHIP_STYLE, end);
+  for (const s of o.extra ?? []) {
+    const { text, ...st } = s;
+    cx = putIn(scr, cx, y, text, st, end);
+  }
+  cx += 1;
+  if (cx >= end) return;
+  const right = o.right ? plainText(o.right, end - cx) : "";
+  if (right === "") {
+    for (; cx < end - 1; cx++) scr.put(cx, y, V2.hline, { fg: PALETTE.edge });
+    return;
+  }
+  const rx = end - cellWidth(right);
+  for (; cx < rx - 1; cx++) scr.put(cx, y, V2.hline, { fg: PALETTE.edge });
+  scr.put(rx, y, right, { fg: PALETTE.dim });
+}
+var TABS = [
+  ["phases", "PHASES"],
+  ["sessions", "SESSIONS"]
+];
+function drawTabs(scr, x, y, w2, o) {
+  const end = x + w2;
+  let cx = x;
+  for (const [tab, label2] of TABS) {
+    const act = o.active === tab;
+    if (act && o.columnFocused) cx = putInverse(scr, cx, y, label2, end);
+    else if (act) cx = putIn(scr, cx, y, ` ${label2} `, { fg: PALETTE.fg, bg: PALETTE.idle, bold: true }, end);
+    else cx = putIn(scr, cx, y, ` ${label2} `, { fg: PALETTE.dim2 }, end);
+    cx += 1;
+  }
+  if (o.sample) cx = putIn(scr, cx, y, SAMPLE_CHIP, CHIP_STYLE, end) + 1;
+  const rx = end - 3;
+  if (rx < cx) return;
+  for (; cx < rx - 1; cx++) scr.put(cx, y, V2.hline, { fg: PALETTE.edge });
+  scr.put(rx, y, "[r]", { fg: PALETTE.dim });
+}
+
+// src/panel/ui/draw/agents.ts
+var DASH = "\u2014";
+var SEP3 = " \xB7 ";
+var TIMES = "\xD7";
+var INNER = CARD_W - 2;
+var TEXT_W = 41;
+var PROMPT_W = 38;
+var COUNT_END = CARD_W - 2;
+var WAIT_W = 6;
+var LABEL = {
+  asking: "ASKING",
+  waiting: "WAITING",
+  running: "RUNNING",
+  subagent: "SUBAGENT"
+};
+var ICON = {
+  asking: V2.asking,
+  waiting: V2.waiting,
+  running: V2.running,
+  subagent: V2.subagent
+};
+var EMPTY_HEADING = "no Claude Code sessions";
+var EMPTY_BODY = "start claude in any project folder; it appears here within a second";
+function int(n) {
+  return Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : 0;
+}
+function countText(n) {
+  const v = int(n);
+  return v > 999 ? "999+" : String(v);
+}
+function metaLine(c) {
+  const dir = plainText(c.dir, TEXT_W);
+  const up = plainText(c.uptime, TEXT_W);
+  const room = TEXT_W - cellWidth(dir) - cellWidth(up) - 2 * cellWidth(SEP3);
+  const branch = plainText(c.branch, Math.max(1, room));
+  return plainText(`${dir}${SEP3}${branch}${SEP3}${up}`, TEXT_W);
+}
+function drawCard(scr, x, y, c, o) {
+  const sc = stateColor(c.state);
+  const dim = o.dimmed && !o.selected;
+  const tone = (color) => dim ? PALETTE.dim2 : color;
+  const red = { fg: PALETTE.red };
+  const by = y + CARD_H - 1;
+  if (o.selected) scr.put(x, y, V2.heavyTL + V2.heavyH.repeat(INNER) + V2.heavyTR, { fg: sc });
+  else scr.put(x, y, V2.edgeTop.repeat(CARD_W), { fg: dim ? PALETTE.edge : sc });
+  const side = o.selected ? V2.heavyV : V2.vline;
+  const sideSt = { fg: o.selected ? sc : tone(PALETTE.edge) };
+  for (let r2 = 1; r2 < CARD_H - 1; r2++) {
+    scr.put(x, y + r2, side, sideSt);
+    scr.put(x + CARD_W - 1, y + r2, side, sideSt);
+  }
+  if (o.selected) {
+    scr.put(x, by, V2.heavyBL + V2.heavyH.repeat(INNER) + V2.heavyBR, c.inConflict ? red : { fg: sc });
+  } else if (c.inConflict) {
+    scr.put(x, by, V2.edgeBottom.repeat(CARD_W), red);
+  } else {
+    scr.put(x, by, V2.cornerBL + V2.hline.repeat(INNER) + V2.cornerBR, { fg: tone(PALETTE.edge) });
+  }
+  scr.put(x + 2, y + 1, ICON[c.state], { fg: sc, bold: true });
+  const name = nameText(c.name, TEXT_W) || plainText(c.id, TEXT_W) || DASH;
+  scr.put(x + 4, y + 1, name, { fg: tone(PALETTE.hi), bold: true });
+  scr.put(x + 4, y + 2, metaLine(c), { fg: tone(PALETTE.dim) });
+  const model = c.model === null ? "" : plainText(c.model, TEXT_W);
+  scr.put(x + 4, y + 3, model || DASH, { fg: tone(PALETTE.fg) });
+  scr.put(x + 4, y + 4, V2.prompt, { fg: tone(PALETTE.dim) });
+  const prompt = c.prompt === null ? "" : plainText(c.prompt, PROMPT_W);
+  scr.put(x + 6, y + 4, prompt || DASH, { fg: tone(PALETTE.fg) });
+  let label2 = LABEL[c.state];
+  if (c.state === "waiting" && c.waitFor !== null) {
+    const wait = plainText(c.waitFor, WAIT_W);
+    if (wait !== "") label2 += ` ${wait}`;
+  }
+  if (c.state === "subagent") label2 += ` ${TIMES}${countText(c.subagents)}`;
+  const lx = scr.put(x + 2, y + 5, label2, { fg: tone(sc), bold: true });
+  if (c.state === "running") {
+    const n = V2.spinner.length;
+    const t = Number.isFinite(o.tick) ? Math.trunc(o.tick) : 0;
+    const i = Number.isFinite(o.index) ? Math.trunc(o.index) : 0;
+    const f = ((t + 3 * i) % n + n) % n;
+    scr.put(lx + 1, y + 5, V2.spinner[f] ?? V2.spinner[0], { fg: tone(sc) });
+  }
+  const parts = [];
+  if (int(c.conflicts) > 0) parts.push([V2.conflict + countText(c.conflicts), { fg: PALETTE.red, bold: true }]);
+  if (int(c.writes) > 0) parts.push([V2.write + countText(c.writes), { fg: tone(PALETTE.fg) }]);
+  if (int(c.reads) > 0) parts.push([V2.read + countText(c.reads), { fg: tone(PALETTE.blue) }]);
+  const pl = parts.reduce((s, [t]) => s + cellWidth(t), 0) + Math.max(0, parts.length - 1);
+  let cx = x + COUNT_END - pl;
+  for (const [t, st] of parts) cx = scr.put(cx, y + 5, t, st) + 1;
+  if (c.state === "asking" && !dim) {
+    for (let r2 = 1; r2 < CARD_H - 1; r2++) scr.fill(x + 1, y + r2, INNER, PALETTE.askBg);
+  }
+}
+function drawIdleStrip(scr, x, y, s, o) {
+  scr.put(x, y, V2.edgeTop.repeat(CARD_W), { fg: o.dimmed ? PALETTE.edge : PALETTE.idle });
+  scr.put(x + 2, y + 1, V2.idleDot, { fg: PALETTE.dim2 });
+  const ago = plainText(s.ago, 12);
+  const name = nameText(s.name, CARD_W - 8 - cellWidth(ago)) || DASH;
+  scr.put(x + 4, y + 1, name, { fg: o.dimmed ? PALETTE.dim2 : PALETTE.dim });
+  scr.put(x + CARD_W - 2 - cellWidth(ago), y + 1, ago, { fg: PALETTE.dim2 });
+}
+function items(s) {
+  return "card" in s ? 1 : s.strips.length;
+}
+function sumItems(slots, from, to) {
+  let n = 0;
+  for (let i = Math.max(0, from); i < Math.min(slots.length, to); i++) n += items(slots[i]);
+  return n;
+}
+function drawAgentsPane(scr, r2, m) {
+  if (r2.h < 1 || r2.w < 1) return { rows: 0, moreBelow: 0 };
+  const nA = m.agents.length;
+  const nI = m.idle.length;
+  const right = nA === 0 && nI === 0 ? "0 active" : nA === 0 ? `${nI} idle` : `${nA} active${SEP3}${nI} idle`;
+  drawTitle(scr, r2.x, r2.y, r2.w, { label: "AGENTS", focused: m.focused, sample: m.sample, right });
+  const dimSt = { fg: PALETTE.dim };
+  if (nA === 0 && nI === 0) {
+    let rows2 = 1;
+    if (r2.h >= 2) {
+      scr.put(r2.x + 2, r2.y + 1, plainText(EMPTY_HEADING, r2.w - 2), dimSt);
+      rows2 = 2;
+    }
+    if (r2.h >= 3) {
+      scr.put(r2.x + 2, r2.y + 2, plainText(EMPTY_BODY, r2.w - 2), { fg: PALETTE.dim2 });
+      rows2 = 3;
+    }
+    return { rows: rows2, moreBelow: 0 };
+  }
+  const fit = Math.max(1, Math.floor((r2.w + 2) / CARD_PITCH_X));
+  const want = Number.isFinite(m.cardCols) ? Math.trunc(m.cardCols) : 1;
+  const cols = Math.min(fit, Math.max(1, want));
+  const slots = m.agents.map((card, index) => ({ card, index }));
+  for (let j = 0; j < nI; j += 3) slots.push({ strips: m.idle.slice(j, j + 3) });
+  const cardRows = Math.ceil(slots.length / cols);
+  const fr = Number.isFinite(m.firstRow) ? Math.trunc(m.firstRow) : 0;
+  const first = Math.min(Math.max(0, fr), Math.max(0, cardRows - 1));
+  const up = first > 0 && r2.h >= 2;
+  const available = r2.h - 1 - (up ? 1 : 0);
+  const remaining = cardRows - first;
+  let k;
+  let downRow = true;
+  if (remaining * CARD_PITCH_Y - 1 <= available) {
+    k = remaining;
+  } else {
+    k = Math.min(remaining, Math.floor(available / CARD_PITCH_Y));
+    if (k === 0 && available >= CARD_H) {
+      k = 1;
+      downRow = false;
+    } else if (k === 0 && available < 1) {
+      downRow = false;
+    }
+  }
+  const above = sumItems(slots, 0, first * cols);
+  const below = sumItems(slots, (first + k) * cols, slots.length);
+  const hasSel = m.selectedId !== null && m.agents.some((a) => a.id === m.selectedId);
+  let gy = r2.y + 1;
+  if (up) {
+    scr.put(r2.x + 2, gy, `${V2.up} ${above} more`, dimSt);
+    gy += 1;
+  }
+  for (let row = first; row < first + k; row++) {
+    const sy = gy + (row - first) * CARD_PITCH_Y;
+    for (let col = 0; col < cols; col++) {
+      const slot = slots[row * cols + col];
+      if (!slot) continue;
+      const sx = r2.x + col * CARD_PITCH_X;
+      if ("card" in slot) {
+        const sel = hasSel && slot.card.id === m.selectedId;
+        drawCard(scr, sx, sy, slot.card, {
+          tick: m.tick,
+          index: slot.index,
+          selected: sel,
+          dimmed: hasSel && !sel
+        });
+      } else {
+        slot.strips.forEach((s, j) => drawIdleStrip(scr, sx, sy + 2 * j, s, { dimmed: hasSel }));
+      }
+    }
+  }
+  let rows = 1 + (up ? 1 : 0) + Math.max(0, k * CARD_PITCH_Y - 1);
+  if (below > 0 && downRow) {
+    const dy = k > 0 ? gy + k * CARD_PITCH_Y - 1 : gy;
+    scr.put(r2.x + 2, dy, `${V2.down} ${below} more`, dimSt);
+    rows = dy - r2.y + 1;
+  }
+  return { rows: Math.min(rows, r2.h), moreBelow: below };
+}
+
+// src/panel/ui/draw/files.ts
+var DASH2 = "\u2014";
+var SEP4 = " \xB7 ";
+var JOIN2 = ` ${V2.join} `;
+var WRAP_ROW = `${V2.dashed}${V2.dashed} back to top ${V2.dashed}${V2.dashed}`;
+var MAX_CONFLICT_ROWS = 3;
+var MAX_TICKER_ROWS = 6;
+var NAME_W = 21;
+var PATH_X = 26;
+var WRITE_PATH_X = 28;
+function countFiles(conflicts, groups2) {
+  const all = /* @__PURE__ */ new Set();
+  for (const g of groups2) for (const f of g.files) all.add(f.path);
+  for (const c of conflicts) all.add(c.path);
+  return all.size;
+}
+function tickerRows(groups2) {
+  const out = [];
+  for (const group of groups2) {
+    const files = [
+      ...group.files.filter((f) => f.kind === "write"),
+      ...group.files.filter((f) => f.kind !== "write")
+    ];
+    files.forEach((file, j) => out.push({ group, first: j === 0, file }));
+  }
+  return out;
+}
+function putIn2(scr, x, y, text, st, end) {
+  let out = "";
+  let w2 = 0;
+  for (const g of graphemes2(text)) {
+    const gw = cellWidth(g);
+    if (x + w2 + gw > end) break;
+    out += g;
+    w2 += gw;
+  }
+  if (out !== "") scr.put(x, y, out, st);
+  return x + cellWidth(text);
+}
+function drawFilesPane(scr, r2, m) {
+  if (r2.h < 1 || r2.w < 1) return 0;
+  const rows = tickerRows(m.groups);
+  const nConf = m.conflicts.length;
+  const confRows = Math.min(nConf, MAX_CONFLICT_ROWS, r2.h - 1);
+  const H = Math.max(0, Math.min(MAX_TICKER_ROWS, r2.h - 1 - confRows));
+  const scrolling = H > 0 && rows.length > H;
+  const n = countFiles(m.conflicts, m.groups);
+  const files = `${n} ${n === 1 ? "file" : "files"}`;
+  const right = n === 0 ? "no files" : scrolling && m.paused ? `paused${SEP4}${files}` : files;
+  drawTitle(scr, r2.x, r2.y, r2.w, { label: "FILES", focused: false, sample: m.sample, right });
+  const end = r2.x + r2.w;
+  const pend = end - 1;
+  const red = { fg: PALETTE.red };
+  const redB = { fg: PALETTE.red, bold: true };
+  const hiB = { fg: PALETTE.hi, bold: true };
+  let y = r2.y + 1;
+  for (let i = 0; i < confRows; i++, y++) {
+    putIn2(scr, r2.x, y, V2.rowMark, red, end);
+    putIn2(scr, r2.x + 2, y, V2.conflict, redB, end);
+    const c = m.conflicts[i];
+    if (i === MAX_CONFLICT_ROWS - 1 && nConf > MAX_CONFLICT_ROWS) {
+      putIn2(scr, r2.x + 4, y, `+${nConf - (MAX_CONFLICT_ROWS - 1)} more conflicts`, { fg: PALETTE.hi }, pend);
+    } else if (c) {
+      let cx = putIn2(scr, r2.x + 4, y, nameText(c.a, NAME_W) || DASH2, hiB, end);
+      cx = putIn2(scr, cx, y, JOIN2, redB, end);
+      cx = putIn2(scr, cx, y, nameText(c.b, NAME_W) || DASH2, hiB, end);
+      const px = Math.max(cx + 3, r2.x + PATH_X);
+      putIn2(scr, px, y, pathText(c.path, pend - px), { fg: PALETTE.hi }, pend);
+    }
+    scr.fill(r2.x, y, r2.w, PALETTE.redBg);
+  }
+  const N = rows.length + 1;
+  const step2 = Number.isFinite(m.step) ? Math.trunc(m.step) : 0;
+  const off = scrolling ? (step2 % N + N) % N : 0;
+  const visible = scrolling ? H : Math.min(rows.length, H);
+  for (let k = 0; k < visible; k++) {
+    const yy = y + k;
+    const idx = scrolling ? (off + k) % N : k;
+    const it = rows[idx];
+    if (!it) {
+      putIn2(scr, r2.x + 4, yy, WRAP_ROW, { fg: PALETTE.dim2 }, pend);
+      continue;
+    }
+    const name = nameText(it.group.name, NAME_W) || DASH2;
+    if (it.first) {
+      const sq = it.group.state === "idle" ? PALETTE.idle : stateColor(it.group.state);
+      putIn2(scr, r2.x + 2, yy, V2.group, { fg: sq }, pend);
+      putIn2(scr, r2.x + 4, yy, name, hiB, pend);
+    } else if (k === 0) {
+      putIn2(scr, r2.x + 2, yy, V2.group, { fg: PALETTE.dim2 }, pend);
+      putIn2(scr, r2.x + 4, yy, name, { fg: PALETTE.dim2 }, pend);
+    }
+    if (it.file.kind === "write") {
+      putIn2(scr, r2.x + PATH_X, yy, V2.write, { fg: PALETTE.fg }, pend);
+      const px = r2.x + WRITE_PATH_X;
+      putIn2(scr, px, yy, pathText(it.file.path, pend - px), { fg: PALETTE.fg }, pend);
+    } else {
+      const px = r2.x + PATH_X;
+      putIn2(scr, px, yy, pathText(it.file.path, pend - px), { fg: PALETTE.blue }, pend);
+    }
+  }
+  if (scrolling) {
+    const sx = end - 1;
+    const th = Math.max(1, Math.round(H * H / N));
+    const tt = Math.min(H - th, Math.floor(off / N * H));
+    for (let k = 0; k < H; k++) {
+      const thumb = k >= tt && k < tt + th;
+      scr.put(sx, y + k, thumb ? V2.heavyV : V2.vline, { fg: thumb ? PALETTE.dim : PALETTE.edge });
+    }
+  }
+  return 1 + confRows + visible;
+}
+
+// src/panel/ui/viewport.ts
+function toInt(n, fallback) {
+  return n !== void 0 && Number.isFinite(n) ? Math.trunc(n) : fallback;
+}
+function windowSlice(w2) {
+  const len = Math.max(0, toInt(w2.len, 0));
+  const height = Math.max(0, toInt(w2.height, 0));
+  const context = Math.max(0, toInt(w2.context, 1));
+  let cursor = toInt(w2.cursor, -1);
+  if (cursor < 0 || len === 0) cursor = -1;
+  else if (cursor >= len) cursor = len - 1;
+  const offset = Math.min(Math.max(0, toInt(w2.offset, 0)), len);
+  const h = new Array(len);
+  for (let i = 0; i < len; i++) {
+    const v = w2.heights?.[i];
+    h[i] = v !== void 0 && Number.isFinite(v) && v >= 1 ? Math.trunc(v) : 1;
+  }
+  const suffix = new Array(len + 1);
+  suffix[len] = 0;
+  for (let i = len - 1; i >= 0; i--) suffix[i] = suffix[i + 1] + h[i];
+  const out = (start2, f) => ({
+    offset: start2,
+    start: start2,
+    end: f.end,
+    above: start2,
+    below: len - f.end,
+    rows: f.rows,
+    up: f.up,
+    down: f.down
+  });
+  if (height <= 0 || len === 0) {
+    return out(offset, { end: offset, rows: 0, up: false, down: false });
+  }
+  if (suffix[0] <= height) {
+    return out(0, { end: len, rows: suffix[0], up: false, down: false });
+  }
+  const fill = (s) => {
+    if (height === 1) return { end: s + 1, rows: 1, up: false, down: false };
+    if (height === 2) {
+      const down = s + 1 < len;
+      const up2 = !down && s > 0;
+      const ind = up2 || down ? 1 : 0;
+      return { end: s + 1, rows: ind + Math.min(h[s], height - ind), up: up2, down };
+    }
+    const up = s > 0;
+    const budget = height - (up ? 1 : 0);
+    if (suffix[s] <= budget) return { end: len, rows: (up ? 1 : 0) + suffix[s], up, down: false };
+    const b2 = budget - 1;
+    let end = s;
+    let used = 0;
+    while (end < len && used + h[end] <= b2) used += h[end++];
+    if (end === s) {
+      end = s + 1;
+      if (end === len) return { end, rows: (up ? 1 : 0) + Math.min(h[s], budget), up, down: false };
+      used = Math.min(h[s], b2);
+    }
+    return { end, rows: (up ? 1 : 0) + used + 1, up, down: true };
+  };
+  let maxStart = len - 1;
+  for (let s = 0; s < len; s++) {
+    if (fill(s).end === len) {
+      maxStart = s;
+      break;
+    }
+  }
+  let start = Math.min(offset, maxStart);
+  if (cursor >= 0) {
+    const ctxTop = Math.min(context, cursor);
+    const needEnd = Math.min(len, cursor + context + 1);
+    const top = () => {
+      if (start > cursor - ctxTop) start = cursor - ctxTop;
+    };
+    const bottom = () => {
+      while (start < cursor && fill(start).end < needEnd) start++;
+    };
+    if (cursor >= start) {
+      top();
+      bottom();
+    } else {
+      bottom();
+      top();
+    }
+    while (start < cursor && cursor >= fill(start).end) start++;
+    start = Math.min(start, maxStart);
+  }
+  return out(start, fill(start));
+}
+
+// src/panel/ui/draw/phases.ts
+var MARK_X = 2;
+var NUM_X = 5;
+var NAME_X = 11;
+var NUM_W = 5;
+var MINI_MAX = 12;
+var HEADER_ROWS = 4;
+var SEP5 = ` ${V2.sep} `;
+var DIM = { fg: PALETTE.dim };
+var HI_BOLD = { fg: PALETTE.hi, bold: true };
+function putIn3(scr, x, y, text, st, end) {
+  let out = "";
+  let w2 = 0;
+  for (const g of graphemes2(text)) {
+    const gw = cellWidth(g);
+    if (x + w2 + gw > end) break;
+    out += g;
+    w2 += gw;
+  }
+  if (out !== "" && x >= 0) scr.put(x, y, out, st);
+  return x + cellWidth(text);
+}
+function plural2(n, one, many) {
+  return `${n} ${n === 1 ? one : many}`;
+}
+function drawPhases(scr, r2, m) {
+  if (r2.w <= 0 || r2.h <= 0) return 0;
+  const x = r2.x;
+  const end = r2.x + r2.w;
+  const bottom = r2.y + r2.h;
+  const put = (dx, y2, text, st) => {
+    if (y2 < r2.y || y2 >= bottom) return x + dx + cellWidth(text);
+    return putIn3(scr, x + dx, y2, text, st, end);
+  };
+  if (m.projects.length === 0) {
+    put(1, r2.y, plainText("no GSD projects", r2.w - 1), DIM);
+    return 1;
+  }
+  const pi = Math.min(Math.max(0, Math.trunc(m.projectIndex) || 0), m.projects.length - 1);
+  const p = m.projects[pi];
+  const phases2 = p.phases;
+  const total = phases2.length;
+  const hint = m.focused && m.projects.length > 1;
+  put(1, r2.y, plainText(p.name, hint ? r2.w - 7 : r2.w - 1), HI_BOLD);
+  if (hint) put(r2.w - 5, r2.y, `${V2.left} ${V2.right}`, DIM);
+  put(1, r2.y + 1, plainText(`${oneLine(p.dir)}${SEP5}project ${pi + 1}/${m.projects.length}`, r2.w - 1), DIM);
+  if (total === 0) {
+    put(1, r2.y + 2, plainText("no roadmap", r2.w - 1), DIM);
+    return Math.min(3, r2.h);
+  }
+  const done = phases2.filter((ph) => ph.status === "done").length;
+  const bw = r2.w - 10;
+  if (bw >= 1) {
+    const f = Math.min(bw, Math.max(0, Math.round(done / total * bw)));
+    put(1, r2.y + 2, V2.heavyH.repeat(f), { fg: PALETTE.running });
+    put(1 + f, r2.y + 2, V2.heavyH.repeat(bw - f), { fg: PALETTE.edge });
+  }
+  put(r2.w - 7, r2.y + 2, `${done}/${total}`, DIM);
+  const curIdx = phases2.findIndex((ph) => ph.status === "current");
+  const center = curIdx >= 0 ? curIdx : Math.min(done, total - 1);
+  const phaseRows = (k, last, contAfter, cursorHere) => {
+    const ph = phases2[k];
+    const isDone = ph.status === "done";
+    const isCur = ph.status === "current";
+    const out = [];
+    out.push((y2) => {
+      if (cursorHere) put(0, y2, V2.cursor, HI_BOLD);
+      const mark = isDone ? V2.phaseDone : isCur ? V2.phaseCurrent : V2.phasePending;
+      const markSt = isDone ? { fg: PALETTE.running } : isCur ? HI_BOLD : { fg: PALETTE.dim2 };
+      put(MARK_X, y2, mark, markSt);
+      const st = isCur || cursorHere ? HI_BOLD : isDone ? { fg: PALETTE.dim2 } : DIM;
+      put(NUM_X, y2, plainText(ph.number, NUM_W), st);
+      put(NAME_X, y2, plainText(ph.name, r2.w - NAME_X), st);
+    });
+    if (isCur && ph.plansTotal !== null) {
+      out.push((y2) => {
+        if (contAfter) put(MARK_X, y2, V2.vline, { fg: PALETTE.edge });
+        const n = Math.max(0, Math.trunc(ph.plansTotal ?? 0));
+        const kd = Math.min(n, Math.max(0, Math.trunc(ph.plansDone ?? 0)));
+        const label2 = `${kd}/${n} plan`;
+        const tx = put(NAME_X, y2, label2, DIM) - x;
+        const cellsN = n > MINI_MAX ? MINI_MAX : n;
+        const fill = n > MINI_MAX ? Math.round(kd / n * MINI_MAX) : kd;
+        put(tx + 2, y2, V2.heavyH.repeat(fill), { fg: PALETTE.running });
+        put(tx + 2 + fill, y2, V2.heavyH.repeat(cellsN - fill), { fg: PALETTE.edge });
+      });
+    }
+    if (!last) {
+      const next = phases2[k + 1];
+      const green = isDone && next !== void 0 && next.status !== "pending";
+      out.push((y2) => put(MARK_X, y2, V2.vline, { fg: green ? PALETTE.running : PALETTE.edge }));
+    }
+    return out;
+  };
+  const moreRow = (text) => (y2) => {
+    put(MARK_X, y2, V2.more, DIM);
+    put(NUM_X, y2, text, DIM);
+  };
+  const arrowRow = (arrow, n) => (y2) => put(2, y2, `${arrow} ${n} more`, DIM);
+  const budget = Math.max(0, r2.h - HEADER_ROWS);
+  let rows = [];
+  if (!m.focused) {
+    for (const radius of [2, 1, 0]) {
+      const a0 = Math.max(0, center - radius);
+      const z = Math.min(total - 1, center + radius);
+      const more = total - 1 - z;
+      const list = [];
+      if (a0 > 0) list.push(moreRow(plural2(a0, "earlier phase", "earlier phases")));
+      for (let k = a0; k <= z; k++) list.push(...phaseRows(k, k === z, k < z || more > 0, false));
+      if (more > 0) list.push(moreRow(plural2(more, "more phase", "more phases")));
+      rows = list;
+      if (list.length <= budget) break;
+    }
+  } else {
+    const cursor = m.cursor === null ? center : Math.min(total - 1, Math.max(0, Math.trunc(m.cursor)));
+    const items2 = [];
+    for (let k = 0; k < total; k++) items2.push(phaseRows(k, k === total - 1, k < total - 1, k === cursor));
+    const win = windowSlice({ len: total, height: budget, cursor, offset: 0, heights: items2.map((i) => i.length) });
+    if (win.up) rows.push(arrowRow(V2.up, win.above));
+    for (let k = win.start; k < win.end; k++) rows.push(...items2[k]);
+    if (win.down) {
+      rows = rows.slice(0, Math.max(0, budget - 1));
+      rows.push(arrowRow(V2.down, win.below));
+    }
+  }
+  rows = rows.slice(0, budget);
+  let y = r2.y + HEADER_ROWS;
+  for (const row of rows) row(y++);
+  return Math.min(r2.h, rows.length > 0 ? y - r2.y : 3);
+}
+
+// src/panel/ui/draw/sessions.ts
+var NAME_X2 = 2;
+var NAME_MAX = 27;
+var AGO_X = 30;
+var AGO_W = 7;
+var LIVE_X = 38;
+var LIVE = `${V2.sep} live`;
+var DIM2 = { fg: PALETTE.dim };
+function putIn4(scr, x, y, text, st, end) {
+  let out = "";
+  let w2 = 0;
+  for (const g of graphemes2(text)) {
+    const gw = cellWidth(g);
+    if (x + w2 + gw > end) break;
+    out += g;
+    w2 += gw;
+  }
+  if (out !== "") scr.put(x, y, out, st);
+}
+function drawSessions(scr, r2, m) {
+  if (r2.w <= 0 || r2.h <= 0) return 0;
+  const x = r2.x;
+  const end = r2.x + r2.w;
+  const put = (dx, y2, text, st) => putIn4(scr, x + dx, y2, text, st, end);
+  let y = r2.y;
+  const list = m.sessions;
+  let statusRows = m.status ? 2 : 0;
+  if (r2.h - statusRows < 1) statusRows = 0;
+  if (list.length === 0) {
+    put(NAME_X2, y, plainText(m.scanning ? `scanning${V2.ellipsis}` : "no resumable sessions", r2.w - NAME_X2), DIM2);
+    y++;
+  } else {
+    const cursor = m.cursorId === null ? -1 : list.findIndex((s) => s.id === m.cursorId);
+    const win = windowSlice({ len: list.length, height: r2.h - statusRows, cursor, offset: 0 });
+    if (win.up) put(NAME_X2, y++, `${V2.up} ${win.above} more`, DIM2);
+    for (let i = win.start; i < win.end; i++) {
+      const s = list[i];
+      const cur = i === cursor;
+      if (cur) put(0, y, V2.sessionCursor, m.focused ? { fg: PALETTE.hi, bold: true } : DIM2);
+      const nameSt = cur && m.focused ? { fg: PALETTE.hi, bold: true } : s.live ? { fg: PALETTE.fg } : DIM2;
+      put(NAME_X2, y, plainText(s.name, Math.min(NAME_MAX, r2.w - NAME_X2 - 1)), nameSt);
+      const ago = plainText(s.ago, AGO_W);
+      if (ago !== "" && AGO_X + cellWidth(ago) <= r2.w) put(AGO_X, y, ago, DIM2);
+      if (s.live && LIVE_X + cellWidth(LIVE) <= r2.w) put(LIVE_X, y, LIVE, { fg: PALETTE.live });
+      y++;
+    }
+    if (win.down) put(NAME_X2, y++, `${V2.down} ${win.below} more`, DIM2);
+  }
+  if (m.status && statusRows > 0 && y + 1 < r2.y + r2.h) {
+    y++;
+    if (m.status.ok) {
+      put(NAME_X2, y, V2.ok, { fg: PALETTE.running, bold: true });
+      put(NAME_X2 + 2, y, plainText(m.status.text, r2.w - NAME_X2 - 2), { fg: PALETTE.fg });
+    } else {
+      put(NAME_X2, y, plainText(m.status.text, r2.w - NAME_X2), { fg: PALETTE.fg });
+    }
+    y++;
+  }
+  return y - r2.y;
+}
+
+// src/panel/ui/draw/ports.ts
+var PORT_X = 2;
+var PROC_X = 10;
+var PROC_W = 11;
+var EXPOSED_X = 22;
+var OWNER_X = 4;
+var PID_MIN_W = 64;
+var PROC_MIN_W = EXPOSED_X + 9;
+var EXPOSED = `${V2.exposed} exposed`;
+var DASH3 = "\u2014";
+var DIM3 = { fg: PALETTE.dim };
+var DIM22 = { fg: PALETTE.dim2 };
+var RED_BOLD = { fg: PALETTE.red, bold: true };
+var HI_BOLD2 = { fg: PALETTE.hi, bold: true };
+function putIn5(scr, x, y, text, st, end) {
+  let out = "";
+  let w2 = 0;
+  for (const g of graphemes2(text)) {
+    const gw = cellWidth(g);
+    if (x + w2 + gw > end) break;
+    out += g;
+    w2 += gw;
+  }
+  if (out !== "") scr.put(x, y, out, st);
+}
+function visiblePortEntries(ports, focused) {
+  if (focused) return { shown: [...ports], others: 0 };
+  const shown = ports.filter((p) => p.owner !== null || p.exposed);
+  return { shown, others: ports.length - shown.length };
+}
+function drawPortsPane(scr, r2, m) {
+  if (r2.w <= 0 || r2.h <= 0) return 0;
+  const n = m.ports.length;
+  drawTitle(scr, r2.x, r2.y, r2.w, {
+    label: "PORTS",
+    focused: m.focused,
+    sample: m.sample,
+    right: m.focused ? `${n} ${n === 1 ? "port" : "ports"}` : null
+  });
+  if (r2.h < 3) return 1;
+  const x = r2.x;
+  const end = r2.x + r2.w;
+  const put = (dx, y2, text, st) => putIn5(scr, x + dx, y2, text, st, end);
+  let y = r2.y + 2;
+  if (n === 0) {
+    put(PORT_X, y, plainText("no listening ports", r2.w - PORT_X), DIM3);
+    return 3;
+  }
+  const { shown, others } = visiblePortEntries(m.ports, m.focused);
+  let listH = r2.h - 2;
+  const showOthers = others > 0 && listH >= 2;
+  if (showOthers) listH -= 1;
+  const cursor = m.focused && m.cursorKey !== null ? shown.findIndex((p) => p.key === m.cursorKey) : -1;
+  const win = windowSlice({
+    len: shown.length,
+    height: listH,
+    cursor,
+    offset: 0,
+    heights: shown.map((p) => p.owner !== null ? 2 : 1)
+  });
+  const itemLimit = r2.y + 2 + listH - (win.down ? 1 : 0);
+  const showPid = m.focused && r2.w >= PID_MIN_W;
+  const showProc = r2.w >= PROC_MIN_W;
+  if (win.up) put(PORT_X, y++, `${V2.up} ${win.above} more`, DIM3);
+  for (let i = win.start; i < win.end && y < itemLimit; i++) {
+    const p = shown[i];
+    if (i === cursor) put(0, y, V2.cursor, HI_BOLD2);
+    put(PORT_X, y, `:${Math.trunc(p.port)}`, p.exposed ? RED_BOLD : HI_BOLD2);
+    if (showProc) put(PROC_X, y, plainText(p.proc, PROC_W), DIM3);
+    if (p.exposed) put(showProc ? EXPOSED_X : PROC_X, y, EXPOSED, RED_BOLD);
+    if (showPid) {
+      const t = `pid ${Math.trunc(p.pid)}`;
+      put(r2.w - cellWidth(t), y, t, DIM22);
+    }
+    y++;
+    if (p.owner !== null && y < itemLimit) {
+      const owner = nameText(p.owner, r2.w - OWNER_X - 2) || DASH3;
+      put(OWNER_X, y, `${V2.owner} ${owner}`, DIM3);
+      y++;
+    }
+  }
+  if (win.down) put(PORT_X, y++, `${V2.down} ${win.below} more`, DIM3);
+  if (showOthers) put(PORT_X, y++, `+${others} others`, DIM22);
+  return y - r2.y;
+}
+
+// src/panel/ui/draw/right.ts
+var CHROME_ROWS = 3;
+var BODY_MIN = 3;
+var PORTS_MIN = 3;
+function drawRightColumn(scr, r2, m) {
+  const ui = m.ui;
+  const rightFocused = ui.focus === "right";
+  const bottom = r2.y + r2.h;
+  if (r2.w <= 0 || r2.h <= 0) return { end: r2.y - 1, portsY: r2.y };
+  drawTabs(scr, r2.x, r2.y, r2.w, { active: ui.rightTab, columnFocused: rightFocused, sample: m.sample });
+  const avail = Math.max(0, r2.h - CHROME_ROWS);
+  const budget = allocate(
+    avail,
+    [
+      { id: "body", min: BODY_MIN, max: avail },
+      { id: "ports", min: PORTS_MIN, max: PORTS_MIN }
+    ],
+    ["body"]
+  );
+  const bodyRect = { x: r2.x, y: r2.y + 2, w: r2.w, h: budget.body ?? 0 };
+  const bodyRows = ui.rightTab === "phases" ? drawPhases(scr, bodyRect, {
+    projects: m.projects,
+    projectIndex: m.projectIndex,
+    focused: rightFocused,
+    cursor: null
+  }) : drawSessions(scr, bodyRect, {
+    sessions: m.sessions,
+    focused: rightFocused,
+    cursorId: m.sessions[0]?.id ?? null,
+    status: m.sessionStatus,
+    scanning: false
+  });
+  const bodyEnd = bodyRect.y + bodyRows - 1;
+  let portsY = Math.max(bodyEnd + 2, Math.trunc(m.portsMinY) || 0);
+  if (bottom - portsY < PORTS_MIN) portsY = bodyEnd + 2;
+  const portsFocused = ui.focus === "ports";
+  const portsRows = drawPortsPane(
+    scr,
+    { x: r2.x, y: portsY, w: r2.w, h: Math.max(0, bottom - portsY) },
+    {
+      ports: m.ports,
+      focused: portsFocused,
+      cursorKey: portsFocused ? m.ports[0]?.key ?? null : null,
+      sample: m.sample
+    }
+  );
+  const end = Math.min(bottom - 1, portsRows > 0 ? portsY + portsRows - 1 : Math.max(r2.y, bodyEnd));
+  return { end, portsY };
+}
+
+// src/panel/ui/draw/footer.ts
+var KEYS_OFF_NOTICE = `${V2.keysOff} keys off \u2014 started without a TTY`;
+var WRITTEN = " written";
+var READ = "read";
+var CONFLICT = `${V2.conflict} conflict`;
+var LEGEND_END = 1 + cellWidth(V2.write) + cellWidth(WRITTEN) + 3 + cellWidth(READ) + 3 + cellWidth(CONFLICT);
+var FLASH_GAP = 6;
+var GAP = 3;
+var PAIR_GAP = 3;
+var FLASH_MIN = 12;
+function pairsWidth(pairs) {
+  if (pairs.length === 0) return 0;
+  return pairs.reduce((s, h) => s + cellWidth(h.key) + 1 + cellWidth(h.label), 0) + PAIR_GAP * (pairs.length - 1);
+}
+function drawFooter(scr, y, cols, o) {
+  const rightEnd = cols - 1;
+  let legend = true;
+  let flash = o.flash ? oneLine(o.flash.text) : "";
+  const flashStart = () => legend ? LEGEND_END + FLASH_GAP : 1;
+  const hasLeft = () => legend || flash !== "";
+  const leftEnd = () => flash !== "" ? flashStart() + cellWidth(flash) : legend ? LEGEND_END : 1;
+  const minStart = () => hasLeft() ? leftEnd() + GAP : 2;
+  const truncFlash = (cells) => {
+    if (flash !== "") flash = truncateEnd(flash, Math.max(FLASH_MIN, cells));
+  };
+  const pairs = [];
+  let notice = "";
+  if (o.keysOff) {
+    const nw = cellWidth(KEYS_OFF_NOTICE);
+    const fits = () => minStart() + nw <= rightEnd;
+    if (!fits()) legend = false;
+    if (!fits()) truncFlash(rightEnd - nw - GAP - flashStart());
+    notice = truncateEnd(KEYS_OFF_NOTICE, Math.min(nw, rightEnd - minStart()));
+  } else {
+    pairs.push(...o.hints);
+    const fits = () => pairs.length > 0 ? minStart() + pairsWidth(pairs) <= rightEnd : leftEnd() <= rightEnd;
+    while (!fits() && pairs.length > 0) pairs.pop();
+    if (!fits()) legend = false;
+    if (!fits()) truncFlash(rightEnd - flashStart());
+  }
+  if (legend) {
+    let x = scr.put(1, y, V2.write, { fg: PALETTE.fg });
+    x = scr.put(x, y, WRITTEN, { fg: PALETTE.dim });
+    x = scr.put(x + 3, y, READ, { fg: PALETTE.blue });
+    scr.put(x + 3, y, CONFLICT, { fg: PALETTE.red });
+  }
+  if (flash !== "") {
+    scr.put(flashStart(), y, flash, { fg: o.flash?.ok ? PALETTE.running : PALETTE.fg });
+  }
+  if (notice !== "") {
+    scr.put(rightEnd - cellWidth(notice), y, notice, { fg: PALETTE.dim });
+    return;
+  }
+  if (pairs.length === 0) return;
+  let hx = rightEnd - pairsWidth(pairs);
+  for (const h of pairs) {
+    hx = scr.put(hx, y, h.key, { fg: PALETTE.fg, bold: true });
+    hx = scr.put(hx + 1, y, h.label, { fg: PALETTE.dim }) + PAIR_GAP;
+  }
+}
+
+// src/panel/ui/draw/tooSmall.ts
+function drawTooSmall(cols, rows, h) {
+  const c = Math.max(0, Math.floor(cols));
+  const r2 = Math.max(0, Math.floor(rows));
+  const scr = new Screen(c, r2);
+  drawHeader(scr, c, h);
+  const cells = c - 1;
+  const size = `now ${c}${V2.times}${r2} ${V2.sep} needs ${MIN_COLS}${V2.times}${MIN_ROWS}`;
+  scr.put(1, 2, truncateEnd("terminal too small", cells), { fg: PALETTE.hi, bold: true });
+  scr.put(1, 3, truncateEnd(size, cells), { fg: PALETTE.dim });
+  scr.put(1, 4, truncateEnd("enlarge the window, or press q to quit", cells), { fg: PALETTE.dim2 });
+  return scr.toLines(Math.min(r2, 5));
+}
+
+// src/panel/ui/draw/shell.ts
+var BODY_Y = 2;
+var CHROME_ROWS2 = 4;
+var MAX_CONFLICT_ROWS2 = 3;
+var TICKER_MIN = 3;
+var FILES_MAX_H = 10;
+var RIGHT_MIN = 7;
+var RIGHT_FOCUS_MIN = 10;
+function agentsModel(input, cardCols) {
+  return {
+    agents: input.panes.agents,
+    idle: input.panes.idle,
+    focused: input.ui.focus === "agents",
+    sample: input.sample,
+    cardCols,
+    tick: input.tick,
+    selectedId: input.ui.selectedAgentId,
+    firstRow: 0
+  };
+}
+function filesModel(input) {
+  return {
+    conflicts: input.panes.conflicts,
+    groups: input.panes.groups,
+    paused: input.ui.filesPaused,
+    step: input.step,
+    sample: input.sample
+  };
+}
+function rightModel(input, portsMinY) {
+  const p = input.panes;
+  return {
+    ui: input.ui,
+    projects: p.projects,
+    projectIndex: p.projectIndex,
+    sessions: p.sessions,
+    sessionStatus: p.sessionStatus,
+    ports: p.ports,
+    sample: input.sample,
+    portsMinY
+  };
+}
+function measureLeft(input, w2, cardCols) {
+  const p = input.panes;
+  const slots = p.agents.length + Math.ceil(p.idle.length / 3);
+  const h = CARD_PITCH_Y * (slots + 1) + 2;
+  const a = drawAgentsPane(new Screen(w2, h), { x: 0, y: 0, w: w2, h }, agentsModel(input, cardCols));
+  const f = drawFilesPane(new Screen(w2, FILES_MAX_H), { x: 0, y: 0, w: w2, h: FILES_MAX_H }, filesModel(input));
+  const filesHard = Math.min(f, 1 + Math.min(p.conflicts.length, MAX_CONFLICT_ROWS2));
+  return { agents: a.rows, filesHard, filesTicker: f - filesHard };
+}
+function drawLeft(scr, input, x, w2, cardCols, agentsH, filesH, bottom) {
+  const ar = { x, y: BODY_Y, w: w2, h: agentsH };
+  const a = drawAgentsPane(scr, ar, agentsModel(input, cardCols));
+  const filesY = BODY_Y + a.rows + (a.rows < agentsH ? 1 : 0);
+  const fh = Math.max(0, Math.min(filesH, bottom - filesY));
+  const f = drawFilesPane(scr, { x, y: filesY, w: w2, h: fh }, filesModel(input));
+  const end = f > 0 ? filesY + f - 1 : BODY_Y + a.rows - 1;
+  return { filesY, end };
+}
+function drawShell(input) {
+  const g = geometry(input.cols, input.rows);
+  if (g.mode === "small") return drawTooSmall(input.cols, input.rows, input.header);
+  const cols = g.cols;
+  const rows = g.rows;
+  const scr = new Screen(cols, rows);
+  drawHeader(scr, cols, input.header);
+  const total = rows - CHROME_ROWS2;
+  const bottom = BODY_Y + total;
+  let end;
+  if (g.split && g.divX !== null) {
+    const m = measureLeft(input, g.LW, g.cardCols);
+    const filesMin = m.filesHard + Math.min(TICKER_MIN, m.filesTicker);
+    const demands = [
+      { id: "files", min: filesMin, max: m.filesHard + m.filesTicker },
+      { id: "agents", min: Math.min(CARD_PITCH_Y, m.agents), max: m.agents, step: CARD_PITCH_Y },
+      { id: "agentsSpacer", min: 0, max: 1 }
+    ];
+    const b = allocate(total, demands, ["agentsSpacer", "agents", "files"]);
+    const left = drawLeft(
+      scr,
+      input,
+      0,
+      g.LW,
+      g.cardCols,
+      (b.agents ?? 0) + (b.agentsSpacer ?? 0),
+      b.files ?? 0,
+      bottom
+    );
+    const right = drawRightColumn(scr, { x: g.RX, y: BODY_Y, w: g.RW, h: total }, rightModel(input, left.filesY));
+    end = Math.max(left.end, right.end);
+    for (let y = BODY_Y; y <= end; y++) scr.put(g.divX, y, V2.vline, { fg: PALETTE.edge });
+  } else {
+    const m = measureLeft(input, cols, g.cardCols);
+    const rh = Math.max(1, total * 4);
+    const rNat = drawRightColumn(new Screen(cols, rh), { x: 0, y: 0, w: cols, h: rh }, rightModel(input, 0)).end + 1;
+    const rightFocused = input.ui.focus === "right" || input.ui.focus === "ports";
+    const agents2 = { id: "agents", min: Math.min(CARD_PITCH_Y, m.agents), max: m.agents, step: CARD_PITCH_Y };
+    const filesHard = { id: "filesHard", min: m.filesHard, max: m.filesHard };
+    const ticker = { id: "ticker", min: Math.min(TICKER_MIN, m.filesTicker), max: m.filesTicker };
+    const right = { id: "right", min: Math.min(rightFocused ? RIGHT_FOCUS_MIN : RIGHT_MIN, rNat), max: rNat };
+    const spacers = [
+      { id: "agentsSpacer", min: 0, max: 1 },
+      { id: "rightSpacer", min: 0, max: 1 }
+    ];
+    const demands = rightFocused ? [agents2, filesHard, right, ticker, ...spacers] : [agents2, filesHard, ticker, right, ...spacers];
+    const grow = rightFocused ? ["right", "agentsSpacer", "agents", "ticker", "rightSpacer"] : ["agentsSpacer", "agents", "ticker", "right", "rightSpacer"];
+    const b = allocate(total, demands, grow);
+    const left = drawLeft(
+      scr,
+      input,
+      0,
+      cols,
+      g.cardCols,
+      (b.agents ?? 0) + (b.agentsSpacer ?? 0),
+      (b.filesHard ?? 0) + (b.ticker ?? 0),
+      bottom
+    );
+    end = left.end;
+    const ry = left.end + 1 + (b.rightSpacer ?? 0);
+    const rH = Math.max(0, Math.min(b.right ?? 0, bottom - ry));
+    if (rH > 0) {
+      const r2 = drawRightColumn(scr, { x: 0, y: ry, w: cols, h: rH }, rightModel(input, 0));
+      end = Math.max(end, r2.end);
+    }
+  }
+  const footerY = Math.min(end + 2, rows - 1);
+  drawFooter(scr, footerY, cols, { hints: hintsFor(input.ui), keysOff: input.keysOff, flash: input.flash });
+  return scr.toLines(footerY + 1);
+}
+
+// src/panel/ui/sample.ts
+var ID = {
+  plan: "4be1c07a",
+  api: "3fa9c1d2",
+  checkout: "9c41e2a0",
+  landing: "1d7f5b33",
+  research: "b20e6f19"
+};
+var agents = [
+  {
+    id: ID.plan,
+    name: "csm p8 plan",
+    dir: "CSM",
+    branch: "main",
+    uptime: "3h51m",
+    model: "opus 4.7",
+    prompt: "plan phase 9 from the design file and ask me before picking a branch",
+    state: "asking",
+    waitFor: null,
+    subagents: 0,
+    conflicts: 0,
+    writes: 0,
+    reads: 3,
+    inConflict: false
+  },
+  {
+    id: ID.api,
+    name: "api refactor",
+    dir: "csm-demo",
+    branch: "feat/api",
+    uptime: "12m",
+    model: "sonnet 4.6",
+    prompt: "collapse the cart endpoints into one router and keep the old paths working",
+    state: "waiting",
+    waitFor: "4m",
+    subagents: 0,
+    conflicts: 0,
+    writes: 1,
+    reads: 1,
+    inConflict: false
+  },
+  {
+    id: ID.checkout,
+    name: "checkout screen",
+    dir: "csm-demo",
+    branch: "main",
+    uptime: "6m",
+    model: "opus 4.7",
+    prompt: "move the coupon field into the cart summary, then recompute the total and run the tests",
+    state: "running",
+    waitFor: null,
+    subagents: 0,
+    conflicts: 1,
+    writes: 2,
+    reads: 2,
+    inConflict: true
+  },
+  {
+    id: ID.landing,
+    name: "landing copy",
+    dir: "site",
+    branch: "main",
+    uptime: "22m",
+    model: "haiku 4.5",
+    prompt: "rewrite the hero headline as two shorter variants",
+    state: "running",
+    waitFor: null,
+    subagents: 0,
+    conflicts: 0,
+    writes: 1,
+    reads: 0,
+    inConflict: false
+  },
+  {
+    id: ID.research,
+    name: "dashboard research",
+    dir: "mvp-dash",
+    branch: "main",
+    uptime: "53h",
+    model: "opus 4.7",
+    prompt: "compare the three competitor dashboards and summarize what each one tracks",
+    state: "subagent",
+    waitFor: null,
+    subagents: 2,
+    conflicts: 1,
+    writes: 1,
+    reads: 2,
+    inConflict: true
+  }
+];
+var w = (path11) => ({ path: path11, kind: "write" });
+var r = (path11) => ({ path: path11, kind: "read" });
+var groups = [
+  {
+    agentId: ID.plan,
+    name: "csm p8 plan",
+    state: "asking",
+    files: [r(".planning/ROADMAP.md"), r(".planning/phase-8.md"), r(".planning/phase-9.md")]
+  },
+  {
+    agentId: ID.api,
+    name: "api refactor",
+    state: "waiting",
+    files: [w("src/routes/cart.js"), r("src/db/schema.sql")]
+  },
+  {
+    agentId: ID.checkout,
+    name: "checkout screen",
+    state: "running",
+    files: [w("src/ui/Checkout.jsx"), w("src/ui/styles.css"), r("src/ui/check.jsx"), r("package.json")]
+  },
+  {
+    agentId: ID.landing,
+    name: "landing copy",
+    state: "running",
+    files: [w("content/hero.md")]
+  },
+  {
+    agentId: ID.research,
+    name: "dashboard research",
+    state: "subagent",
+    files: [w("docs/research.md"), r("src/lib/metrics.ts"), r("src/pages/Overview.tsx")]
+  }
+];
+function phases(list, current, plans) {
+  return list.map(([number, name], i) => ({
+    number,
+    name,
+    status: i < current ? "done" : i === current ? "current" : "pending",
+    plansDone: i === current ? plans[0] : null,
+    plansTotal: i === current ? plans[1] : null
+  }));
+}
+var port = (p, proc, pid, owner, exposed = false) => ({
+  key: String(p),
+  port: p,
+  proc,
+  pid,
+  exposed,
+  owner
+});
+var sessions = [
+  { id: "4be1c07a", name: "csm p8 plan", ago: "now", live: true },
+  { id: "9c41e2a0", name: "checkout screen", ago: "1m", live: true },
+  { id: "1d7f5b33", name: "landing copy", ago: "3m", live: true },
+  { id: "3fa9c1d2", name: "api refactor", ago: "4m", live: true },
+  { id: "b20e6f19", name: "dashboard research", ago: "9m", live: true },
+  { id: "77c0a8e4", name: "project requirements", ago: "5h", live: true },
+  { id: "e5d21c90", name: "gm country names", ago: "34h", live: true },
+  { id: "0a4b9d17", name: "csm file read write", ago: "53h", live: true },
+  { id: "c81f4e02", name: "mvp-dashboard-beta", ago: "3d", live: false },
+  { id: "5e9a3b6c", name: "port naming spike", ago: "4d", live: false },
+  { id: "d3b7710f", name: "csm p7 execute", ago: "6d", live: false }
+];
+var SAMPLE = {
+  agents,
+  idle: [
+    { id: "77c0a8e4", name: "project requirements", ago: "5h" },
+    { id: "e5d21c90", name: "gm country names", ago: "34h" },
+    { id: "0a4b9d17", name: "csm file read write", ago: "53h" }
+  ],
+  conflicts: [{ a: "dashboard research", b: "checkout screen", path: "src/server.js" }],
+  groups,
+  projects: [
+    {
+      name: "Panel Redesign & Port Navigation v2.0",
+      dir: "CSM",
+      phases: phases(
+        [
+          ["9", "UI Foundation & Design Contract"],
+          ["10", "New Panel Layout & Session Go-to"],
+          ["11", "Port Go-to, Browser & Kill"],
+          ["12", "Port Naming"]
+        ],
+        0,
+        [0, 3]
+      )
+    },
+    {
+      name: "Scale & Insights v2.1",
+      dir: "mvp-dash",
+      phases: phases(
+        [
+          ["31", "auth flow"],
+          ["32", "billing sync"],
+          ["33", "ci pipeline monitoring"],
+          ["34", "v2.0 gate closure"],
+          ["35", "production platform on outplane"],
+          ["35.1", "transactional email via own smtp"],
+          ["35.2", "security network hardening"],
+          ["36", "async cloro measurement"],
+          ["37", "prompt weighting heuristic"],
+          ["38", "dashboard redesign"],
+          ["38.1", "sources tab"],
+          ["39", "research agent"]
+        ],
+        2,
+        [3, 7]
+      )
+    }
+  ],
+  projectIndex: 1,
+  sessions,
+  sessionStatus: null,
+  ports: [
+    port(3e3, "bun", 41822, "checkout screen"),
+    port(5173, "vite", 38810, "dashboard research"),
+    port(27036, "steam_osx", 811, null, true),
+    port(37777, "bun", 4993, null),
+    port(9277, "stable", 72085, null),
+    port(57343, "steam_osx", 811, null),
+    port(57150, "steam_osx", 811, null),
+    port(57152, "steam_osx", 811, null)
+  ]
+};
+
+// src/panel/ui/ScreenView.tsx
 var import_jsx_runtime3 = __toESM(require_jsx_runtime(), 1);
+function ScreenView({ lines }) {
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Box_default, { flexDirection: "column", children: lines.map((line, i) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Box_default, { flexShrink: 0, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Text, { wrap: "truncate-end", children: line.length === 0 ? " " : line.map((s, j) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Text, { color: s.fg, backgroundColor: s.bg, bold: s.bold, children: s.text }, j)) }) }, i)) });
+}
+
+// src/panel/PanelApp.tsx
+var import_jsx_runtime4 = __toESM(require_jsx_runtime(), 1);
+var TICKER_VISIBLE = 6;
+function PanelApp(props = {}) {
+  const tickMs = props.tickMs ?? UI_TICK_MS;
+  const now = props.now ?? Date.now;
+  const roster = useRoster();
+  const updateTo = useUpdateCheck();
+  const { rows, columns } = use_window_size_default();
+  const { isRawModeSupported } = use_stdin_default();
+  const uiRef = import_react44.default.useRef(initialUi);
+  const [ui, setUi] = import_react44.default.useState(initialUi);
+  const apply = import_react44.default.useCallback((action) => {
+    const next = uiReducer(uiRef.current, action);
+    if (next === uiRef.current) return;
+    uiRef.current = next;
+    setUi(next);
+  }, []);
+  const animating = SAMPLE.agents.some((a) => a.state === "running") || tickerRows(SAMPLE.groups).length > TICKER_VISIBLE;
+  const { tick, step: step2 } = useUiTick({ active: animating, paused: ui.filesPaused, tickMs });
+  const header = headerFromRoster(roster, updateTo, now());
+  const headerKey = [
+    header.agents,
+    header.asking,
+    header.waiting,
+    header.conflicts,
+    header.clock,
+    header.update ?? ""
+  ].join("|");
+  const lines = import_react44.default.useMemo(
+    () => drawShell({
+      rows,
+      cols: columns,
+      ui,
+      tick,
+      step: step2,
+      header,
+      panes: SAMPLE,
+      keysOff: !isRawModeSupported,
+      flash: null,
+      sample: true
+    }),
+    // `header` is keyed by its fields (headerKey): a fresh object with the same
+    // values never re-draws the frame.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rows, columns, ui, tick, step2, isRawModeSupported, headerKey]
+  );
+  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(Box_default, { flexDirection: "column", children: [
+    isRawModeSupported ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(V2Keyboard, { uiRef, apply }) : null,
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ScreenView, { lines })
+  ] });
+}
+function V2Keyboard({
+  uiRef,
+  apply
+}) {
+  const { exit } = useApp();
+  use_input_default((input, key) => {
+    const action = resolve3(input, key, uiRef.current);
+    if (action === null) return;
+    if (action.t === "quit") {
+      exit();
+      return;
+    }
+    apply(action);
+  });
+  return null;
+}
+
+// src/panel/Splash.tsx
+var import_jsx_runtime5 = __toESM(require_jsx_runtime(), 1);
 var EMBLEM = [
   "               ((\u2022))",
   "              \u250C\u2500\u2500\u2500\u2500\u2500\u2510",
@@ -40052,8 +42119,24 @@ var EMBLEM = [
   "           \u2594\u2594\u2594\u2594\u2594\u2594\u2594\u2594\u2594\u2594\u2594\u2594\u2594",
   "            \u25CF    \u25CF    \u25CF"
 ].join("\n");
-function Splash() {
-  return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+function Splash({ palette = "legacy" } = {}) {
+  if (palette === "v2") {
+    return /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)(
+      Box_default,
+      {
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        paddingY: 1,
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(Text, { color: PALETTE.logo, bold: true, children: EMBLEM }),
+          /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(Box_default, { marginTop: 1, children: /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(Text, { color: PALETTE.hi, bold: true, children: "CONCURRENT \xB7 SESSION \xB7 MONITOR" }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(Text, { color: PALETTE.dim, children: "the watch never sleeps" })
+        ]
+      }
+    );
+  }
+  return /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)(
     Box_default,
     {
       flexDirection: "column",
@@ -40061,33 +42144,42 @@ function Splash() {
       justifyContent: "center",
       paddingY: 1,
       children: [
-        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Text, { color: "green", bold: true, children: EMBLEM }),
-        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Box_default, { marginTop: 1, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Text, { color: "green", bold: true, children: "CONCURRENT \xB7 SESSION \xB7 MONITOR" }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Text, { color: "green", dimColor: true, children: "the watch never sleeps" })
+        /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(Text, { color: "green", bold: true, children: EMBLEM }),
+        /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(Box_default, { marginTop: 1, children: /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(Text, { color: "green", bold: true, children: "CONCURRENT \xB7 SESSION \xB7 MONITOR" }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(Text, { color: "green", dimColor: true, children: "the watch never sleeps" })
       ]
     }
   );
 }
 
+// src/panel/ui/variant.ts
+function uiVariant(env3 = process.env) {
+  const raw = env3.CSM_UI;
+  return typeof raw === "string" && raw.trim() === "v2" ? "v2" : "legacy";
+}
+
 // src/panel/Root.tsx
-var import_jsx_runtime4 = __toESM(require_jsx_runtime(), 1);
+var import_jsx_runtime6 = __toESM(require_jsx_runtime(), 1);
 var DEFAULT_SPLASH_MS = 1500;
 function Root({
   enableSplash = process.stdout.isTTY === true,
-  splashMs = DEFAULT_SPLASH_MS
+  splashMs = DEFAULT_SPLASH_MS,
+  variant
 } = {}) {
-  const [showSplash, setShowSplash] = import_react43.default.useState(enableSplash);
-  import_react43.default.useEffect(() => {
+  const [ui] = import_react45.default.useState(() => variant ?? uiVariant());
+  const [showSplash, setShowSplash] = import_react45.default.useState(enableSplash);
+  import_react45.default.useEffect(() => {
     if (!showSplash) return;
     const timer = setTimeout(() => setShowSplash(false), splashMs);
     return () => clearTimeout(timer);
   }, [showSplash, splashMs]);
-  return showSplash ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Splash, {}) : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(App2, {});
+  if (ui === "v2") return showSplash ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(Splash, { palette: "v2" }) : /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(PanelApp, {});
+  return showSplash ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(Splash, {}) : /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(App2, {});
 }
 
 // src/panel/main.tsx
 function run() {
-  return render_default((0, import_react44.createElement)(Root), { alternateScreen: true });
+  return render_default((0, import_react46.createElement)(Root), { alternateScreen: true });
 }
 
 // src/panel/registration.ts

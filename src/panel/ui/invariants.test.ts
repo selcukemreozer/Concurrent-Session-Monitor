@@ -4,7 +4,7 @@
  * This is the ROADMAP Phase 9 "Test harness" item: at every terminal size the
  * shell draws "line count <= rows, line 1 is the brand, every line's width <=
  * cols". Phase 10 reuses this matrix unchanged as each pane goes live; plan
- * 09-12 appends the "through Ink" half, which renders PanelApp and splits the
+ * 09-13 appends the "through Ink" half, which renders PanelApp and splits the
  * last frame.
  *
  * Three parts:
@@ -15,7 +15,11 @@
  *      it, writes nothing outside its rect (Screen.put clips only at the
  *      screen edge, so each pane must clip itself).
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import React from "react";
+import stringWidth from "string-width";
+import { PanelApp, type PanelAppProps } from "../PanelApp.js";
+import { frameLines, nonTtyStdin, renderCapture } from "./test-harness.js";
 import { Screen, lineText, lineWidth, type Line } from "./screen.js";
 import { cellWidth, graphemes, isControlCp } from "./text.js";
 import { initialUi, type UiState } from "./uiState.js";
@@ -266,5 +270,60 @@ describe("v2 panes stay inside their rects (pure)", () => {
         }
       }
     }
+  });
+});
+
+// --- through Ink (plan 09-13) ----------------------------------------------
+
+// The store, prune and update modules are mocked exactly as PanelApp.test.tsx
+// does, so the live header has a stable roster and no network or disk access
+// happens. vi.mock is hoisted; the pure tests above import none of these.
+vi.mock("../../aggregate.js", () => ({ readAll: vi.fn(() => []) }));
+vi.mock("../../prune.js", () => ({ pruneSession: vi.fn() }));
+vi.mock("../../update.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../update.js")>();
+  return {
+    ...actual,
+    startUpdateCheck: vi.fn(() => () => {}),
+    installedVersion: vi.fn(() => "1.7.0"),
+  };
+});
+
+describe("v2 shell invariants (through Ink)", () => {
+  const INK_SIZES: ReadonlyArray<readonly [number, number]> = [
+    [55, 175],
+    [55, 220],
+    [24, 80],
+    [16, 60],
+    [10, 40],
+    [40, 120],
+  ];
+  const mounted: Array<{ unmount: () => void }> = [];
+  afterEach(() => {
+    while (mounted.length > 0) {
+      try {
+        mounted.pop()!.unmount();
+      } catch {
+        /* already unmounted */
+      }
+    }
+  });
+
+  // PanelApp's props parameter is optional, which createElement's overloads do
+  // not infer; this is the same function with the parameter made required.
+  const V2Root = PanelApp as (props: PanelAppProps) => React.ReactElement;
+
+  it.each(INK_SIZES)("%i rows x %i cols: the last frame fits and line 1 is the brand", (rows, cols) => {
+    const r = renderCapture(React.createElement(V2Root, { tickMs: 1000 }), {
+      rows,
+      columns: cols,
+      stdin: nonTtyStdin(),
+    });
+    mounted.push(r.inst);
+    const lines = frameLines(r.lastFrame());
+    expect(lines.length).toBeGreaterThan(0);
+    expect(lines.length).toBeLessThanOrEqual(rows);
+    for (const l of lines) expect(stringWidth(l), `line ${JSON.stringify(l)}`).toBeLessThanOrEqual(cols);
+    expect(lines[0]).toContain("◆ CSM");
   });
 });
