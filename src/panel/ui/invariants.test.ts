@@ -19,7 +19,7 @@
  *      PHASES/SESSIONS/PORTS also show a body row. AGENTS body rows at split
  *      16-18 rows are WR-02, deferred to Phase 10.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import React from "react";
 import stringWidth from "string-width";
 import { PanelApp, type PanelAppProps } from "../PanelApp.js";
@@ -64,6 +64,12 @@ const STATES: ReadonlyArray<readonly [string, UiState]> = [
   ["files paused", { ...initialUi, filesPaused: true }],
   ["selected agent", { ...initialUi, selectedAgentId: SAMPLE.agents[2]!.id }],
 ];
+
+// The cases in this file are synchronous and the whole file runs for about a
+// minute. Without a macrotask yield the worker cannot answer vitest's
+// onTaskUpdate RPC, which then times out after 60 s as an unhandled error
+// (seen once the 09-16 focus sweep was added). One setTimeout(0) per case fixes it.
+beforeEach(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
 
 const TICKS = [0, 1, 2, 3];
 const BRAND = "◆ CSM";
