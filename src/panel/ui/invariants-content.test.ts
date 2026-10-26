@@ -1,0 +1,306 @@
+/**
+ * v2 shell CONTENT invariants (Phase 10, plan 10-01; D-19, 09-REVIEW IN-04).
+ *
+ * `invariants.test.ts` asserts what a frame's SIZE is (line count, widths, the
+ * brand, one inverse title). This file is its content companion: it asserts
+ * what a frame SHOWS, so a pane can never hide items without saying so. It is
+ * a separate file because `invariants.test.ts` already runs close to vitest's
+ * 60 s worker RPC window (09-16 deviation).
+ *
+ *   - WR-01 / IN-04(i): in the AGENTS region, drawn cards + idle strips plus
+ *     the `↑ N more` / `↓ N more` counts equal the model's agents + idle.
+ *   - WR-02: at split widths with 16-18 rows the AGENTS pane draws at least
+ *     one card before the FILES ticker gets more than its minimum.
+ *   - WR-08: with PORTS focused, drawn ports plus the arrow-row counts equal
+ *     the port count (every port is drawn, or a `↓ N more` row says so).
+ *   - WR-09 / IN-04(ii): with PHASES focused on a project that has phases,
+ *     the tab body shows a phase marker (● ◉ ○) or an arrow row.
+ *   - WR-07: drawShell with NaN / Infinity / negative sizes terminates within
+ *     1 s and returns the too-small screen for the geometry-normalized size.
+ *
+ * Later plans of Phase 10 append to this file (WR-04, WR-05, widths < 60).
+ */
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+import { beforeEach, describe, expect, it } from "vitest";
+import { lineText, type Line } from "./screen.js";
+import { cellWidth, graphemes } from "./text.js";
+import { geometry } from "./geometry.js";
+import { FOCUS_ORDER, initialUi, type UiState } from "./uiState.js";
+import { SAMPLE, SAMPLE_HEADER } from "./sample.js";
+import type { AgentCard, IdleStrip, PanesModel, PortEntry } from "./models.js";
+import { drawShell } from "./draw/shell.js";
+import { drawTooSmall } from "./draw/tooSmall.js";
+
+// One macrotask per case, as in invariants.test.ts (09-16): the cases are
+// synchronous and long, and the worker must answer vitest's RPC in between.
+beforeEach(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+
+// --- fixtures ---------------------------------------------------------------
+
+/** SAMPLE with 12 agents, 9 idle strips and 20 ports (4 owned, 2 exposed). SAMPLE is never mutated. */
+function many(): PanesModel {
+  const agents: AgentCard[] = Array.from({ length: 12 }, (_, i) => {
+    const a = SAMPLE.agents[i % SAMPLE.agents.length]!;
+    return { ...a, id: `agent-${i}`, name: `${a.name} ${i}` };
+  });
+  const idle: IdleStrip[] = Array.from({ length: 9 }, (_, i) => {
+    const s = SAMPLE.idle[i % SAMPLE.idle.length]!;
+    return { ...s, id: `idle-${i}`, name: `${s.name} ${i}` };
+  });
+  const ports: PortEntry[] = Array.from({ length: 20 }, (_, i) => {
+    const p = SAMPLE.ports[i % SAMPLE.ports.length]!;
+    const port = 4000 + i;
+    return {
+      ...p,
+      key: String(port),
+      port,
+      owner: i < 4 ? `owner ${i}` : null,
+      exposed: i === 4 || i === 5,
+    };
+  });
+  return { ...SAMPLE, agents, idle, ports };
+}
+
+const FIXTURES: ReadonlyArray<readonly [string, PanesModel]> = [
+  ["sample", SAMPLE],
+  ["many", many()],
+];
+
+const ROWS = [16, 17, 18, 20, 22, 24, 30];
+const COLS = [60, 80, 96, 99, 100, 120, 164, 165, 175, 213, 214, 284];
+const SPLIT_COLS = [165, 175, 213, 214, 284];
+/** [rows, cols] */
+const SIZES: ReadonlyArray<readonly [number, number]> = ROWS.flatMap((r) => COLS.map((c) => [r, c] as const));
+const TABS = ["phases", "sessions"] as const;
+
+// --- helpers (same style as invariants.test.ts; not imported from it) ------
+
+function frame(rows: number, cols: number, ui: UiState, panes: PanesModel): Line[] {
+  return drawShell({
+    rows,
+    cols,
+    ui,
+    tick: 0,
+    step: 0,
+    header: SAMPLE_HEADER,
+    panes,
+    keysOff: false,
+    flash: null,
+    sample: true,
+  });
+}
+
+function text(lines: Line[]): string[] {
+  return lines.map((l) => lineText(l));
+}
+
+/** One string per terminal cell (a wide grapheme fills its cell, then "" for the rest). */
+function cells(line: Line): string[] {
+  const out: string[] = [];
+  for (const seg of line) {
+    for (const g of graphemes(seg.text)) {
+      const w = cellWidth(g);
+      if (w <= 0) continue;
+      out.push(g);
+      for (let i = 1; i < w; i++) out.push("");
+    }
+  }
+  return out;
+}
+
+/** The text of cells [x0, x1) on every line. */
+function columns(lines: Line[], x0: number, x1: number): string[] {
+  return lines.map((l) => cells(l).slice(x0, x1).join(""));
+}
+
+/** Sum of the N in every `↑ N more` / `↓ N more` row. */
+function arrowCount(rows: readonly string[]): number {
+  let n = 0;
+  for (const s of rows) {
+    for (const m of s.matchAll(/[↑↓] (\d+) more/g)) n += Number(m[1]);
+  }
+  return n;
+}
+
+/** The left column (AGENTS + FILES) and right column (tabs + PORTS) text, per frame. */
+function regions(lines: Line[], rows: number, cols: number): { left: string[]; right: string[] } {
+  const g = geometry(cols, rows);
+  if (g.split) return { left: columns(lines, 0, g.LW), right: columns(lines, g.RX, g.cols) };
+  const all = columns(lines, 0, g.cols);
+  return { left: all, right: all };
+}
+
+const FILES_TITLE = /^ FILES\b/;
+const PORTS_TITLE = /^[ ▐]PORTS\b/;
+const CARD_TOP = /▄{47}|┏/g;
+const PHASE_MARKER = /[●◉○]|[↑↓] \d+ more/;
+
+function focusName(ui: UiState): string {
+  return `focus ${ui.focus}, tab ${ui.rightTab}`;
+}
+
+// --- WR-01 / IN-04(i): AGENTS never hides items silently -------------------
+
+describe("v2 content: AGENTS drawn items + indicators = model (WR-01)", () => {
+  it.each(SIZES)("WR-01 %i rows x %i cols: hidden cards or strips imply a ↓ N more row", (rows, cols) => {
+    for (const [name, panes] of FIXTURES) {
+      for (const focus of FOCUS_ORDER) {
+        for (const rightTab of TABS) {
+          const ui: UiState = { ...initialUi, focus, rightTab };
+          const lines = frame(rows, cols, ui, panes);
+          const { left } = regions(lines, rows, cols);
+          const footer = left.length - 1;
+          let filesY = left.findIndex((s, y) => y > 2 && FILES_TITLE.test(s));
+          if (filesY < 0) filesY = footer;
+          const region = left.slice(3, filesY);
+          // one ▄ run per card or idle strip, one ┏ per selected card
+          const drawn = region.reduce((n, s) => n + (s.match(CARD_TOP) ?? []).length, 0);
+          const total = panes.agents.length + panes.idle.length;
+          expect(drawn + arrowCount(region), `${name}, ${focusName(ui)}: drawn ${drawn}`).toBe(total);
+        }
+      }
+    }
+  });
+});
+
+// --- WR-02: split frames draw a card row before growing the FILES ticker ----
+
+const SPLIT_SHORT: ReadonlyArray<readonly [number, number]> = [16, 17, 18].flatMap((r) =>
+  SPLIT_COLS.map((c) => [r, c] as const),
+);
+
+describe("v2 content: split AGENTS keeps one card row (WR-02)", () => {
+  it.each(SPLIT_SHORT)("WR-02 %i rows x %i cols: at least one card top is drawn", (rows, cols) => {
+    for (const [name, panes] of FIXTURES) {
+      for (const rightTab of TABS) {
+        const ui: UiState = { ...initialUi, focus: "agents", rightTab };
+        const lines = frame(rows, cols, ui, panes);
+        const { left } = regions(lines, rows, cols);
+        let filesY = left.findIndex((s, y) => y > 2 && FILES_TITLE.test(s));
+        if (filesY < 0) filesY = left.length - 1;
+        const drawn = left.slice(3, filesY).reduce((n, s) => n + (s.match(CARD_TOP) ?? []).length, 0);
+        expect(drawn, `${name}, ${focusName(ui)}`).toBeGreaterThan(0);
+      }
+    }
+  });
+});
+
+// --- WR-08: a focused PORTS pane shows every port or says how many are hidden
+
+describe("v2 content: focused PORTS drawn + indicators = ports (WR-08)", () => {
+  it.each(SIZES)("WR-08 %i rows x %i cols: every port is drawn or counted by ↑/↓ N more", (rows, cols) => {
+    for (const [name, panes] of FIXTURES) {
+      for (const rightTab of TABS) {
+        const ui: UiState = { ...initialUi, focus: "ports", rightTab };
+        const lines = frame(rows, cols, ui, panes);
+        const { right } = regions(lines, rows, cols);
+        const footer = right.length - 1;
+        const portsY = right.findIndex((s, y) => y >= 2 && y < footer && PORTS_TITLE.test(s));
+        expect(portsY, `${name}, ${focusName(ui)}: PORTS title`).toBeGreaterThan(0);
+        const region = right.slice(portsY + 1, footer);
+        const drawn = region.filter((s) => /(^|\s):\d+/.test(s)).length;
+        expect(drawn + arrowCount(region), `${name}, ${focusName(ui)}: drawn ${drawn}`).toBe(panes.ports.length);
+      }
+    }
+  });
+});
+
+// --- WR-09 / IN-04(ii): a focused PHASES pane shows a phase row --------------
+
+describe("v2 content: focused PHASES shows a phase marker or arrow row (WR-09)", () => {
+  it.each(SIZES)("WR-09 %i rows x %i cols: a ● ◉ ○ marker or ↑/↓ N more row in the body", (rows, cols) => {
+    for (const [name, panes] of FIXTURES) {
+      const project = panes.projects[panes.projectIndex];
+      expect(project?.phases.length, `${name}: the fixture project has phases`).toBeGreaterThan(0);
+      const ui: UiState = { ...initialUi, focus: "right", rightTab: "phases" };
+      const lines = frame(rows, cols, ui, panes);
+      const { right } = regions(lines, rows, cols);
+      const footer = right.length - 1;
+      const tabsY = right.findIndex((s, y) => y >= 2 && /PHASES/.test(s) && /SESSIONS/.test(s));
+      expect(tabsY, `${name}: tabs row`).toBeGreaterThan(0);
+      let portsY = right.findIndex((s, y) => y > tabsY && y < footer && PORTS_TITLE.test(s));
+      if (portsY < 0) portsY = footer;
+      const body = right.slice(tabsY + 1, portsY);
+      expect(
+        body.some((s) => PHASE_MARKER.test(s)),
+        `${name}: body rows ${JSON.stringify(body)}`,
+      ).toBe(true);
+    }
+  });
+});
+
+// --- WR-07: non-finite and negative sizes ----------------------------------
+
+const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+
+/**
+ * Run drawShell at (rows, cols) in a child process with a small heap, so the
+ * pre-fix unbounded Screen (Infinity cells) fails this case instead of taking
+ * the vitest worker down. The child times the call itself; process start-up
+ * is not part of the 1 s bound.
+ */
+function shellInChild(rows: number, cols: number): { status: number | null; ms: number; lines: string[] } {
+  const num = (n: number): string => (Number.isNaN(n) ? "NaN" : n === Infinity ? "Infinity" : String(n));
+  const mod = (p: string): string => JSON.stringify(path.join(REPO, p));
+  const script = [
+    `const { drawShell } = await import(${mod("src/panel/ui/draw/shell.ts")});`,
+    `const { SAMPLE, SAMPLE_HEADER } = await import(${mod("src/panel/ui/sample.ts")});`,
+    `const { initialUi } = await import(${mod("src/panel/ui/uiState.ts")});`,
+    `const { lineText } = await import(${mod("src/panel/ui/screen.ts")});`,
+    `const t0 = performance.now();`,
+    `const lines = drawShell({ rows: ${num(rows)}, cols: ${num(cols)}, ui: initialUi, tick: 0, step: 0,`,
+    `  header: SAMPLE_HEADER, panes: SAMPLE, keysOff: false, flash: null, sample: true });`,
+    `const ms = performance.now() - t0;`,
+    `process.stdout.write(JSON.stringify({ ms, lines: lines.map(lineText) }));`,
+  ].join("\n");
+  const r = spawnSync(
+    process.execPath,
+    ["--max-old-space-size=96", "--import", "tsx", "--input-type=module", "-e", script],
+    { cwd: REPO, encoding: "utf8", timeout: 25_000, env: { ...process.env, FORCE_COLOR: "0", NO_COLOR: "1" } },
+  );
+  if (r.status !== 0) return { status: r.status, ms: Infinity, lines: [] };
+  const out = JSON.parse(r.stdout) as { ms: number; lines: string[] };
+  return { status: r.status, ms: out.ms, lines: out.lines };
+}
+
+/** The geometry() normalization: a non-finite or negative size is 0. */
+function norm(n: number): number {
+  return Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : 0;
+}
+
+describe("v2 content: drawShell with non-finite sizes (WR-07)", () => {
+  /** [rows, cols] */
+  const BAD: ReadonlyArray<readonly [number, number]> = [
+    [NaN, 80],
+    [24, NaN],
+    [Infinity, 80],
+    [24, Infinity],
+    [-5, 80],
+  ];
+
+  it.each(BAD)(
+    "WR-07 %s rows x %s cols: terminates within 1 s with the normalized too-small screen",
+    (rows, cols) => {
+      const r = shellInChild(rows, cols);
+      expect(r.status, "the child exits cleanly (no hang, no out-of-memory)").toBe(0);
+      expect(r.ms).toBeLessThan(1000);
+      // geometry() maps each bad size to 0, so the frame is the too-small screen
+      // for that normalized size: no more lines than rows, no wider than cols.
+      expect(r.lines).toEqual(text(drawTooSmall(norm(cols), norm(rows), SAMPLE_HEADER)));
+      expect(r.lines.length).toBeLessThanOrEqual(norm(rows));
+    },
+    30_000,
+  );
+
+  it.each([
+    [15.7, 80.9],
+    [24.2, 59.99],
+  ])("WR-07 %s rows x %s cols: fractional sizes truncate and keep the header on line 0", (rows, cols) => {
+    const lines = text(frame(rows, cols, initialUi, SAMPLE));
+    expect(lines.length).toBeGreaterThan(0);
+    expect(lines[0]).toContain("◆ CSM");
+    expect(lines).toEqual(text(drawTooSmall(norm(cols), norm(rows), SAMPLE_HEADER)));
+  });
+});
