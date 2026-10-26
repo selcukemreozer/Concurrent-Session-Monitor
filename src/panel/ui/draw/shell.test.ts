@@ -5,7 +5,7 @@ import { initialUi, type UiState } from "../uiState.js";
 import { SAMPLE, SAMPLE_HEADER } from "../sample.js";
 import { PALETTE } from "../palette.js";
 import { drawTooSmall } from "./tooSmall.js";
-import { drawShell, type ShellInput } from "./shell.js";
+import { drawShell, drawShellFrame, EMPTY_SCROLL, type SampleFlags, type ScrollState, type ShellInput } from "./shell.js";
 
 // UI-SPEC "Primary frame - 175x55, busy, focus AGENTS (P9 sample shell)",
 // all 37 lines copied verbatim (trailing blanks trimmed).
@@ -429,5 +429,86 @@ describe("drawShell: non-finite sizes (WR-07)", () => {
     const lines = drawShell(input({ rows: 15.9, cols: 80.5 }));
     expect(lineText(lines[0] as Line)).toContain("◆ CSM");
     expect(lineText(lines[3] as Line)).toBe(" now 80×15 · needs 60×16");
+  });
+});
+
+// --- Phase 10 plan 10-08: sticky windows (Pattern 3) and per-pane chips (Pattern 4)
+
+const gridAt = (offset: number): ScrollState => ({ ...EMPTY_SCROLL, grid: { offset, visible: 0 } });
+const NO_WIN = { offset: 0, visible: 0 };
+
+describe("drawShellFrame: ScrollState feedback (10-08, LAYOUT-02, Pattern 3)", () => {
+  it("returns the drawShell lines and the grid window it drew (175x55: 3 card rows from 0)", () => {
+    const f = drawShellFrame(input());
+    expect(f.lines).toEqual(drawShell(input()));
+    expect(f.scroll).toEqual({ grid: { offset: 0, visible: 3 }, phases: NO_WIN, sessions: NO_WIN, ports: NO_WIN });
+  });
+
+  it("draws ↑ N more under the AGENTS title for a fed-back offset and keeps it (80x40)", () => {
+    const f = drawShellFrame(input({ cols: 80, rows: 40, scroll: gridAt(1) }));
+    const t = texts(f.lines);
+    expect(t[2]).toContain("AGENTS");
+    expect(t[3]).toBe("  ↑ 1 more");
+    expect(t[5]).toContain("api refactor");
+    expect(f.scroll.grid).toEqual({ offset: 1, visible: 1 });
+  });
+
+  it("is sticky: feeding the returned scroll back gives the same frame", () => {
+    const a = drawShellFrame(input({ cols: 80, rows: 40, scroll: gridAt(1) }));
+    const b = drawShellFrame(input({ cols: 80, rows: 40, scroll: a.scroll }));
+    expect(b.lines).toEqual(a.lines);
+    expect(b.scroll).toEqual(a.scroll);
+  });
+
+  it("clamps an offset past the end and returns the clamped value (Pitfall 20)", () => {
+    const f = drawShellFrame(input({ cols: 80, rows: 40, scroll: gridAt(99) }));
+    expect(f.scroll.grid).toEqual({ offset: 4, visible: 2 });
+    expect(texts(f.lines)[3]).toBe("  ↑ 4 more");
+  });
+
+  it("drops the offset to 0 when the whole grid fits after a resize (175x55)", () => {
+    const f = drawShellFrame(input({ scroll: gridAt(1) }));
+    expect(f.scroll.grid.offset).toBe(0);
+    expect(f.lines).toEqual(drawShell(input()));
+  });
+
+  it("returns EMPTY_SCROLL for the too-small screen", () => {
+    expect(drawShellFrame(input({ cols: 50, rows: 10, scroll: gridAt(3) })).scroll).toEqual(EMPTY_SCROLL);
+  });
+});
+
+describe("drawShellFrame: per-pane sample chips (10-08, D-23, Pattern 4)", () => {
+  const mixed: SampleFlags = { agents: false, files: true, phases: true, sessions: false, ports: true };
+
+  it("drops only the panes whose flag is false (phases tab active)", () => {
+    const t = texts(drawShell(input({ sample: mixed })));
+    expect(cut(t[2] as string, 0, 96)).toContain("AGENTS");
+    expect(cut(t[2] as string, 0, 96)).not.toContain("sample");
+    expect(cut(t[2] as string, 98, 77)).toContain("sample");
+    const files = rowOf(t, (s) => s.startsWith(" FILES "));
+    expect(cut(t[files] as string, 0, 96)).toContain("sample");
+    expect(cut(t[files] as string, 98, 77)).toMatch(/PORTS\s+sample/);
+  });
+
+  it("shows the tabs chip only while the ACTIVE tab is sample (sessions tab → no chip)", () => {
+    const t = texts(drawShell(input({ sample: mixed, ui: ui({ rightTab: "sessions" }) })));
+    expect(cut(t[2] as string, 98, 77)).toContain("SESSIONS");
+    expect(cut(t[2] as string, 98, 77)).not.toContain("sample");
+    const files = rowOf(t, (s) => s.startsWith(" FILES "));
+    expect(cut(t[files] as string, 98, 77)).toMatch(/PORTS\s+sample/);
+  });
+
+  it.each([true, false])("sample: %s equals the all-%s flags record", (b) => {
+    const all: SampleFlags = { agents: b, files: b, phases: b, sessions: b, ports: b };
+    for (const [cols, rows] of [[175, 55], [120, 40], [80, 24]] as const) {
+      expect(drawShell(input({ cols, rows, sample: all }))).toEqual(drawShell(input({ cols, rows, sample: b })));
+    }
+  });
+
+  it("all flags false: no chip anywhere (S2 band too)", () => {
+    const none: SampleFlags = { agents: false, files: false, phases: false, sessions: false, ports: false };
+    for (const [cols, rows] of [[175, 55], [120, 40]] as const) {
+      expect(texts(drawShell(input({ cols, rows, sample: none }))).some((s) => s.includes("sample"))).toBe(false);
+    }
   });
 });

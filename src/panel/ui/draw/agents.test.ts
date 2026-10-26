@@ -395,7 +395,7 @@ describe("drawAgentsPane: frame fidelity (175x55, rows 2..25)", () => {
   });
 
   it("returns 24 rows with nothing hidden", () => {
-    expect(res).toEqual({ rows: 24, moreBelow: 0 });
+    expect(res).toEqual({ rows: 24, moreBelow: 0, firstRow: 0, visibleRows: 3 });
   });
 
   it("draws nothing outside the rect", () => {
@@ -409,7 +409,7 @@ describe("drawAgentsPane: clipping by whole card rows (D-08)", () => {
   it("shows one card row and ↓ N more counting hidden cards and strips", () => {
     const scr = new Screen(175, 40);
     const res = drawAgentsPane(scr, { x: 0, y: 2, w: 96, h: 9 }, PANE);
-    expect(res).toEqual({ rows: 9, moreBelow: 6 });
+    expect(res).toEqual({ rows: 9, moreBelow: 6, firstRow: 0, visibleRows: 1 });
     expect(text(scr, 10)).toBe("  ↓ 6 more");
     expect(cellAt(scr, 2, 10).fg).toBe("#85827a");
     expect(text(scr, 3, 0, 96)).toBe(cut(FRAME_AGENTS[1] as string, 0, 96));
@@ -423,7 +423,7 @@ describe("drawAgentsPane: clipping by whole card rows (D-08)", () => {
     expect(cellAt(scr, 2, 3).fg).toBe("#85827a");
     expect(text(scr, 4, 0, 96)).toBe(cut(FRAME_AGENTS[9] as string, 0, 96));
     expect(text(scr, 5, 0, 96)).toBe(cut(FRAME_AGENTS[10] as string, 0, 96));
-    expect(res).toEqual({ rows: 17, moreBelow: 0 });
+    expect(res).toEqual({ rows: 17, moreBelow: 0, firstRow: 1, visibleRows: 2 });
   });
 
   it("shows both indicators when scrolled into the middle", () => {
@@ -463,7 +463,7 @@ describe("drawAgentsPane: clipping by whole card rows (D-08)", () => {
   it("draws one card row without the down row when only 8 rows fit", () => {
     const scr = new Screen(175, 40);
     const res = drawAgentsPane(scr, { x: 0, y: 2, w: 96, h: 8 }, PANE);
-    expect(res).toEqual({ rows: 8, moreBelow: 6 });
+    expect(res).toEqual({ rows: 8, moreBelow: 6, firstRow: 0, visibleRows: 1 });
     expect(text(scr, 3, 0, 96)).toBe(cut(FRAME_AGENTS[1] as string, 0, 96));
     for (let y = 10; y < 40; y++) expect(text(scr, y)).toBe("");
   });
@@ -471,7 +471,7 @@ describe("drawAgentsPane: clipping by whole card rows (D-08)", () => {
   it("draws only the down row when no card row fits", () => {
     const scr = new Screen(175, 40);
     const res = drawAgentsPane(scr, { x: 0, y: 2, w: 96, h: 5 }, PANE);
-    expect(res).toEqual({ rows: 2, moreBelow: 8 });
+    expect(res).toEqual({ rows: 2, moreBelow: 8, firstRow: 0, visibleRows: 0 });
     expect(text(scr, 3)).toBe("  ↓ 8 more");
     for (let y = 4; y < 40; y++) expect(text(scr, y)).toBe("");
   });
@@ -502,7 +502,7 @@ describe("drawAgentsPane: narrower than a card (Phase 10 plan 10-02, WR-06)", ()
     expect(text(scr, 3, 3, 49)).toBe("  ↓ 8 more");
     for (let y = 4; y < 30; y++) expect(text(scr, y)).toBe("");
     expect(outside(scr, r)).toEqual([]);
-    expect(res).toEqual({ rows: 2, moreBelow: 8 });
+    expect(res).toEqual({ rows: 2, moreBelow: 8, firstRow: 0, visibleRows: 0 });
   });
 
   it("WR-06 w=46, h=1: the title only", () => {
@@ -570,6 +570,32 @@ describe("drawAgentsPane: calm mode and empty", () => {
     expect(cellAt(scr, 2, 3).fg).toBe("#85827a");
     expect(text(scr, 4)).toBe("  start claude in any project folder; it appears here within a second");
     expect(cellAt(scr, 2, 4).fg).toBe(DIM2);
-    expect(res).toEqual({ rows: 3, moreBelow: 0 });
+    expect(res).toEqual({ rows: 3, moreBelow: 0, firstRow: 0, visibleRows: 0 });
+  });
+});
+
+describe("drawAgentsPane: reports its window (10-08, Pattern 3)", () => {
+  it("returns the clamped first card row and the card rows drawn", () => {
+    const many = [...SAMPLE.agents, ...SAMPLE.agents].map((a, i) => ({ ...a, id: `${a.id}-${i}` }));
+    const scr = new Screen(175, 60);
+    const res = drawAgentsPane(scr, { x: 0, y: 0, w: 96, h: 18 }, { ...PANE, agents: many, firstRow: 1 });
+    expect(res.firstRow).toBe(1);
+    expect(res.visibleRows).toBe(2);
+  });
+
+  it("clamps an offset past the end to the last start that fills the rect", () => {
+    const many = [...SAMPLE.agents, ...SAMPLE.agents].map((a, i) => ({ ...a, id: `${a.id}-${i}` }));
+    const scr = new Screen(175, 60);
+    // 6 card rows; h 18 holds the up row + 2 card rows, so the last start is 4
+    const res = drawAgentsPane(scr, { x: 0, y: 0, w: 96, h: 18 }, { ...PANE, agents: many, firstRow: 99 });
+    expect(res).toMatchObject({ firstRow: 4, visibleRows: 2, moreBelow: 0 });
+    expect(text(scr, 1)).toBe("  ↑ 9 more");
+  });
+
+  it("clamps the offset to 0 when the whole grid fits", () => {
+    const scr = new Screen(175, 40);
+    const res = drawAgentsPane(scr, { x: 0, y: 2, w: 96, h: 24 }, { ...PANE, firstRow: 2 });
+    expect(res).toEqual({ rows: 24, moreBelow: 0, firstRow: 0, visibleRows: 3 });
+    expect(text(scr, 3, 0, 96)).toBe(cut(FRAME_AGENTS[1] as string, 0, 96));
   });
 });
