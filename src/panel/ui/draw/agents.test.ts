@@ -701,7 +701,8 @@ describe("drawAgentsPane: scroll follows the selection (10-09, D-05)", () => {
   it("selecting row 0 afterwards scrolls back to 0", () => {
     const { scr, res } = draw("c0", 3);
     expect(res.firstRow).toBe(0);
-    expect(text(scr, 1, 0, 47)).toContain("card 0");
+    expect(text(scr, 1, 0, 47)).toContain("┏");
+    expect(text(scr, 2, 0, 47)).toContain("card 0");
     expect(res.moreBelow).toBe(8);
   });
 

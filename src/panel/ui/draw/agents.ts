@@ -30,6 +30,10 @@ import { drawTitle } from "./title.js";
  *     the spacer row after the last visible card row), N counting hidden
  *     cards + strips. `firstRow` is the scroll input Phase 10 drives from the
  *     selection.
+ *   - Phase 10 plan 10-09 (D-06, D-17): idle strips are selectable. A strip
+ *     selection draws the selected-strip look and dims every card and other
+ *     strip exactly as a card selection does; the selected item's card row is
+ *     always fully drawn (sticky, selection-driven scroll).
  *
  * Every dynamic string is made cell-safe before Screen.put (T-09-01c): names
  * through `nameText`, everything else through `plainText`, each within a
@@ -178,13 +182,31 @@ export function drawCard(
   }
 }
 
-export function drawIdleStrip(scr: Screen, x: number, y: number, s: IdleStrip, o: { dimmed: boolean }): void {
-  scr.put(x, y, V2.edgeTop.repeat(CARD_W), { fg: o.dimmed ? PALETTE.edge : PALETTE.idle });
-  scr.put(x + 2, y + 1, V2.idleDot, { fg: PALETTE.dim2 });
+/**
+ * An idle strip. Phase 10 plan 10-09 (D-06, D-17): a `selected` strip draws
+ * the spotlight look (UI-SPEC § Idle strip, "Selected idle strip"): the `▄`
+ * edge and the `●` in hi, the name hi bold, the ago in dim. `selected` wins
+ * over `dimmed`.
+ */
+export function drawIdleStrip(
+  scr: Screen,
+  x: number,
+  y: number,
+  s: IdleStrip,
+  o: { dimmed: boolean; selected?: boolean },
+): void {
+  const selected = o.selected === true;
+  const dimmed = o.dimmed && !selected;
+  const edge = selected ? PALETTE.hi : dimmed ? PALETTE.edge : PALETTE.idle;
+  scr.put(x, y, V2.edgeTop.repeat(CARD_W), { fg: edge });
+  scr.put(x + 2, y + 1, V2.idleDot, { fg: selected ? PALETTE.hi : PALETTE.dim2 });
   const ago = plainText(s.ago, 12);
   const name = nameText(s.name, CARD_W - 8 - cellWidth(ago)) || DASH;
-  scr.put(x + 4, y + 1, name, { fg: o.dimmed ? PALETTE.dim2 : PALETTE.dim });
-  scr.put(x + CARD_W - 2 - cellWidth(ago), y + 1, ago, { fg: PALETTE.dim2 });
+  const nameSt: Style = selected
+    ? { fg: PALETTE.hi, bold: true }
+    : { fg: dimmed ? PALETTE.dim2 : PALETTE.dim };
+  scr.put(x + 4, y + 1, name, nameSt);
+  scr.put(x + CARD_W - 2 - cellWidth(ago), y + 1, ago, { fg: selected ? PALETTE.dim : PALETTE.dim2 });
 }
 
 type Slot = { card: AgentCard; index: number } | { strips: readonly IdleStrip[] };
@@ -197,6 +219,36 @@ function sumItems(slots: readonly Slot[], from: number, to: number): number {
   let n = 0;
   for (let i = Math.max(0, from); i < Math.min(slots.length, to); i++) n += items(slots[i] as Slot);
   return n;
+}
+
+/**
+ * The window drawn from card row `first` in a rect of height `h`: whether the
+ * `up` row is drawn, how many whole card rows `k` fit and whether the `down`
+ * row is drawn. Rect clip (09-09): every row drawn lies inside the rect. When
+ * all remaining card rows fit they are all drawn; otherwise as many whole card
+ * rows as leave room for the `down` row. If not even one card row + the
+ * `down` row fits, one card row is still drawn when it fits on its own (the
+ * `down` row is then omitted); below that only the `down` row is drawn.
+ */
+function windowAt(first: number, h: number, cardRows: number): { up: boolean; k: number; downRow: boolean } {
+  // the `up` row needs a row under the title inside the rect (09-09 rect clip)
+  const up = first > 0 && h >= 2;
+  const available = h - 1 - (up ? 1 : 0);
+  const remaining = Math.max(0, cardRows - first);
+  let k: number;
+  let downRow = true;
+  if (remaining * CARD_PITCH_Y - 1 <= available) {
+    k = remaining;
+  } else {
+    k = Math.min(remaining, Math.floor(available / CARD_PITCH_Y));
+    if (k === 0 && available >= CARD_H) {
+      k = 1;
+      downRow = false;
+    } else if (k === 0 && available < 1) {
+      downRow = false;
+    }
+  }
+  return { up, k, downRow };
 }
 
 /**
@@ -289,33 +341,35 @@ export function drawAgentsPane(
   // above a window that has room for them.
   const allFit = cardRows * CARD_PITCH_Y - 1 <= r.h - 1;
   const maxStart = allFit ? 0 : Math.max(0, cardRows - Math.max(1, Math.floor((r.h - 1) / CARD_PITCH_Y)));
-  const first = Math.min(Math.max(0, fr), maxStart);
-  // the `up` row needs a row under the title inside the rect (09-09 rect clip)
-  const up = first > 0 && r.h >= 2;
-  const available = r.h - 1 - (up ? 1 : 0);
-  const remaining = cardRows - first;
-  // Rect clip (09-09): every row drawn lies inside r. When all remaining card
-  // rows fit they are all drawn; otherwise as many whole card rows as leave
-  // room for the `down` row. If not even one card row + the `down` row fits,
-  // one card row is still drawn when it fits on its own (the `down` row is
-  // then omitted); below that only the `down` row is drawn.
-  let k: number;
-  let downRow = true;
-  if (remaining * CARD_PITCH_Y - 1 <= available) {
-    k = remaining;
-  } else {
-    k = Math.min(remaining, Math.floor(available / CARD_PITCH_Y));
-    if (k === 0 && available >= CARD_H) {
-      k = 1;
-      downRow = false;
-    } else if (k === 0 && available < 1) {
-      downRow = false;
+  const sticky = Math.min(Math.max(0, fr), maxStart);
+
+  // 10-09 (D-05, D-06): the selection (a card or an idle strip) drives the
+  // scroll by whole card rows. A card i sits in slot i, strip k in slot
+  // nA + floor(k / 3); its card row is slot / cols. The fed-back offset is
+  // sticky: it only moves when the selected row is above the window (start
+  // at it) or below the last row that fits (start so it is the last fitting
+  // row, with the `up` row counted).
+  const selCard = m.selectedId === null ? -1 : m.agents.findIndex((a) => a.id === m.selectedId);
+  const selStrip = m.selectedId === null || selCard >= 0 ? -1 : m.idle.findIndex((s) => s.id === m.selectedId);
+  const hasSel = selCard >= 0 || selStrip >= 0;
+  let first = sticky;
+  if (hasSel) {
+    const slot = selCard >= 0 ? selCard : nA + Math.floor(selStrip / 3);
+    const selRow = Math.floor(slot / cols);
+    if (selRow < first) {
+      first = selRow;
+    } else if (selRow >= first + windowAt(first, r.h, cardRows).k) {
+      let f = first + 1;
+      while (f < selRow && f + windowAt(f, r.h, cardRows).k <= selRow) f++;
+      first = f;
     }
+    first = Math.min(Math.max(0, first), maxStart);
   }
+
+  const { up, k, downRow } = windowAt(first, r.h, cardRows);
   const above = sumItems(slots, 0, first * cols);
   const below = sumItems(slots, (first + k) * cols, slots.length);
 
-  const hasSel = m.selectedId !== null && m.agents.some((a) => a.id === m.selectedId);
   let gy = r.y + 1;
   if (up) {
     scr.put(r.x + 2, gy, `${V2.up} ${above} more`, dimSt);
@@ -337,7 +391,10 @@ export function drawAgentsPane(
           dimmed: hasSel && !sel,
         });
       } else {
-        slot.strips.forEach((s, j) => drawIdleStrip(scr, sx, sy + 2 * j, s, { dimmed: hasSel }));
+        slot.strips.forEach((s, j) => {
+          const sel = hasSel && s.id === m.selectedId;
+          drawIdleStrip(scr, sx, sy + 2 * j, s, { dimmed: hasSel && !sel, selected: sel });
+        });
       }
     }
   }
