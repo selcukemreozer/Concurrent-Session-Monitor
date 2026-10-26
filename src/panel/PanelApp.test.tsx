@@ -231,6 +231,102 @@ describe("PanelApp ignores keymap intents until 10-08 wires them (10-07)", () =>
   });
 });
 
+// --- Phase 10 plan 10-08: one intent dispatcher, the flash slot and the idle drop
+// Time is the injected `now` (a mutable clock); a small tickMs only lets the
+// UI tick fire. A spinner frame change proves a tick happened.
+
+/** Wait until at least one UI tick has re-rendered the frame. */
+async function nextTick(lastFrame: () => string): Promise<void> {
+  const f0 = lastFrame();
+  await vi.waitFor(() => expect(lastFrame()).not.toBe(f0), { timeout: 5000 });
+}
+
+const CARD_ID = SAMPLE.agents[0]!.id;
+
+describe("PanelApp footer flash slot (10-08, D-12)", () => {
+  it("shows a flash for 2500 ms on the injected clock, then clears it", async () => {
+    const clock = { t: 1000 };
+    const { lastFrame } = await mountTty(
+      <PanelApp tickMs={20} now={() => clock.t} initialUi={{ flash: { text: "focusing api", ok: false, at: 0 } }} />,
+    );
+    expect(footer(lastFrame())).toContain("focusing api");
+    clock.t = 2499;
+    await nextTick(lastFrame);
+    expect(footer(lastFrame())).toContain("focusing api");
+    clock.t = 2500;
+    await vi.waitFor(() => expect(footer(lastFrame())).not.toContain("focusing api"), { timeout: 5000 });
+  });
+});
+
+describe("PanelApp selection idle drop (10-08, D-09)", () => {
+  it("keeps the selection at 14 999 ms and drops it at 15 000 ms after one tick", async () => {
+    const clock = { t: 14_999 };
+    const { lastFrame } = await mountTty(
+      <PanelApp tickMs={20} now={() => clock.t} initialUi={{ selectedAgentId: CARD_ID, lastKeyAt: 0 }} />,
+    );
+    expect(lastFrame()).toContain("┏");
+    await nextTick(lastFrame);
+    expect(lastFrame()).toContain("┏");
+    clock.t = 15_000;
+    await vi.waitFor(() => expect(lastFrame()).not.toContain("┏"), { timeout: 5000 });
+    expect(footer(lastFrame())).toContain("select agent");
+  });
+
+  it("every key records keyAt: r at 5000 keeps the selection to 19 999, 20 000 drops it", async () => {
+    const clock = { t: 5000 };
+    const { lastFrame, stdin } = await mountTty(
+      <PanelApp tickMs={20} now={() => clock.t} initialUi={{ selectedAgentId: CARD_ID, lastKeyAt: 0 }} />,
+    );
+    press(stdin, KEYS.r);
+    await vi.waitFor(() => expect(footer(lastFrame())).toContain("r phases"));
+    clock.t = 19_999;
+    await nextTick(lastFrame);
+    expect(lastFrame()).toContain("┏");
+    clock.t = 20_000;
+    await vi.waitFor(() => expect(lastFrame()).not.toContain("┏"), { timeout: 5000 });
+  });
+});
+
+describe("PanelApp intent dispatcher (10-08, KEYS-01, KEYS-02)", () => {
+  it("↓ with AGENTS focused reaches the dispatcher as a move intent; no handler, no change", async () => {
+    const seen: Array<{ intent: unknown; ctx: string }> = [];
+    const { lastFrame, stdin } = await mountTty(
+      <PanelApp tickMs={FROZEN} now={() => NOW} intentSpy={(intent, ctx) => seen.push({ intent, ctx })} />,
+    );
+    const before = lastFrame();
+    press(stdin, KEYS.down);
+    await vi.waitFor(() => expect(seen).toHaveLength(1));
+    expect(seen[0]).toEqual({ intent: { t: "move", dir: "down" }, ctx: "agents" });
+    expect(lastFrame()).toBe(before);
+  });
+
+  it("resolves keys against effectiveUi: a vanished selection routes as plain AGENTS", async () => {
+    const seen: Array<{ intent: unknown; ctx: string }> = [];
+    const { stdin } = await mountTty(
+      <PanelApp
+        tickMs={FROZEN}
+        now={() => NOW}
+        initialUi={{ selectedAgentId: "gone", lastKeyAt: NOW }}
+        intentSpy={(intent, ctx) => seen.push({ intent, ctx })}
+      />,
+    );
+    press(stdin, KEYS.down);
+    await vi.waitFor(() => expect(seen).toHaveLength(1));
+    expect(seen[0]?.ctx).toBe("agents");
+  });
+});
+
+describe("PanelApp footer never lies about a vanished selection (10-08, KEYS-03)", () => {
+  it("a selection that does not resolve shows the AGENTS hints, never go to pane", async () => {
+    const { lastFrame } = await mountTty(
+      <PanelApp tickMs={FROZEN} now={() => NOW} initialUi={{ selectedAgentId: "gone", lastKeyAt: NOW }} />,
+    );
+    expect(footer(lastFrame())).toContain("select agent");
+    expect(lastFrame()).not.toContain("go to pane");
+    expect(lastFrame()).not.toContain("┏");
+  });
+});
+
 describe("PanelApp exit (KEYS-04, D-24)", () => {
   it("q exits through Ink's exit path: waitUntilExit resolves and raw mode ends off", async () => {
     const { inst, stdin, raw } = await mountTty();
