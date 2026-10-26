@@ -1009,6 +1009,19 @@ describe("scanCardFacts", () => {
     expect(scanCardFacts(b, true, ID).model).toBe("claude-opus-4-7");
   });
 
+  it("C4c: an over-long non-assistant line nesting an assistant object is ignored", () => {
+    const nested = JSON.stringify({
+      parentUuid: null,
+      isSidechain: false,
+      data: { message: { type: "assistant", message: { model: "claude-haiku-4-5" } } },
+      pad: "x".repeat(MAX_SCAN_LINE + 1000),
+      type: "progress",
+      sessionId: ID,
+    });
+    expect(nested.length).toBeGreaterThan(MAX_SCAN_LINE);
+    expect(scanCardFacts(buf(body([asst("claude-opus-4-7"), nested])), true, ID).model).toBe("claude-opus-4-7");
+  });
+
   it("C5: the last-prompt record follows the Phase 8 rules", () => {
     expect(scanCardFacts(buf(body([lp("first"), lp("fix the tests")])), true, ID).lastPrompt).toBe("fix the tests");
     expect(scanCardFacts(buf(body([lp("mine"), lp("theirs", "other-id")])), true, ID).lastPrompt).toBe("mine");

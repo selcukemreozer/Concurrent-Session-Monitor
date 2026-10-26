@@ -80,6 +80,16 @@ import * as path from "node:path";
  * An over-long or malformed newest record is "decided, unknown" (no mode), so
  * the copied resume line never gains the bypass flag on a guess.
  * LOCKSTEP: scripts/csm-resume.mjs mirrors the mode scan.
+ *
+ * Phase 10 (plan 10-06, D-07 / 09 D-11): the v2 card's last prompt and live
+ * model come from the SAME cached tail window as the custom title. The rule
+ * is one tail read per (size, mtime) change: readTranscriptTitle runs
+ * scanCustomTitle and scanCardFacts on one window, caches lastPrompt / model
+ * on the entry (sticky, reset on shrink or path change exactly like the
+ * title), and readTranscriptCard returns them with no IO. The model is the
+ * newest non-sidechain assistant line of this session whose message.model is
+ * not `<synthetic>` (a `/model` switch shows up on the next assistant line).
+ * No hook writes anything new for this.
  */
 
 /** Default tail budget: the last 256 KiB of the transcript. */
@@ -272,6 +282,100 @@ export function scanTailFacts(buf: Buffer, atBoundary: boolean, sessionId: strin
         f.slugCwd = o.cwd;
       }
     }
+  }
+  return f;
+}
+
+/** Facts the v2 card reads from the cached tail window (10-06, D-07). */
+export type CardFacts = { lastPrompt?: string; model?: string };
+
+/** Over-long assistant lines are only searched in this many leading chars. */
+const MODEL_PREFIX_CHARS = 2048;
+/** The first compact `"model":"…"` in a long line's prefix (message.model). */
+const MODEL_PREFIX_PATTERN = /"model":"([A-Za-z0-9._\[\]-]{1,100})"/;
+/** Compact sidechain flag; escaped mentions inside content never match. */
+const SIDECHAIN_TRUE = '"isSidechain":true';
+const SESSION_ID_MARKER = '"sessionId":"';
+const TYPE_MARKER = '"type":"';
+/** Placeholder model Claude Code writes on locally synthesized assistant lines. */
+const SYNTHETIC_MODEL = "<synthetic>";
+
+/**
+ * The model of an assistant line longer than MAX_SCAN_LINE (never parsed).
+ * Best-effort: the first compact `"model":"` within MODEL_PREFIX_CHARS (the
+ * verified shape puts message.model in the first ~270 chars). The top-level
+ * type is the LAST compact `"type":"` key (written after `message`; verified
+ * on every long assistant line in 150 local transcripts), so a long line of
+ * another type that merely nests an assistant object is skipped. The sidechain
+ * flag is checked in the prefix, and the session filter uses the LAST compact
+ * `"sessionId":"` key (top-level, also written after `message`).
+ */
+function lastKeyValue(line: string, marker: string): string | undefined {
+  const at = line.lastIndexOf(marker);
+  if (at < 0) return undefined;
+  const start = at + marker.length;
+  const end = line.indexOf('"', start);
+  return end > start ? line.slice(start, end) : undefined;
+}
+
+function longLineModel(line: string, sessionId: string): string | undefined {
+  if (lastKeyValue(line, TYPE_MARKER) !== "assistant") return undefined;
+  const prefix = line.slice(0, MODEL_PREFIX_CHARS);
+  if (prefix.includes(SIDECHAIN_TRUE)) return undefined;
+  const sid = lastKeyValue(line, SESSION_ID_MARKER);
+  if (sid !== undefined && sid !== sessionId) return undefined;
+  const m = MODEL_PREFIX_PATTERN.exec(prefix);
+  if (m === null || m[1] === SYNTHETIC_MODEL) return undefined;
+  return m[1];
+}
+
+/**
+ * One pass over a tail window for the card facts (10-06, D-07, 09 D-11), all
+ * last-wins:
+ *   - lastPrompt: a `last-prompt` record of at most MAX_TITLE_LINE chars with
+ *     a string `lastPrompt` (the scanTailFacts rules);
+ *   - model: the newest real assistant line. Lines up to MAX_SCAN_LINE are
+ *     parsed (type `assistant`, not a sidechain, a non-empty string
+ *     `message.model` other than `<synthetic>`); longer lines go through the
+ *     prefix regex (longLineModel).
+ * Lines with a different sessionId are ignored. Never throws.
+ */
+export function scanCardFacts(buf: Buffer, atBoundary: boolean, sessionId: string): CardFacts {
+  const f: CardFacts = {};
+  for (const line of windowLines(buf, atBoundary)) {
+    if (line.length === 0) continue;
+    const isPrompt = line.length <= MAX_TITLE_LINE && line.includes('"type":"last-prompt"');
+    const isAssistant = line.includes(ASSISTANT_MARKER);
+    if (!isPrompt && !isAssistant) continue;
+    if (line.length > MAX_SCAN_LINE) {
+      const model = longLineModel(line, sessionId);
+      if (model !== undefined) f.model = model;
+      continue;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (parsed === null || typeof parsed !== "object") continue;
+    const o = parsed as {
+      type?: unknown;
+      sessionId?: unknown;
+      lastPrompt?: unknown;
+      isSidechain?: unknown;
+      message?: unknown;
+    };
+    if (o.sessionId !== undefined && o.sessionId !== sessionId) continue;
+    if (isPrompt && o.type === "last-prompt" && typeof o.lastPrompt === "string") {
+      f.lastPrompt = o.lastPrompt;
+      continue;
+    }
+    if (o.type !== "assistant" || o.isSidechain === true) continue;
+    const msg = o.message;
+    if (msg === null || typeof msg !== "object") continue;
+    const model = (msg as { model?: unknown }).model;
+    if (typeof model === "string" && model.length > 0 && model !== SYNTHETIC_MODEL) f.model = model;
   }
   return f;
 }
@@ -682,11 +786,25 @@ export function readTailCustomTitle(
   sessionId: string,
   budget = TAIL_BYTES,
 ): { title?: string; size: number; mtimeMs: number } | undefined {
+  const r = readTailTitleAndCard(realPath, sessionId, budget);
+  return r === undefined ? undefined : { title: r.title, size: r.size, mtimeMs: r.mtimeMs };
+}
+
+/**
+ * The cache's single tail read (10-06): ONE bounded window yields both the
+ * custom title and the card facts, so a (size, mtime) change costs one read.
+ */
+function readTailTitleAndCard(
+  realPath: string,
+  sessionId: string,
+  budget: number,
+): { title?: string; card: CardFacts; size: number; mtimeMs: number } | undefined {
   try {
     const window = readWindowSync(realPath, "tail", budget);
     if (window === undefined) return undefined;
     const title = scanCustomTitle(window.buf, window.atBoundary, sessionId);
-    return { title, size: window.size, mtimeMs: window.mtimeMs };
+    const card = scanCardFacts(window.buf, window.atBoundary, sessionId);
+    return { title, card, size: window.size, mtimeMs: window.mtimeMs };
   } catch {
     return undefined;
   }
@@ -699,6 +817,9 @@ type Entry = {
   mtimeMs: number;
   title?: string;
   changedAtMs?: number;
+  /** 10-06 card facts: sticky like the title, reset with it. */
+  lastPrompt?: string;
+  model?: string;
 };
 
 const cache = new Map<string, Entry>();
@@ -751,12 +872,18 @@ export function readTranscriptTitle(
       // successful scan is a baseline scan again (WR-01).
       entry.title = undefined;
       entry.changedAtMs = undefined;
+      entry.lastPrompt = undefined;
+      entry.model = undefined;
       entry.size = -1;
       entry.mtimeMs = -1;
     }
 
-    const r = readTailCustomTitle(entry.realPath, sessionId, budget);
+    const r = readTailTitleAndCard(entry.realPath, sessionId, budget);
     if (r === undefined) return valueOf(entry);
+
+    // 10-06 card facts: sticky (only a found value replaces the cached one).
+    if (r.card.lastPrompt !== undefined) entry.lastPrompt = r.card.lastPrompt;
+    if (r.card.model !== undefined) entry.model = r.card.model;
 
     // WR-01: size < 0 marks an entry that has never completed a scan.
     const baseline = entry.size < 0;
@@ -770,6 +897,21 @@ export function readTranscriptTitle(
   } catch {
     return valueOf(cache.get(sessionId));
   }
+}
+
+/**
+ * The card facts cached by the last readTranscriptTitle for `sessionId`
+ * (10-06, D-07): the last prompt and the newest real assistant model. Pure
+ * cache lookup, NO IO; an empty object when the id has no entry. Values are
+ * RAW untrusted text: the panel draws them through plainText.
+ */
+export function readTranscriptCard(sessionId: string): CardFacts {
+  const e = cache.get(sessionId);
+  const out: CardFacts = {};
+  if (e === undefined) return out;
+  if (e.lastPrompt !== undefined) out.lastPrompt = e.lastPrompt;
+  if (e.model !== undefined) out.model = e.model;
+  return out;
 }
 
 /** Drop every cached session id not in `keep` (per-pass pruning). */
