@@ -219,6 +219,18 @@ describe("PanelApp unbound keys (D-19)", () => {
   });
 });
 
+describe("PanelApp ignores keymap intents until 10-08 wires them (10-07)", () => {
+  it("↓, ←, Enter and PgDn with AGENTS focused leave the frame unchanged", async () => {
+    const { lastFrame, stdin } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
+    const before = lastFrame();
+    press(stdin, KEYS.down, KEYS.left, KEYS.enter, String.fromCharCode(27) + "[6~");
+    await sleep(150);
+    expect(lastFrame()).toBe(before);
+    expect(before).toContain("▐AGENTS▌");
+    expect(footer(before)).toContain("tab focus");
+  });
+});
+
 describe("PanelApp exit (KEYS-04, D-24)", () => {
   it("q exits through Ink's exit path: waitUntilExit resolves and raw mode ends off", async () => {
     const { inst, stdin, raw } = await mountTty();

@@ -6,10 +6,12 @@ import {
   contextOf,
   hintsFor,
   resolve,
+  isIntent,
+  type Intent,
   type HintContext,
   type KeyInput,
 } from "./keymap.js";
-import { initialUi, type UiState } from "./uiState.js";
+import { initialUi, type Action, type UiState } from "./uiState.js";
 
 // Phase 9 plan 09-04 Task 3: one table drives key routing and the footer
 // (D-13..D-19, D-24; T-09-08b, T-09-11a).
@@ -197,33 +199,51 @@ describe("declined keys are unbound (D-13, D-14, D-19)", () => {
   });
 });
 
-describe("Phase 10–12 rows are noops in Phase 9 (T-09-11a)", () => {
+describe("P10 rows emit intents, P11/P12 rows stay noops (10-07; T-09-11a)", () => {
   const noop = (binding: string) => ({ t: "noop", binding });
+  const DIRS = [
+    ["upArrow", "up"],
+    ["downArrow", "down"],
+    ["leftArrow", "left"],
+    ["rightArrow", "right"],
+  ] as const;
 
-  it("arrows in AGENTS select / move", () => {
-    for (const k of ["upArrow", "downArrow", "leftArrow", "rightArrow"] as const) {
-      expect(resolve("", { [k]: true }, CTX.agents)).toEqual(noop("agentsSelect"));
-      expect(resolve("", { [k]: true }, CTX.agentsSelected)).toEqual(noop("agentsMove"));
+  it("arrows in AGENTS emit move intents (select and move)", () => {
+    for (const [k, dir] of DIRS) {
+      expect(resolve("", { [k]: true }, CTX.agents)).toEqual({ t: "move", dir });
+      expect(resolve("", { [k]: true }, CTX.agentsSelected)).toEqual({ t: "move", dir });
     }
-    expect(resolve("", ENTER, CTX.agentsSelected)).toEqual(noop("agentsGoto"));
+    expect(resolve("", ENTER, CTX.agentsSelected)).toEqual({ t: "goto" });
   });
 
-  it("phases browse / project", () => {
-    expect(resolve("", { upArrow: true }, CTX.phases)).toEqual(noop("phasesBrowse"));
-    expect(resolve("", { downArrow: true }, CTX.phases)).toEqual(noop("phasesBrowse"));
-    expect(resolve("", { leftArrow: true }, CTX.phases)).toEqual(noop("phasesProject"));
-    expect(resolve("", { rightArrow: true }, CTX.phases)).toEqual(noop("phasesProject"));
+  it("phases ↑/↓ move and ←/→ cycle the project", () => {
+    expect(resolve("", { upArrow: true }, CTX.phases)).toEqual({ t: "move", dir: "up" });
+    expect(resolve("", { downArrow: true }, CTX.phases)).toEqual({ t: "move", dir: "down" });
+    expect(resolve("", { leftArrow: true }, CTX.phases)).toEqual({ t: "project", dir: -1 });
+    expect(resolve("", { rightArrow: true }, CTX.phases)).toEqual({ t: "project", dir: 1 });
   });
 
-  it("sessions browse / Enter / o", () => {
-    expect(resolve("", { downArrow: true }, CTX.sessions)).toEqual(noop("sessionsBrowse"));
-    expect(resolve("", ENTER, CTX.sessions)).toEqual(noop("sessionsCopy"));
-    expect(resolve("o", {}, CTX.sessions)).toEqual(noop("sessionsOpen"));
+  it("sessions browse / Enter copy / o open", () => {
+    expect(resolve("", { downArrow: true }, CTX.sessions)).toEqual({ t: "move", dir: "down" });
+    expect(resolve("", { upArrow: true }, CTX.sessions)).toEqual({ t: "move", dir: "up" });
+    expect(resolve("", ENTER, CTX.sessions)).toEqual({ t: "copy" });
+    expect(resolve("o", {}, CTX.sessions)).toEqual({ t: "open" });
   });
 
-  it("ports browse / Enter", () => {
-    expect(resolve("", { upArrow: true }, CTX.ports)).toEqual(noop("portsBrowse"));
+  it("ports browse moves; Enter stays the P11 noop", () => {
+    expect(resolve("", { upArrow: true }, CTX.ports)).toEqual({ t: "move", dir: "up" });
+    expect(resolve("", { downArrow: true }, CTX.ports)).toEqual({ t: "move", dir: "down" });
     expect(resolve("", ENTER, CTX.ports)).toEqual(noop("portsActions"));
+  });
+
+  it.each(NORMAL)("PgDn / PgUp page in %s (D-16)", (c) => {
+    expect(resolve("", { pageDown: true }, CTX[c])).toEqual({ t: "page", dir: 1 });
+    expect(resolve("", { pageUp: true }, CTX[c])).toEqual({ t: "page", dir: -1 });
+  });
+
+  it.each<HintContext>([...OVERLAYS, "edit"])("PgUp / PgDn are unbound in %s", (c) => {
+    expect(resolve("", { pageDown: true }, CTX[c])).toBeNull();
+    expect(resolve("", { pageUp: true }, CTX[c])).toBeNull();
   });
 
   it("menu ←/→ and Enter", () => {
@@ -244,10 +264,81 @@ describe("Phase 10–12 rows are noops in Phase 9 (T-09-11a)", () => {
     expect(resolve("", ENTER, CTX.edit)).toEqual(noop("editSave"));
   });
 
-  it("every non-P9 row resolves to a noop carrying its own id", () => {
-    for (const b of KEYMAP.filter((r) => r.built !== 9 && r.id !== "clearSelection")) {
-      expect(b.action(initialUi), b.id).toEqual(noop(b.id));
+  it("every P11/P12 row resolves to a noop carrying its own id", () => {
+    for (const b of KEYMAP.filter((r) => r.built === 11 || r.built === 12)) {
+      expect(b.action(initialUi, "", {}), b.id).toEqual(noop(b.id));
     }
+  });
+
+  it("every P10 row except clearSelection resolves to an intent", () => {
+    const p10 = KEYMAP.filter((r) => r.built === 10 && r.id !== "clearSelection");
+    expect(p10.map((b) => b.id).sort()).toEqual(
+      [
+        "agentsGoto",
+        "agentsMove",
+        "agentsSelect",
+        "page",
+        "phasesBrowse",
+        "phasesProject",
+        "portsBrowse",
+        "sessionsBrowse",
+        "sessionsCopy",
+        "sessionsOpen",
+      ].sort(),
+    );
+    for (const b of p10) {
+      const ctx = CTX[b.contexts[0]!];
+      for (const key of [{ downArrow: true }, { rightArrow: true }, ENTER, { pageDown: true }, {}]) {
+        for (const input of ["", "o"]) {
+          if (!b.match(input, key)) continue;
+          expect(isIntent(b.action(ctx, input, key)), `${b.id}`).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("no footer hint names the page binding (D-16)", () => {
+    for (const c of ALL) {
+      for (const h of FOOTER_HINTS[c]) expect(h.binding, c).not.toBe("page");
+    }
+  });
+});
+
+describe("isIntent", () => {
+  const intents: Intent[] = [
+    { t: "move", dir: "up" },
+    { t: "move", dir: "left" },
+    { t: "page", dir: 1 },
+    { t: "page", dir: -1 },
+    { t: "project", dir: 1 },
+    { t: "goto" },
+    { t: "copy" },
+    { t: "open" },
+  ];
+  const actions: Action[] = [
+    { t: "focusNext" },
+    { t: "focusPrev" },
+    { t: "focusAgents" },
+    { t: "clearSelection" },
+    { t: "select", id: "a" },
+    { t: "closeOverlay" },
+    { t: "toggleRight" },
+    { t: "toggleFiles" },
+    { t: "quit" },
+    { t: "noop", binding: "portsActions" },
+    { t: "setPhaseCursor", n: "1" },
+    { t: "setProject", root: "/r" },
+    { t: "setPortCursor", key: "k" },
+    { t: "flash", text: "x", ok: true, at: 1 },
+    { t: "keyAt", at: 1 },
+  ];
+
+  it.each(intents)("is true for intent %j", (i) => {
+    expect(isIntent(i)).toBe(true);
+  });
+
+  it.each(actions)("is false for reducer action %j", (a) => {
+    expect(isIntent(a)).toBe(false);
   });
 });
 
