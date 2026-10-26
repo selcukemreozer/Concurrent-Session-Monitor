@@ -49,14 +49,16 @@ const DIM = "#85827a";
 const DIM2 = "#5c5a54";
 
 // UI-SPEC primary frame rows 27..34, cut to cells 101..174 and right-trimmed.
+// WR-05 (Phase 10 plan 10-02, D-19): the exposed port is listed first when
+// unfocused, so the red security marker is the last port row to drop.
 const FRAME_PORTS = [
   " PORTS  sample  " + "─".repeat(57),
   "",
+  "  :27036  steam_osx   ⇡ exposed",
   "  :3000   bun",
   "    ↳ checkout screen",
   "  :5173   vite",
   "    ↳ dashboard research",
-  "  :27036  steam_osx   ⇡ exposed",
   "  +5 others",
 ];
 
@@ -87,10 +89,24 @@ function allSegs(scr: Screen): Line {
 }
 
 describe("visiblePortEntries", () => {
-  it("keeps only owned and exposed ports when unfocused", () => {
+  it("WR-05 keeps only owned and exposed ports when unfocused, exposed first", () => {
     const v = visiblePortEntries(SAMPLE.ports, false);
-    expect(v.shown.map((p) => p.port)).toEqual([3000, 5173, 27036]);
+    expect(v.shown.map((p) => p.port)).toEqual([27036, 3000, 5173]);
     expect(v.others).toBe(5);
+  });
+
+  it("WR-05 the unfocused partition is stable: exposed in input order, then owned in input order", () => {
+    const mk = (port: number, owner: string | null, exposed: boolean): PortEntry => ({
+      key: String(port),
+      port,
+      proc: "p",
+      pid: port,
+      owner,
+      exposed,
+    });
+    const ports = [mk(1, "a", false), mk(2, null, true), mk(3, null, false), mk(4, "b", true), mk(5, "c", false)];
+    expect(visiblePortEntries(ports, false).shown.map((p) => p.port)).toEqual([2, 4, 1, 5]);
+    expect(visiblePortEntries(ports, true).shown.map((p) => p.port)).toEqual([1, 2, 3, 4, 5]);
   });
 
   it("keeps every port when focused", () => {
@@ -101,7 +117,7 @@ describe("visiblePortEntries", () => {
 });
 
 describe("drawPortsPane frame fidelity", () => {
-  it("reproduces frame rows 27..34 of the right column", () => {
+  it("WR-05 reproduces frame rows 27..34 of the right column (exposed port first)", () => {
     const { scr, rows } = pane();
     const got: string[] = [];
     for (let y = 27; y <= 34; y++) got.push(text(scr, y, X, 175));
@@ -119,24 +135,24 @@ describe("drawPortsPane frame fidelity", () => {
 });
 
 describe("drawPortsPane colors", () => {
-  it("styles owned ports hi bold with a dim proc", () => {
+  it("WR-05 styles owned ports hi bold with a dim proc (row 30, under the exposed port)", () => {
     const { scr } = pane();
-    expect(cellAt(scr, X + 2, 29)).toMatchObject({ ch: ":", fg: HI, bold: true });
-    expect(cellAt(scr, X + 10, 29)).toMatchObject({ ch: "b", fg: DIM });
+    expect(cellAt(scr, X + 2, 30)).toMatchObject({ ch: ":", fg: HI, bold: true });
+    expect(cellAt(scr, X + 10, 30)).toMatchObject({ ch: "b", fg: DIM });
   });
 
-  it("styles exposed ports red bold (D-06)", () => {
+  it("WR-05 styles exposed ports red bold (D-06; row 29, listed first)", () => {
     const { scr } = pane();
-    expect(cellAt(scr, X + 2, 33)).toMatchObject({ ch: ":", fg: RED, bold: true });
-    expect(cellAt(scr, X + 7, 33)).toMatchObject({ ch: "6", fg: RED, bold: true });
-    expect(cellAt(scr, X + 22, 33)).toMatchObject({ ch: "⇡", fg: RED, bold: true });
-    expect(cellAt(scr, X + 24, 33)).toMatchObject({ ch: "e", fg: RED, bold: true });
+    expect(cellAt(scr, X + 2, 29)).toMatchObject({ ch: ":", fg: RED, bold: true });
+    expect(cellAt(scr, X + 7, 29)).toMatchObject({ ch: "6", fg: RED, bold: true });
+    expect(cellAt(scr, X + 22, 29)).toMatchObject({ ch: "⇡", fg: RED, bold: true });
+    expect(cellAt(scr, X + 24, 29)).toMatchObject({ ch: "e", fg: RED, bold: true });
   });
 
-  it("styles the owner line and the others count", () => {
+  it("WR-05 styles the owner line (row 31) and the others count", () => {
     const { scr } = pane();
-    expect(cellAt(scr, X + 4, 30)).toMatchObject({ ch: "↳", fg: DIM });
-    expect(cellAt(scr, X + 6, 30)).toMatchObject({ ch: "c", fg: DIM });
+    expect(cellAt(scr, X + 4, 31)).toMatchObject({ ch: "↳", fg: DIM });
+    expect(cellAt(scr, X + 6, 31)).toMatchObject({ ch: "c", fg: DIM });
     expect(cellAt(scr, X + 2, 34)).toMatchObject({ ch: "+", fg: DIM2 });
   });
 
@@ -148,6 +164,58 @@ describe("drawPortsPane colors", () => {
         expect(s.bg).not.toBe(MAGENTA);
       }
     }
+  });
+});
+
+describe("drawPortsPane: short unfocused panes never hide ports silently (Phase 10 plan 10-02, WR-05)", () => {
+  /** Port rows drawn, N in ↑/↓ N more, N in +N others, and whether an exposed row is drawn. */
+  function counts(r: { x: number; y: number; w: number; h: number }, focused = false) {
+    const { scr } = pane({ focused, cursorKey: focused ? "3000" : null }, r);
+    const body = paneText(scr, r).slice(1);
+    const drawn = body.filter((l) => /^. :\d+/.test(l)).length;
+    const arrows = body.reduce((n, l) => n + Number(/[↑↓] (\d+) more/.exec(l)?.[1] ?? 0), 0);
+    const others = body.reduce((n, l) => n + Number(/\+(\d+) others/.exec(l)?.[1] ?? 0), 0);
+    const exposed = body.some((l) => /^. :\d+.*⇡ exposed/.test(l));
+    return { body, drawn, arrows, others, exposed };
+  }
+
+  it("WR-05 h=3 (one list row): the row is ↓ 8 more, not a lone port", () => {
+    const r = { x: X, y: 27, w: 74, h: 3 };
+    const c = counts(r);
+    expect(c.body[1]).toBe("  ↓ 8 more");
+    expect(c.drawn).toBe(0);
+  });
+
+  it("WR-05 h=4 (two list rows): the exposed port, then ↓ 7 more (the ↓ row wins over +N others)", () => {
+    const r = { x: X, y: 27, w: 74, h: 4 };
+    const c = counts(r);
+    expect(c.body[1]).toBe("  :27036  steam_osx   ⇡ exposed");
+    expect(c.body[2]).toBe("  ↓ 7 more");
+    expect(c.others).toBe(0);
+  });
+
+  it.each([3, 4, 5, 6, 7, 8, 9, 10])("WR-05 h=%i: drawn + ↑/↓ N + others N = 8, exposed drawn first", (h) => {
+    const r = { x: X, y: 27, w: 74, h };
+    const c = counts(r);
+    expect(c.drawn + c.arrows + c.others, JSON.stringify(c.body)).toBe(8);
+    if (c.drawn > 0) expect(c.exposed).toBe(true);
+  });
+
+  it.each([3, 4, 5, 6])("WR-05 focused h=%i: drawn + ↑/↓ N = 8", (h) => {
+    const r = { x: X, y: 27, w: 74, h };
+    const c = counts(r, true);
+    expect(c.drawn + c.arrows + c.others, JSON.stringify(c.body)).toBe(8);
+  });
+
+  it("WR-05 one owned port and others in a 1-row list: the port row, then nothing hidden silently", () => {
+    const one: PortEntry[] = [
+      { key: "1", port: 1, proc: "p", pid: 1, owner: "o", exposed: false },
+      { key: "2", port: 2, proc: "p", pid: 2, owner: null, exposed: false },
+    ];
+    const r = { x: X, y: 27, w: 74, h: 3 };
+    const { scr } = pane({ ports: one }, r);
+    const body = paneText(scr, r).slice(1);
+    expect(body[1]).toBe("  ↓ 2 more");
   });
 });
 

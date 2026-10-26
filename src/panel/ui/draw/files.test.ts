@@ -232,6 +232,31 @@ describe("drawFilesPane: conflict overflow", () => {
     expect(cellAt(scr, 2, 30)).toMatchObject({ ch: "!", fg: RED, bold: true });
     for (let y = 27; y < 40; y++) expect(text(scr, y)).not.toContain("a2");
   });
+
+  it("WR-05 h=3 (2 conflict rows): row 2 reads +4 more conflicts, so drawn + N = 5", () => {
+    const { scr } = pane({ conflicts: five }, { x: 0, y: 27, w: 96, h: 3 });
+    expect(text(scr, 28)).toContain("! a0 ✕ b0");
+    expect(text(scr, 29)).toBe("▌ ! +4 more conflicts");
+    for (let y = 27; y < 40; y++) expect(text(scr, y)).not.toContain("a1");
+  });
+
+  it("WR-05 h=2 (1 conflict row): the only conflict row reads +5 more conflicts", () => {
+    const { scr } = pane({ conflicts: five }, { x: 0, y: 27, w: 96, h: 2 });
+    expect(text(scr, 28)).toBe("▌ ! +5 more conflicts");
+  });
+
+  it.each([2, 3, 4, 5, 8])("WR-05 h=%i: drawn conflicts + N in +N more conflicts = 5", (h) => {
+    const { scr } = pane({ conflicts: five }, { x: 0, y: 27, w: 96, h });
+    let drawn = 0;
+    let more = 0;
+    for (let y = 28; y < 27 + h; y++) {
+      const t = text(scr, y);
+      const m = /\+(\d+) more conflicts/.exec(t);
+      if (m) more += Number(m[1]);
+      else if (/! a\d ✕ b\d/.test(t)) drawn++;
+    }
+    expect(drawn + more).toBe(5);
+  });
 });
 
 describe("drawFilesPane: no ticker and empty", () => {

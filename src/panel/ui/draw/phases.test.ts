@@ -270,6 +270,35 @@ describe("drawPhases window ends", () => {
   });
 });
 
+describe("drawPhases: the unfocused radius-0 window keeps its indicators (Phase 10 plan 10-02, WR-04)", () => {
+  it("WR-04 h=6 (budget 2): the current phase and the more-phases row", () => {
+    const r = { x: 101, y: 4, w: 74, h: 6 };
+    const { scr } = pane({}, r);
+    const body = paneText(scr, r).slice(4);
+    expect(body[0]).toMatch(/^ {2}◉ {2}33 +ci pipeline monitoring$/);
+    expect(body[1]).toBe("  ⋮  9 more phases");
+  });
+
+  it("WR-04 h=7 (budget 3): earlier row, the current phase, the more-phases row", () => {
+    const r = { x: 101, y: 4, w: 74, h: 7 };
+    const { scr } = pane({}, r);
+    const body = paneText(scr, r).slice(4);
+    expect(body[0]).toBe("  ⋮  2 earlier phases");
+    expect(body[1]).toMatch(/^ {2}◉ {2}33 +ci pipeline monitoring$/);
+    expect(body[2]).toBe("  ⋮  9 more phases");
+  });
+
+  it.each([6, 7, 8, 9, 10, 11, 12])("WR-04 h=%i: hidden phases always come with a ⋮ row", (h) => {
+    const r = { x: 101, y: 4, w: 74, h };
+    const { scr } = pane({}, r);
+    const body = paneText(scr, r).slice(4);
+    const drawn = body.filter((l) => /^ {2}[●◉○] /.test(l)).length;
+    const counted = body.reduce((n, l) => n + Number(/⋮ {2}(\d+) /.exec(l)?.[1] ?? 0), 0);
+    expect(drawn).toBeGreaterThan(0);
+    expect(drawn + counted).toBe(12);
+  });
+});
+
 describe("drawPhases mini-bar scaling", () => {
   it("scales a 30-plan current phase to at most 12 cells", () => {
     const { scr } = pane({ projects: [project(3, 1, [15, 30])], projectIndex: 0 });

@@ -17,8 +17,14 @@
  *     the tab body shows a phase marker (● ◉ ○) or an arrow row.
  *   - WR-07: drawShell with NaN / Infinity / negative sizes terminates within
  *     1 s and returns the too-small screen for the geometry-normalized size.
+ *   - WR-04 (10-02): an unfocused PHASES window's drawn phases plus the
+ *     `⋮ N earlier/more phases` counts equal the project's phase count.
+ *   - WR-05 (10-02): PORTS drawn ports + `↑/↓ N more` + `+N others` equal the
+ *     port count (focused and unfocused), and an unfocused pane that draws any
+ *     port draws the exposed one; FILES conflict rows + `+N more conflicts`
+ *     equal the conflict count.
  *
- * Later plans of Phase 10 append to this file (WR-04, WR-05, widths < 60).
+ * Later plans of Phase 10 append to this file.
  */
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -229,6 +235,99 @@ describe("v2 content: focused PHASES shows a phase marker or arrow row (WR-09)",
         body.some((s) => PHASE_MARKER.test(s)),
         `${name}: body rows ${JSON.stringify(body)}`,
       ).toBe(true);
+    }
+  });
+});
+
+// --- WR-04: an unfocused PHASES window never hides phases without a ⋮ row ---
+
+/** Sum of the N in every `⋮  N earlier phases` / `⋮  N more phases` row. */
+function moreCount(rows: readonly string[]): number {
+  let n = 0;
+  for (const s of rows) {
+    for (const m of s.matchAll(/⋮ {2}(\d+) (?:earlier|more) phases?/g)) n += Number(m[1]);
+  }
+  return n;
+}
+
+describe("v2 content: unfocused PHASES drawn + ⋮ counts = phases (WR-04)", () => {
+  it.each(SIZES)("WR-04 %i rows x %i cols: hidden phases imply a ⋮ row", (rows, cols) => {
+    for (const [name, panes] of FIXTURES) {
+      const total = panes.projects[panes.projectIndex]?.phases.length ?? 0;
+      for (const focus of ["agents", "ports"] as const) {
+        const ui: UiState = { ...initialUi, focus, rightTab: "phases" };
+        const lines = frame(rows, cols, ui, panes);
+        const { right } = regions(lines, rows, cols);
+        const footer = right.length - 1;
+        const tabsY = right.findIndex((s, y) => y >= 2 && /PHASES/.test(s) && /SESSIONS/.test(s));
+        expect(tabsY, `${name}: tabs row`).toBeGreaterThan(0);
+        let portsY = right.findIndex((s, y) => y > tabsY && y < footer && PORTS_TITLE.test(s));
+        if (portsY < 0) portsY = footer;
+        const body = right.slice(tabsY + 1, portsY);
+        const drawn = body.filter((s) => /^\s*[●◉○] /.test(s)).length;
+        const counted = moreCount(body);
+        // only frames whose body reaches the timeline (past the 4 header rows)
+        if (drawn + counted === 0) continue;
+        expect(drawn + counted, `${name}, ${focusName(ui)}: body ${JSON.stringify(body)}`).toBe(total);
+      }
+    }
+  });
+});
+
+// --- WR-05: PORTS (unfocused and focused) and FILES conflicts ----------------
+
+/** SAMPLE with 5 file conflicts (the FILES pane shows at most 3 conflict rows). */
+function conflicts5(): PanesModel {
+  const conflicts = Array.from({ length: 5 }, (_, i) => ({ a: `left ${i}`, b: `right ${i}`, path: `src/c${i}.ts` }));
+  return { ...SAMPLE, conflicts };
+}
+
+const PORT_FIXTURES: ReadonlyArray<readonly [string, PanesModel]> = [...FIXTURES, ["conflicts5", conflicts5()]];
+
+describe("v2 content: PORTS drawn + ↑/↓ N + others N = ports, exposed last to drop (WR-05)", () => {
+  it.each(SIZES)("WR-05 %i rows x %i cols: no PORTS frame hides a port silently", (rows, cols) => {
+    for (const [name, panes] of PORT_FIXTURES) {
+      const hasExposed = panes.ports.some((p) => p.exposed);
+      for (const focus of FOCUS_ORDER) {
+        const ui: UiState = { ...initialUi, focus, rightTab: "phases" };
+        const lines = frame(rows, cols, ui, panes);
+        const { right } = regions(lines, rows, cols);
+        const footer = right.length - 1;
+        const portsY = right.findIndex((s, y) => y >= 2 && y < footer && PORTS_TITLE.test(s));
+        if (portsY < 0) continue;
+        const region = right.slice(portsY + 1, footer);
+        // a PORTS pane with no row below its title (h < 3) has nothing to count
+        if (region.every((s) => s.trim() === "")) continue;
+        const drawn = region.filter((s) => /(^|\s):\d+/.test(s)).length;
+        const others = region.reduce((n, s) => n + Number(/\+(\d+) others/.exec(s)?.[1] ?? 0), 0);
+        const msg = `${name}, ${focusName(ui)}: ${JSON.stringify(region)}`;
+        expect(drawn + arrowCount(region) + others, msg).toBe(panes.ports.length);
+        if (focus !== "ports" && drawn > 0 && hasExposed) {
+          expect(region.some((s) => /:\d+.*⇡ exposed/.test(s)), msg).toBe(true);
+        }
+      }
+    }
+  });
+});
+
+describe("v2 content: FILES drawn conflicts + N = conflicts (WR-05)", () => {
+  const panes = conflicts5();
+  it.each(SIZES)("WR-05 %i rows x %i cols: conflict rows + the +N more conflicts N = 5", (rows, cols) => {
+    for (const focus of FOCUS_ORDER) {
+      const ui: UiState = { ...initialUi, focus, rightTab: "phases" };
+      const lines = frame(rows, cols, ui, panes);
+      const { left } = regions(lines, rows, cols);
+      const filesY = left.findIndex((s, y) => y > 2 && FILES_TITLE.test(s));
+      if (filesY < 0) continue;
+      let drawn = 0;
+      let more = 0;
+      for (let y = filesY + 1; y < left.length && /^▌ ! /.test(left[y]!); y++) {
+        const m = /\+(\d+) more conflicts/.exec(left[y]!);
+        if (m) more += Number(m[1]);
+        else drawn++;
+      }
+      if (drawn + more === 0) continue;
+      expect(drawn + more, `${focusName(ui)}: drawn ${drawn}, more ${more}`).toBe(5);
     }
   });
 });
