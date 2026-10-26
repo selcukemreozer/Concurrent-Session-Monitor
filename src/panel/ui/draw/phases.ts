@@ -27,6 +27,9 @@ import { windowSlice } from "../viewport.js";
  *     short rect the window narrows to +-1, then to the current phase alone.
  *   - Focused: the full list with the cursor (hi bold, x0; default: the current
  *     phase), windowed with `windowSlice` and `^ N more` / `v N more` (dim, x2).
+ *     A focused rect too short for the 4 header rows + 2 timeline rows (h < 6)
+ *     keeps only the project-name row and starts the timeline on row +1, so a
+ *     focused pane always shows phase rows (Phase 10 plan 10-01, WR-09).
  *
  * Every project, dir, number and name goes through `plainText` (T-09-01d) and
  * every piece is clipped to the rect, so nothing paints outside `r`.
@@ -94,12 +97,18 @@ export function drawPhases(scr: Screen, r: Rect, m: PhasesModel): number {
   const phases: readonly PhaseEntry[] = p.phases;
   const total = phases.length;
 
+  // WR-09: a short focused rect drops the dir, bar and blank rows for the timeline.
+  const compact = m.focused && total > 0 && r.h < HEADER_ROWS + 2;
+  const head = compact ? 1 : HEADER_ROWS;
+
   // Row +0: the project name and the project hint.
   const hint = m.focused && m.projects.length > 1;
   put(1, r.y, plainText(p.name, hint ? r.w - 7 : r.w - 1), HI_BOLD);
   if (hint) put(r.w - 5, r.y, `${V2.left} ${V2.right}`, DIM);
   // Row +1: dir . project i/N.
-  put(1, r.y + 1, plainText(`${oneLine(p.dir)}${SEP}project ${pi + 1}/${m.projects.length}`, r.w - 1), DIM);
+  if (!compact) {
+    put(1, r.y + 1, plainText(`${oneLine(p.dir)}${SEP}project ${pi + 1}/${m.projects.length}`, r.w - 1), DIM);
+  }
 
   if (total === 0) {
     put(1, r.y + 2, plainText("no roadmap", r.w - 1), DIM);
@@ -108,13 +117,13 @@ export function drawPhases(scr: Screen, r: Rect, m: PhasesModel): number {
 
   // Row +2: the progress bar.
   const done = phases.filter((ph) => ph.status === "done").length;
-  const bw = r.w - 10;
+  const bw = compact ? 0 : r.w - 10;
   if (bw >= 1) {
     const f = Math.min(bw, Math.max(0, Math.round((done / total) * bw)));
     put(1, r.y + 2, V2.heavyH.repeat(f), { fg: PALETTE.running });
     put(1 + f, r.y + 2, V2.heavyH.repeat(bw - f), { fg: PALETTE.edge });
   }
-  put(r.w - 7, r.y + 2, `${done}/${total}`, DIM);
+  if (!compact) put(r.w - 7, r.y + 2, `${done}/${total}`, DIM);
 
   const curIdx = phases.findIndex((ph) => ph.status === "current");
   const center = curIdx >= 0 ? curIdx : Math.min(done, total - 1);
@@ -166,7 +175,7 @@ export function drawPhases(scr: Screen, r: Rect, m: PhasesModel): number {
     (y) =>
       put(2, y, `${arrow} ${n} more`, DIM);
 
-  const budget = Math.max(0, r.h - HEADER_ROWS);
+  const budget = Math.max(0, r.h - head);
   let rows: Row[] = [];
 
   if (!m.focused) {
@@ -196,7 +205,7 @@ export function drawPhases(scr: Screen, r: Rect, m: PhasesModel): number {
   }
 
   rows = rows.slice(0, budget);
-  let y = r.y + HEADER_ROWS;
+  let y = r.y + head;
   for (const row of rows) row(y++);
   return Math.min(r.h, rows.length > 0 ? y - r.y : 3);
 }

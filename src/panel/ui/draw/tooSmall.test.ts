@@ -68,3 +68,32 @@ describe("drawTooSmall clipping", () => {
     expect(lineText(drawTooSmall(100, 15, SAMPLE_HEADER)[3]!)).toBe(" now 100×15 · needs 60×16");
   });
 });
+
+describe("drawTooSmall with non-finite sizes (Phase 10 plan 10-01, WR-07)", () => {
+  it("returns no lines for NaN and terminates", () => {
+    expect(drawTooSmall(Number.NaN, Number.NaN, SAMPLE_HEADER)).toEqual([]);
+  });
+
+  it.each([
+    [Number.POSITIVE_INFINITY, 10],
+    [10, Number.POSITIVE_INFINITY],
+    [Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY],
+    [-3, 10],
+  ])("WR-07 %s x %s counts as 0 and builds a bounded screen", (cols, rows) => {
+    const n = (v: number): number => (Number.isFinite(v) ? Math.max(0, Math.trunc(v)) : 0);
+    const lines = drawTooSmall(cols, rows, SAMPLE_HEADER);
+    expect(lines.length).toBe(Math.min(n(rows), 5));
+    for (const l of lines) expect(lineWidth(l)).toBeLessThanOrEqual(n(cols));
+  });
+
+  it("WR-07 NaN rows with a real width: no lines; NaN cols with real rows: empty lines", () => {
+    expect(drawTooSmall(80, Number.NaN, SAMPLE_HEADER)).toEqual([]);
+    const lines = drawTooSmall(Number.NaN, 3, SAMPLE_HEADER);
+    expect(lines).toHaveLength(3);
+    for (const l of lines) expect(lineWidth(l)).toBe(0);
+  });
+
+  it("truncates fractional sizes", () => {
+    expect(lineText(drawTooSmall(52.9, 14.2, SAMPLE_HEADER)[3]!)).toBe(" now 52×14 · needs 60×16");
+  });
+});

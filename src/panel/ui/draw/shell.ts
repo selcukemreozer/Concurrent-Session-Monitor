@@ -9,7 +9,7 @@ import type { Flash, HeaderModel, PanesModel, Rect } from "../models.js";
 import { drawHeader } from "./header.js";
 import { drawAgentsPane } from "./agents.js";
 import { drawFilesPane } from "./files.js";
-import { drawRightColumn, FOCUSED_PORTS_FLOOR, FOCUSED_TAB_FLOOR } from "./right.js";
+import { drawRightColumn, focusedFloor } from "./right.js";
 import { drawFooter } from "./footer.js";
 import { drawTooSmall } from "./tooSmall.js";
 
@@ -22,7 +22,9 @@ import { drawTooSmall } from "./tooSmall.js";
  *     SESSIONS tabs + PORTS in the right column, with an edge-colored divider
  *     at `divX` on rows 2..end. The PORTS title lines up with the FILES title
  *     row (`portsMinY = filesY`).
- *   - D-27: below 60x16 the too-small screen is returned instead.
+ *   - D-27: below 60x16 the too-small screen is returned instead, drawn at
+ *     the geometry-normalized size (a NaN, Infinity or negative size is 0),
+ *     so a bad size can never build an unbounded Screen (WR-07).
  *   - RESEARCH Open Question 2 (Claude's discretion, recorded in 09-09): every
  *     width from 60 to 164 is drawn as the S1 full-width stack AGENTS -> FILES
  *     -> PHASES|SESSIONS -> PORTS. S2's side-by-side bottom band is Phase 10
@@ -36,12 +38,17 @@ import { drawTooSmall } from "./tooSmall.js";
  * never stretches to fill a tall window. Heights are handed out by
  * `allocate()` over `rows - 4` before anything is drawn, from the panes'
  * natural heights (measured by drawing into a scratch Screen):
- *   - split:   minimums FILES (title + conflict rows + up to 3 ticker rows),
- *              AGENTS (title + 1 card row = 8), then the spacer after the grid;
- *              growth: that spacer, AGENTS (whole card rows of 8), FILES (to
- *              6 ticker rows). The spacer grows before the grid so a clipped
- *              grid always gets its `down N more` row (8k + 1) and no rows are
- *              wasted on a card row that cannot be drawn.
+ * Whenever the grid overflows one card row, its minimum is title + one card
+ * row + the `↓ N more` row (`8 + 1`), so a clipped grid always says how many
+ * cards and strips it hides (D-19, WR-01).
+ *   - split:   minimums FILES title + conflict rows, AGENTS (that minimum),
+ *              the FILES ticker (up to 3), then the spacer after the grid;
+ *              growth: that spacer, AGENTS (whole card rows of 8), the FILES
+ *              ticker (to 6). The grid's card row is served before the ticker,
+ *              so a 16-row split frame shows a card (UI-SPEC shrink order:
+ *              the ticker shrinks before the grid; WR-02). The spacer grows
+ *              before the grid so no rows are wasted on a card row that
+ *              cannot be drawn.
  *   - stacked: minimums AGENTS, FILES title + conflict rows, FILES ticker (up
  *              to 3), the right column's collapsed minimum (tabs, a 3-row body,
  *              the PORTS title); growth: grid spacer, AGENTS, FILES ticker,
@@ -49,18 +56,15 @@ import { drawTooSmall } from "./tooSmall.js";
  *              right column or PORTS, the right column's expanded minimum
  *              (tabs + 4 body rows + PORTS title + 2 rows) moves ahead of the
  *              FILES ticker and the right column grows first, so a collapsed
- *              bottom pane that gets focus expands (UI-SPEC: it takes rows
- *              from the FILES ticker, down to 0, and the grid, down to 1 card
- *              row). At 80x24 that is exactly the 10-row expanded minimum.
- *              When even one card row would leave the focused pane below its
- *              floor (title + one body row: FOCUSED_TAB_FLOOR for
- *              PHASES/SESSIONS, FOCUSED_PORTS_FLOOR for PORTS), the unfocused
+ *              bottom pane that gets focus expands: it takes rows from the
+ *              FILES ticker (down to 0) and from the grid. When even one card
+ *              row would leave the focused pane below its floor
+ *              (`focusedFloor()`: title + one body row; for PHASES title +
+ *              the 4 header rows + one timeline row, WR-09), the unfocused
  *              AGENTS pane collapses to AGENTS_COLLAPSED rows (title + ↓ N
  *              more) instead, so the focused pane always draws its inverse
- *              title and one body row (UI-SPEC Focus model; D-13; 09-16 closes
- *              09-VERIFICATION SC2 / WR-03). FILES title and conflict rows
- *              never yield (LAYOUT-03). At the 60x16 floor this always fits:
- *              12 - 2 - 4 = 6 >= FOCUSED_PORTS_FLOOR.
+ *              title and real content (UI-SPEC § Shrink order, IN-05; D-13;
+ *              09-16). FILES title and conflict rows never yield (LAYOUT-03).
  *
  * Every pane clips to the rect it is given (09-09 rect clip), so nothing is
  * drawn outside its rect, every line is at most `cols` cells and at most
@@ -152,6 +156,35 @@ function rightModel(input: ShellInput, portsMinY: number): Parameters<typeof dra
   };
 }
 
+/**
+ * The grid's minimum (D-19, WR-01): title + one card row + the `↓ N more` row
+ * whenever the grid overflows one card row, else its whole natural height.
+ */
+function cardMinOf(m: Measured): number {
+  return m.agents > CARD_PITCH_Y ? CARD_PITCH_Y + 1 : m.agents;
+}
+
+/**
+ * The grid and its trailing spacer as allocate() demands. An overflowing grid
+ * (natural height 8K) grows on the 8k + 1 lattice from CARD_PITCH_Y + 1: k
+ * card rows + the `↓ N more` row, or at k = K the whole grid + its spacer
+ * (8K + 1). The spacer is then part of the grid demand, so the full grid is
+ * still reachable (the approved 175x55 frame). A grid of one card row or less
+ * keeps its natural height and a separate 0-1 spacer, as in Phase 9.
+ */
+function gridDemands(m: Measured): [Demand, Demand] {
+  if (m.agents > CARD_PITCH_Y) {
+    return [
+      { id: "agents", min: CARD_PITCH_Y + 1, max: m.agents + 1, step: CARD_PITCH_Y },
+      { id: "agentsSpacer", min: 0, max: 0 },
+    ];
+  }
+  return [
+    { id: "agents", min: m.agents, max: m.agents },
+    { id: "agentsSpacer", min: 0, max: 1 },
+  ];
+}
+
 /** Natural AGENTS / FILES heights, measured by drawing into scratch Screens. */
 function measureLeft(input: ShellInput, w: number, cardCols: number): Measured {
   const p = input.panes;
@@ -186,7 +219,7 @@ function drawLeft(
 
 export function drawShell(input: ShellInput): Line[] {
   const g = geometry(input.cols, input.rows);
-  if (g.mode === "small") return drawTooSmall(input.cols, input.rows, input.header);
+  if (g.mode === "small") return drawTooSmall(g.cols, g.rows, input.header);
 
   const cols = g.cols;
   const rows = g.rows;
@@ -200,13 +233,15 @@ export function drawShell(input: ShellInput): Line[] {
 
   if (g.split && g.divX !== null) {
     const m = measureLeft(input, g.LW, g.cardCols);
-    const filesMin = m.filesHard + Math.min(TICKER_MIN, m.filesTicker);
+    // WR-02: FILES title + conflicts, then the grid's card row, then the ticker
+    const [grid, gridSpacer] = gridDemands(m);
     const demands: Demand[] = [
-      { id: "files", min: filesMin, max: m.filesHard + m.filesTicker },
-      { id: "agents", min: Math.min(CARD_PITCH_Y, m.agents), max: m.agents, step: CARD_PITCH_Y },
-      { id: "agentsSpacer", min: 0, max: 1 },
+      { id: "filesHard", min: m.filesHard, max: m.filesHard },
+      grid,
+      { id: "ticker", min: Math.min(TICKER_MIN, m.filesTicker), max: m.filesTicker },
+      gridSpacer,
     ];
-    const b = allocate(total, demands, ["agentsSpacer", "agents", "files"]);
+    const b = allocate(total, demands, ["agentsSpacer", "agents", "ticker"]);
     const left = drawLeft(
       scr,
       input,
@@ -214,7 +249,7 @@ export function drawShell(input: ShellInput): Line[] {
       g.LW,
       g.cardCols,
       (b.agents ?? 0) + (b.agentsSpacer ?? 0),
-      b.files ?? 0,
+      (b.filesHard ?? 0) + (b.ticker ?? 0),
       bottom,
     );
     const right = drawRightColumn(scr, { x: g.RX, y: BODY_Y, w: g.RW, h: total }, rightModel(input, left.filesY));
@@ -226,18 +261,17 @@ export function drawShell(input: ShellInput): Line[] {
     const rNat = drawRightColumn(new Screen(cols, rh), { x: 0, y: 0, w: cols, h: rh }, rightModel(input, 0)).end + 1;
     const rightFocused = input.ui.focus === "right" || input.ui.focus === "ports";
     // 09-16: the grid keeps its one card row unless that would leave the focused pane below its floor
-    const cardMin = Math.min(CARD_PITCH_Y, m.agents);
-    const focusFloor = Math.min(input.ui.focus === "ports" ? FOCUSED_PORTS_FLOOR : FOCUSED_TAB_FLOOR, rNat);
+    const cardMin = cardMinOf(m);
+    const focusFloor = Math.min(focusedFloor(rightModel(input, 0)), rNat);
     const gridYields = rightFocused && total - cardMin - m.filesHard < focusFloor;
     const collapsed = Math.min(AGENTS_COLLAPSED, m.agents);
-    const agents: Demand = gridYields
-      ? { id: "agents", min: collapsed, max: collapsed }
-      : { id: "agents", min: cardMin, max: m.agents, step: CARD_PITCH_Y };
+    const [grid, gridSpacer] = gridDemands(m);
+    const agents: Demand = gridYields ? { id: "agents", min: collapsed, max: collapsed } : grid;
     const filesHard: Demand = { id: "filesHard", min: m.filesHard, max: m.filesHard };
     const ticker: Demand = { id: "ticker", min: Math.min(TICKER_MIN, m.filesTicker), max: m.filesTicker };
     const right: Demand = { id: "right", min: Math.min(rightFocused ? RIGHT_FOCUS_MIN : RIGHT_MIN, rNat), max: rNat };
     const spacers: Demand[] = [
-      { id: "agentsSpacer", min: 0, max: 1 },
+      gridYields ? { id: "agentsSpacer", min: 0, max: 1 } : gridSpacer,
       { id: "rightSpacer", min: 0, max: 1 },
     ];
     const demands = rightFocused

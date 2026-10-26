@@ -74,14 +74,16 @@ function portRowsNeeded(ports: readonly PortEntry[], focused: boolean): number {
 
 /**
  * The rows a focused right-column pane needs before it shows real content
- * (D-13 floor; WR-09). PORTS: FOCUSED_PORTS_FLOOR. PHASES on a project with
- * phases: tabs, spacer, the 4 header rows, one timeline row, the spacer above
- * PORTS, and one more for the `↓ N more` row when there is more than one
- * phase. Anything else (SESSIONS, a project with no phases, no projects):
+ * (D-13 floor; WR-08, WR-09). PORTS: FOCUSED_PORTS_FLOOR, and one more for
+ * the `↓ N more` row when the port list needs more than one row (a 1-row list
+ * would show one port and no indicator). PHASES on a project with phases:
+ * tabs, spacer, the 4 header rows, one timeline row, the spacer above PORTS,
+ * and one more for the `↓ N more` row when there is more than one phase.
+ * Anything else (SESSIONS, a project with no phases, no projects):
  * FOCUSED_TAB_FLOOR. The shell uses it to decide when the grid yields.
  */
 export function focusedFloor(m: RightColumnModel): number {
-  if (m.ui.focus === "ports") return FOCUSED_PORTS_FLOOR;
+  if (m.ui.focus === "ports") return FOCUSED_PORTS_FLOOR + (portRowsNeeded(m.ports, true) > 1 ? 1 : 0);
   if (m.ui.focus === "right" && m.ui.rightTab === "phases" && m.projects.length > 0) {
     const pi = Math.min(Math.max(0, Math.trunc(m.projectIndex) || 0), m.projects.length - 1);
     const n = m.projects[pi]?.phases.length ?? 0;

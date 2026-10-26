@@ -17,11 +17,15 @@ import { drawHeader } from "./header.js";
  *
  * Each text starts at x1 and is cut with `…` to cols-1 cells; rows past `rows`
  * are dropped. Phase 9 renders it so the size invariants (lines <= rows, every
- * line width <= cols) hold at every terminal size.
+ * line width <= cols) hold at every terminal size. A non-finite or negative
+ * size counts as 0 (the same guard as `geometry()`), so the Screen is always
+ * bounded (Phase 10 plan 10-01, WR-07).
  */
 export function drawTooSmall(cols: number, rows: number, h: HeaderModel): Line[] {
-  const c = Math.max(0, Math.floor(cols));
-  const r = Math.max(0, Math.floor(rows));
+  // The geometry() guard (WR-07): NaN, Infinity and negative sizes are 0, so
+  // the Screen below is always bounded.
+  const c = Number.isFinite(cols) ? Math.max(0, Math.trunc(cols)) : 0;
+  const r = Number.isFinite(rows) ? Math.max(0, Math.trunc(rows)) : 0;
   const scr = new Screen(c, r);
   drawHeader(scr, c, h);
   const cells = c - 1;

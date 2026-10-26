@@ -332,8 +332,13 @@ describe("drawRightColumn: a focused PHASES pane shows a timeline row (WR-09)", 
 });
 
 describe("focusedFloor (WR-09 content-aware floor)", () => {
-  it("PORTS focused: FOCUSED_PORTS_FLOOR", () => {
-    expect(focusedFloor(model({ focus: "ports" }))).toBe(FOCUSED_PORTS_FLOOR);
+  it("WR-08 PORTS focused: FOCUSED_PORTS_FLOOR + the ↓ row when the list needs more than one row", () => {
+    expect(focusedFloor(model({ focus: "ports" }))).toBe(FOCUSED_PORTS_FLOOR + 1);
+    const one = [SAMPLE.ports[3]!];
+    expect(focusedFloor(model({ focus: "ports" }, { ports: one }))).toBe(FOCUSED_PORTS_FLOOR);
+    expect(focusedFloor(model({ focus: "ports" }, { ports: [] }))).toBe(FOCUSED_PORTS_FLOOR);
+    // one owned port needs 2 rows: the floor keeps a row for it
+    expect(focusedFloor(model({ focus: "ports" }, { ports: [SAMPLE.ports[0]!] }))).toBe(FOCUSED_PORTS_FLOOR + 1);
   });
 
   it("SESSIONS focused: FOCUSED_TAB_FLOOR", () => {

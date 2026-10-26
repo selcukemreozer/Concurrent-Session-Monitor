@@ -321,3 +321,34 @@ describe("drawPhases width and sanitize", () => {
     }
   });
 });
+
+describe("drawPhases: a short focused rect keeps phase rows (Phase 10 plan 10-01, WR-09)", () => {
+  it.each([2, 3, 4, 5])("WR-09 focused h=%i: the project name, then timeline rows with the current phase", (h) => {
+    const r = { x: 101, y: 4, w: 74, h };
+    const { scr, rows } = pane({ focused: true, cursor: null }, r);
+    const all = paneText(scr, r);
+    expect(rows).toBeLessThanOrEqual(h);
+    expect(all[0]).toMatch(/^ Scale & Insights v2\.1 +← →$/);
+    // no dir row, no progress bar
+    expect(all.some((l) => l.includes("project 2/2") || l.includes("━━━━━━━━━━"))).toBe(false);
+    const body = all.slice(1);
+    expect(body.some((l) => /[●◉○]|[↑↓] \d+ more/.test(l))).toBe(true);
+    expect(body.some((l) => l.includes("ci pipeline monitoring"))).toBe(true);
+    for (let y = r.y + h; y < 40; y++) expect(text(scr, y)).toBe("");
+  });
+
+  it("WR-09 focused h=6 keeps the full 4-row header and a timeline row + ↓", () => {
+    const r = { x: 101, y: 4, w: 74, h: 6 };
+    const { scr } = pane({ focused: true, cursor: null }, r);
+    const all = paneText(scr, r);
+    expect(all[1]).toBe(" mvp-dash · project 2/2");
+    expect(all[2]).toContain("2/12");
+    expect(all.slice(4).some((l) => /[●◉○]|[↑↓] \d+ more/.test(l))).toBe(true);
+  });
+
+  it("an unfocused short rect keeps the 4-row header (no compact mode)", () => {
+    const r = { x: 101, y: 4, w: 74, h: 4 };
+    const { scr } = pane({ focused: false }, r);
+    expect(paneText(scr, r)[1]).toBe(" mvp-dash · project 2/2");
+  });
+});

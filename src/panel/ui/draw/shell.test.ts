@@ -234,17 +234,19 @@ describe("drawShell: breakpoints (D-27)", () => {
     };
   };
 
-  it("expands the focused bottom pane at 80x24 (rows from the ticker and the grid)", () => {
+  it("expands the focused bottom pane at 80x24 (rows from the ticker and the grid; WR-01 ↓ row)", () => {
     const rest = measure(24, "agents");
     const foc = measure(24, "right");
-    // the 10-row expanded minimum: tabs + spacer + 4 body rows + spacer + PORTS 3
-    expect(foc.right).toBeGreaterThanOrEqual(10);
+    // WR-01: the grid now reserves its ↓ N more row, which takes one row from
+    // the 10-row expanded minimum; 9 is the PHASES focusedFloor (WR-09)
+    expect(foc.right).toBeGreaterThanOrEqual(9);
     expect(foc.right).toBeGreaterThan(rest.right);
     // taken from the FILES ticker (down to 0: title + conflict row only) ...
     expect(foc.tabs - foc.files).toBe(2);
     expect(rest.tabs - rest.files).toBeGreaterThan(2);
-    // ... while the grid keeps its one card row
+    // ... while the grid keeps its one card row and says what it hides
     expect(foc.t[9]).toContain("└");
+    expect(foc.t[10]).toContain("↓ 7 more");
     expect(foc.t.some((s) => s.includes("▐PHASES▌"))).toBe(true);
     for (const m of [rest, foc]) {
       expect(m.n).toBeLessThanOrEqual(24);
@@ -322,12 +324,77 @@ describe("drawShell: a focused bottom pane always shows (09-16, KEYS-01)", () =>
     expect(t[3]).toContain("↓ 8 more");
   });
 
-  it.each([20, 21, 22])("80x%i with PORTS focused: the card row and FILES do not yield, PORTS shows its cursor row", (rows) => {
+  // WR-01 / WR-08: 20 and 21 rows left this list. The grid's ↓ row (WR-01) and
+  // the PORTS ↓ row in focusedFloor (WR-08) no longer fit beside a card row
+  // there, so the grid collapses (see the WR-01 / WR-08 case below).
+  it.each([22, 23, 24])("80x%i with PORTS focused: the card row and FILES do not yield, PORTS shows its cursor row", (rows) => {
     const foc = texts(drawShell(input({ cols: 80, rows, ui: ui({ focus: "ports" }) })));
     const rest = texts(drawShell(input({ cols: 80, rows, ui: ui({ focus: "agents" }) })));
     expect(foc.slice(3, 12)).toEqual(rest.slice(3, 12));
     const p = rowOf(foc, (s) => s.includes("▐PORTS▌"));
     expect(p).toBeGreaterThan(11);
     expect(foc.slice(p + 1).some((s) => s.includes("❯ :3000"))).toBe(true);
+  });
+});
+
+// --- Phase 10 plan 10-01 (D-19): WR-01, WR-02, WR-07 ------------------------
+
+describe("drawShell: a clipped grid always says what it hides (WR-01)", () => {
+  it("WR-01 80x24 default focus: one card row and ↓ 7 more above FILES", () => {
+    const t = texts(drawShell(input({ cols: 80, rows: 24 })));
+    expect(t[3]).toContain("▄".repeat(47));
+    expect(t[9]).toContain("└");
+    expect(t[10]).toBe("  ↓ 7 more");
+    expect((t[11] as string).startsWith(" FILES ")).toBe(true);
+  });
+
+  it.each([20, 21])("WR-01 / WR-08 80x%i with PORTS focused: the grid collapses to ↓ 8 more and PORTS gets its ↓ row", (rows) => {
+    const t = texts(drawShell(input({ cols: 80, rows, ui: ui({ focus: "ports" }) })));
+    expect(t[3]).toBe("  ↓ 8 more");
+    const p = rowOf(t, (s) => s.includes("▐PORTS▌"));
+    const list = t.slice(p + 1, t.length - 1);
+    expect(list.some((s) => s.includes("❯ :3000"))).toBe(true);
+    expect(list.some((s) => /↓ \d+ more/.test(s))).toBe(true);
+  });
+
+  it("WR-01 175x55 keeps the approved grid: all 5 cards and 3 strips, no ↓ row", () => {
+    const t = texts(drawShell(input()));
+    // the left column (LW 96) only: the right column has its own "7 more phases" row
+    expect(t.slice(2, 27).some((s) => cut(s, 0, 96).includes("more"))).toBe(false);
+  });
+});
+
+describe("drawShell: split frames serve a card row before the FILES ticker (WR-02)", () => {
+  it.each([165, 175, 214])("WR-02 %ix16: a card row, its ↓ row, FILES title + conflict + a ticker row", (cols) => {
+    const t = texts(drawShell(input({ cols, rows: 16 })));
+    expect(cut(t[3] as string, 0, 47)).toBe("▄".repeat(47));
+    expect(cut(t[10] as string, 0, 12)).toMatch(/^ {2}↓ \d+ more/);
+    expect((t[11] as string).startsWith(" FILES ")).toBe(true);
+    expect(t[12]).toContain("src/server.js");
+    expect(cut(t[13] as string, 0, 30).trim()).not.toBe("");
+    expect(t.length).toBeLessThanOrEqual(16);
+  });
+});
+
+describe("drawShell: non-finite sizes (WR-07)", () => {
+  it.each([
+    [Number.NaN, 80],
+    [24, Number.NaN],
+    [Number.POSITIVE_INFINITY, 80],
+    [24, Number.POSITIVE_INFINITY],
+    [-5, 80],
+    [24, -1],
+  ])("WR-07 rows %s x cols %s: the too-small screen at the normalized size", (rows, cols) => {
+    const n = (v: number): number => (Number.isFinite(v) ? Math.max(0, Math.trunc(v)) : 0);
+    const lines = drawShell(input({ rows, cols }));
+    expect(lines).toEqual(drawTooSmall(n(cols), n(rows), SAMPLE_HEADER));
+    expect(lines.length).toBeLessThanOrEqual(n(rows));
+    for (const l of lines) expect(lineWidth(l)).toBeLessThanOrEqual(n(cols));
+  });
+
+  it("WR-07 a fractional size truncates and keeps the header on line 0", () => {
+    const lines = drawShell(input({ rows: 15.9, cols: 80.5 }));
+    expect(lineText(lines[0] as Line)).toContain("◆ CSM");
+    expect(lineText(lines[3] as Line)).toBe(" now 80×15 · needs 60×16");
   });
 });

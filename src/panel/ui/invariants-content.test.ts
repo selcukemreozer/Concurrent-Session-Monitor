@@ -68,7 +68,9 @@ const FIXTURES: ReadonlyArray<readonly [string, PanesModel]> = [
   ["many", many()],
 ];
 
-const ROWS = [16, 17, 18, 20, 22, 24, 30];
+// 19, 21 and 23 added by 10-01: 80x21 with PORTS focused sat exactly on the
+// old PORTS floor (one port row, no indicator).
+const ROWS = [16, 17, 18, 19, 20, 21, 22, 23, 24, 30];
 const COLS = [60, 80, 96, 99, 100, 120, 164, 165, 175, 213, 214, 284];
 const SPLIT_COLS = [165, 175, 213, 214, 284];
 /** [rows, cols] */
