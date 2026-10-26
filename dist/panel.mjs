@@ -9309,11 +9309,11 @@ var require_react_reconciler_production = __commonJS({
       }
       var exports2 = {};
       "use strict";
-      var React21 = require_react(), Scheduler = require_scheduler(), assign = Object.assign, REACT_LEGACY_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.element"), REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = /* @__PURE__ */ Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = /* @__PURE__ */ Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = /* @__PURE__ */ Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = /* @__PURE__ */ Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = /* @__PURE__ */ Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = /* @__PURE__ */ Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = /* @__PURE__ */ Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = /* @__PURE__ */ Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = /* @__PURE__ */ Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = /* @__PURE__ */ Symbol.for("react.memo"), REACT_LAZY_TYPE = /* @__PURE__ */ Symbol.for("react.lazy");
+      var React22 = require_react(), Scheduler = require_scheduler(), assign = Object.assign, REACT_LEGACY_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.element"), REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = /* @__PURE__ */ Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = /* @__PURE__ */ Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = /* @__PURE__ */ Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = /* @__PURE__ */ Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = /* @__PURE__ */ Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = /* @__PURE__ */ Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = /* @__PURE__ */ Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = /* @__PURE__ */ Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = /* @__PURE__ */ Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = /* @__PURE__ */ Symbol.for("react.memo"), REACT_LAZY_TYPE = /* @__PURE__ */ Symbol.for("react.lazy");
       /* @__PURE__ */ Symbol.for("react.scope");
       var REACT_ACTIVITY_TYPE = /* @__PURE__ */ Symbol.for("react.activity"), REACT_LEGACY_HIDDEN_TYPE = /* @__PURE__ */ Symbol.for("react.legacy_hidden");
       /* @__PURE__ */ Symbol.for("react.tracing_marker");
-      var REACT_MEMO_CACHE_SENTINEL = /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel"), REACT_VIEW_TRANSITION_TYPE = /* @__PURE__ */ Symbol.for("react.view_transition"), REACT_RECOVERABLE_TYPE = /* @__PURE__ */ Symbol.for("react.recoverable"), MAYBE_ITERATOR_SYMBOL = Symbol.iterator, REACT_OPTIMISTIC_KEY = /* @__PURE__ */ Symbol.for("react.optimistic_key"), REACT_CLIENT_REFERENCE = /* @__PURE__ */ Symbol.for("react.client.reference"), isArrayImpl = Array.isArray, ReactSharedInternals = React21.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, rendererVersion = $$$config.rendererVersion, rendererPackageName = $$$config.rendererPackageName, extraDevToolsConfig = $$$config.extraDevToolsConfig, getPublicInstance = $$$config.getPublicInstance, getRootHostContext = $$$config.getRootHostContext, getChildHostContext = $$$config.getChildHostContext, prepareForCommit = $$$config.prepareForCommit, resetAfterCommit = $$$config.resetAfterCommit, createInstance = $$$config.createInstance;
+      var REACT_MEMO_CACHE_SENTINEL = /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel"), REACT_VIEW_TRANSITION_TYPE = /* @__PURE__ */ Symbol.for("react.view_transition"), REACT_RECOVERABLE_TYPE = /* @__PURE__ */ Symbol.for("react.recoverable"), MAYBE_ITERATOR_SYMBOL = Symbol.iterator, REACT_OPTIMISTIC_KEY = /* @__PURE__ */ Symbol.for("react.optimistic_key"), REACT_CLIENT_REFERENCE = /* @__PURE__ */ Symbol.for("react.client.reference"), isArrayImpl = Array.isArray, ReactSharedInternals = React22.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, rendererVersion = $$$config.rendererVersion, rendererPackageName = $$$config.rendererPackageName, extraDevToolsConfig = $$$config.extraDevToolsConfig, getPublicInstance = $$$config.getPublicInstance, getRootHostContext = $$$config.getRootHostContext, getChildHostContext = $$$config.getChildHostContext, prepareForCommit = $$$config.prepareForCommit, resetAfterCommit = $$$config.resetAfterCommit, createInstance = $$$config.createInstance;
       $$$config.cloneMutableInstance;
       var appendInitialChild = $$$config.appendInitialChild, finalizeInitialChildren = $$$config.finalizeInitialChildren, shouldSetTextContent = $$$config.shouldSetTextContent, createTextInstance = $$$config.createTextInstance;
       $$$config.cloneMutableTextInstance;
@@ -10581,7 +10581,7 @@ var require_jsx_runtime = __commonJS({
 import * as fs11 from "node:fs";
 
 // src/panel/main.tsx
-var import_react46 = __toESM(require_react(), 1);
+var import_react47 = __toESM(require_react(), 1);
 
 // node_modules/ink/build/render.js
 import { Stream } from "node:stream";
@@ -20490,7 +20490,7 @@ var use_window_size_default = useWindowSize;
 var import_react35 = __toESM(require_react(), 1);
 
 // src/panel/Root.tsx
-var import_react45 = __toESM(require_react(), 1);
+var import_react46 = __toESM(require_react(), 1);
 
 // src/panel/App.tsx
 var import_react42 = __toESM(require_react(), 1);
@@ -23751,7 +23751,7 @@ function App2() {
 }
 
 // src/panel/PanelApp.tsx
-var import_react44 = __toESM(require_react(), 1);
+var import_react45 = __toESM(require_react(), 1);
 
 // src/panel/hooks/useUiTick.ts
 var import_react43 = __toESM(require_react(), 1);
@@ -23776,6 +23776,39 @@ function useUiTick(o) {
     return () => clearInterval(t);
   }, [o.active, tickMs]);
   return anim;
+}
+
+// src/panel/hooks/useResizeRepaint.ts
+var import_react44 = __toESM(require_react(), 1);
+var RESIZE_SETTLE_MS = 150;
+var HOME_ERASE_DOWN = "\x1B[1;1H\x1B[0J";
+var REAL_TIMERS = {
+  set: (fn, ms) => setTimeout(fn, ms),
+  clear: (h) => clearTimeout(h)
+};
+function useResizeRepaint(o = {}) {
+  const { stdout, write } = useStdout();
+  const settle = o.settleMs ?? RESIZE_SETTLE_MS;
+  const timers = o.timers ?? REAL_TIMERS;
+  import_react44.default.useEffect(() => {
+    if (stdout.isTTY !== true) return void 0;
+    let pending = null;
+    const repaint = () => write(HOME_ERASE_DOWN);
+    const onResize = () => {
+      repaint();
+      if (pending !== null) timers.clear(pending);
+      pending = timers.set(() => {
+        pending = null;
+        repaint();
+      }, settle);
+    };
+    stdout.on("resize", onResize);
+    return () => {
+      stdout.off("resize", onResize);
+      if (pending !== null) timers.clear(pending);
+      pending = null;
+    };
+  }, [stdout, write, settle, timers]);
 }
 
 // src/panel/ui/text.ts
@@ -25823,10 +25856,11 @@ function PanelApp(props = {}) {
   const roster = useRoster();
   const updateTo = useUpdateCheck();
   const { rows, columns } = use_window_size_default();
+  useResizeRepaint();
   const { isRawModeSupported } = use_stdin_default();
-  const uiRef = import_react44.default.useRef(initialUi);
-  const [ui, setUi] = import_react44.default.useState(initialUi);
-  const apply = import_react44.default.useCallback((action) => {
+  const uiRef = import_react45.default.useRef(initialUi);
+  const [ui, setUi] = import_react45.default.useState(initialUi);
+  const apply = import_react45.default.useCallback((action) => {
     const next = uiReducer(uiRef.current, action);
     if (next === uiRef.current) return;
     uiRef.current = next;
@@ -25843,7 +25877,7 @@ function PanelApp(props = {}) {
     header.clock,
     header.update ?? ""
   ].join("|");
-  const lines = import_react44.default.useMemo(
+  const lines = import_react45.default.useMemo(
     () => drawShell({
       rows,
       cols: columns,
@@ -25944,9 +25978,9 @@ function Root({
   splashMs = DEFAULT_SPLASH_MS,
   variant
 } = {}) {
-  const [ui] = import_react45.default.useState(() => variant ?? uiVariant());
-  const [showSplash, setShowSplash] = import_react45.default.useState(enableSplash);
-  import_react45.default.useEffect(() => {
+  const [ui] = import_react46.default.useState(() => variant ?? uiVariant());
+  const [showSplash, setShowSplash] = import_react46.default.useState(enableSplash);
+  import_react46.default.useEffect(() => {
     if (!showSplash) return;
     const timer = setTimeout(() => setShowSplash(false), splashMs);
     return () => clearTimeout(timer);
@@ -25957,7 +25991,7 @@ function Root({
 
 // src/panel/main.tsx
 function run() {
-  return render_default((0, import_react46.createElement)(Root), { alternateScreen: true });
+  return render_default((0, import_react47.createElement)(Root), { alternateScreen: true });
 }
 
 // src/panel/registration.ts

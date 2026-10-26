@@ -5,7 +5,17 @@ import { fileURLToPath } from "node:url";
 import { cellWidth } from "./ui/text.js";
 import type { SessionRow } from "../aggregate.js";
 import { PanelApp } from "./PanelApp.js";
-import { renderCapture, fakeTtyStdin, nonTtyStdin, press, KEYS, frameLines } from "./ui/test-harness.js";
+import {
+  renderCapture,
+  renderTty,
+  fakeTtyStdin,
+  nonTtyStdin,
+  press,
+  KEYS,
+  frameLines,
+} from "./ui/test-harness.js";
+import { HOME_ERASE_DOWN } from "./hooks/useResizeRepaint.js";
+import { stripVTControlCharacters } from "node:util";
 import { drawShell } from "./ui/draw/shell.js";
 import { headerFromRoster } from "./ui/headerModel.js";
 import { initialUi } from "./ui/uiState.js";
@@ -260,6 +270,30 @@ describe("PanelApp frame size", () => {
     const ls = lines(lastFrame());
     expect(ls.length).toBeLessThanOrEqual(R);
     for (const l of ls) expect(cellWidth(l)).toBeLessThanOrEqual(C);
+  });
+});
+
+describe("PanelApp resize repaint (LAYOUT-05, D-01/D-02)", () => {
+  it("a resize writes the absolute clear and the repaint after it has exactly one ◆ CSM header", () => {
+    const r = renderTty(<PanelApp tickMs={1000} now={() => NOW} />, { columns: C, rows: R });
+    live.push(r.inst);
+    const ESC = String.fromCharCode(27);
+    const before = r.writes().filter((c) => c.includes(HOME_ERASE_DOWN)).length;
+    r.setSize(120, 40);
+    r.resize();
+    const writes = r.writes();
+    expect(writes.filter((c) => c.includes(HOME_ERASE_DOWN)).length - before).toBe(1);
+    const all = writes.join("");
+    let tail = all.slice(all.lastIndexOf(HOME_ERASE_DOWN) + HOME_ERASE_DOWN.length);
+    // Up to the next erase (log-update's eraseLines starts with ESC[2K).
+    const next = tail.indexOf(ESC + "[2K");
+    if (next >= 0) tail = tail.slice(0, next);
+    const ls = stripVTControlCharacters(tail).split("\n");
+    if (ls.length > 0 && ls[ls.length - 1] === "") ls.pop();
+    expect(ls.length).toBeGreaterThanOrEqual(10);
+    expect(ls.filter((l) => l.includes("◆ CSM"))).toHaveLength(1);
+    expect(ls.length).toBeLessThanOrEqual(40);
+    for (const l of ls) expect(cellWidth(l)).toBeLessThanOrEqual(120);
   });
 });
 

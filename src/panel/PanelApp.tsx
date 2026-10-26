@@ -3,6 +3,7 @@ import { Box, useApp, useInput, useStdin, useWindowSize } from "ink";
 import { useRoster } from "./hooks/useRoster.js";
 import { useUpdateCheck } from "./hooks/useUpdateCheck.js";
 import { useUiTick, UI_TICK_MS } from "./hooks/useUiTick.js";
+import { useResizeRepaint } from "./hooks/useResizeRepaint.js";
 import { headerFromRoster } from "./ui/headerModel.js";
 import { initialUi, uiReducer, type Action, type UiState } from "./ui/uiState.js";
 import { resolve } from "./ui/keymap.js";
@@ -52,6 +53,11 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
   const roster = useRoster();
   const updateTo = useUpdateCheck();
   const { rows, columns } = useWindowSize();
+  // LAYOUT-05 / D-01: on every resize, an absolute clear + repaint through
+  // Ink at once and again 150 ms after the last event. useWindowSize already
+  // re-renders the shell at the new size; this only resets Ink's frame
+  // bookkeeping so no ghost header survives Warp's reflow. v2 only (D-04).
+  useResizeRepaint();
   const { isRawModeSupported } = useStdin();
 
   // The ref is assigned before the state so quick successive keys each see the
