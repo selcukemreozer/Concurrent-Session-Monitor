@@ -19,6 +19,10 @@
  *     1 s and returns the too-small screen for the geometry-normalized size.
  *   - WR-04 (10-02): an unfocused PHASES window that draws fewer phases than
  *     the project has always draws a `⋮ N earlier/more phases` row.
+ *   - WR-06 (10-02): at pane widths 1, 7, 30 and 46 (narrower than a card
+ *     and than every Phase 9 rect) and heights 0..20, no pane draw (AGENTS,
+ *     FILES, PHASES, SESSIONS, PORTS, the right column) writes a cell outside
+ *     its rect.
  *   - WR-05 (10-02): PORTS drawn ports + `↑/↓ N more` + `+N others` equal the
  *     port count (focused and unfocused), and an unfocused pane that draws any
  *     port draws the exposed one; FILES conflict rows + `+N more conflicts`
@@ -30,13 +34,19 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import { lineText, type Line } from "./screen.js";
+import { Screen, lineText, type Line } from "./screen.js";
 import { cellWidth, graphemes } from "./text.js";
 import { geometry } from "./geometry.js";
 import { FOCUS_ORDER, initialUi, type UiState } from "./uiState.js";
 import { SAMPLE, SAMPLE_HEADER } from "./sample.js";
-import type { AgentCard, IdleStrip, PanesModel, PortEntry } from "./models.js";
+import type { AgentCard, IdleStrip, PanesModel, PortEntry, Rect } from "./models.js";
 import { drawShell } from "./draw/shell.js";
+import { drawAgentsPane } from "./draw/agents.js";
+import { drawFilesPane } from "./draw/files.js";
+import { drawPhases } from "./draw/phases.js";
+import { drawSessions } from "./draw/sessions.js";
+import { drawPortsPane } from "./draw/ports.js";
+import { drawRightColumn } from "./draw/right.js";
 import { drawTooSmall } from "./draw/tooSmall.js";
 
 // One macrotask per case, as in invariants.test.ts (09-16): the cases are
@@ -333,6 +343,109 @@ describe("v2 content: FILES drawn conflicts + N = conflicts (WR-05)", () => {
       }
       if (drawn + more === 0) continue;
       expect(drawn + more, `${focusName(ui)}: drawn ${drawn}, more ${more}`).toBe(5);
+    }
+  });
+});
+
+// --- WR-06: narrow rects stay inside their rects ----------------------------
+
+/** Cells drawn outside `r` on a Screen, as "x,y" (same logic as invariants.test.ts). */
+function outside(scr: Screen, r: Rect): string[] {
+  const out: string[] = [];
+  scr.toLines().forEach((l, y) => {
+    let x = 0;
+    for (const s of l) {
+      for (const g of graphemes(s.text)) {
+        const w = cellWidth(g);
+        const inside = y >= r.y && y < r.y + r.h && x >= r.x && x < r.x + r.w;
+        if (!inside && (g !== " " || s.bg !== undefined)) out.push(`${x},${y}`);
+        x += w;
+      }
+    }
+  });
+  return out;
+}
+
+describe("v2 content: narrow pane rects stay inside their rects (WR-06)", () => {
+  const NARROW = [1, 7, 30, 46];
+  const HEIGHTS = Array.from({ length: 21 }, (_, i) => i);
+  const UIS: readonly UiState[] = [
+    initialUi,
+    { ...initialUi, focus: "right" },
+    { ...initialUi, focus: "ports" },
+    { ...initialUi, rightTab: "sessions" },
+    { ...initialUi, focus: "right", rightTab: "sessions" },
+  ];
+  /** A screen 3 cells/rows larger than the rect on every side. */
+  const scratch = (r: Rect): Screen => new Screen(r.x + r.w + 3, r.y + r.h + 3);
+
+  it.each(NARROW)("WR-06 width %i: every pane draw at heights 0..20 writes nothing outside its rect", (w) => {
+    for (const [name, panes] of FIXTURES) {
+      for (const h of HEIGHTS) {
+        const r: Rect = { x: 3, y: 3, w, h };
+        const at = `${name}, h=${h}`;
+        for (const cardCols of [1, 2, 3]) {
+          for (const firstRow of [0, 1]) {
+            const scr = scratch(r);
+            const res = drawAgentsPane(scr, r, {
+              agents: panes.agents,
+              idle: panes.idle,
+              focused: true,
+              sample: true,
+              cardCols,
+              tick: 1,
+              selectedId: null,
+              firstRow,
+            });
+            expect(outside(scr, r), `${at}: AGENTS cols ${cardCols} first ${firstRow}`).toEqual([]);
+            expect(res.rows).toBeLessThanOrEqual(h);
+          }
+        }
+        for (const conflicts of [panes.conflicts, conflicts5().conflicts]) {
+          const scr = scratch(r);
+          drawFilesPane(scr, r, { conflicts, groups: panes.groups, paused: false, step: 7, sample: true });
+          expect(outside(scr, r), `${at}: FILES`).toEqual([]);
+        }
+        for (const focused of [false, true]) {
+          for (let pi = 0; pi < panes.projects.length; pi++) {
+            const scr = scratch(r);
+            drawPhases(scr, r, { projects: panes.projects, projectIndex: pi, focused, cursor: null });
+            expect(outside(scr, r), `${at}: PHASES focused ${focused} project ${pi}`).toEqual([]);
+          }
+          let scr = scratch(r);
+          drawSessions(scr, r, {
+            sessions: panes.sessions,
+            focused,
+            cursorId: panes.sessions[0]?.id ?? null,
+            status: null,
+            scanning: false,
+          });
+          expect(outside(scr, r), `${at}: SESSIONS focused ${focused}`).toEqual([]);
+          scr = scratch(r);
+          drawPortsPane(scr, r, {
+            ports: panes.ports,
+            focused,
+            cursorKey: focused ? (panes.ports[0]?.key ?? null) : null,
+            sample: true,
+          });
+          expect(outside(scr, r), `${at}: PORTS focused ${focused}`).toEqual([]);
+        }
+        for (const ui of UIS) {
+          const scr = scratch(r);
+          const res = drawRightColumn(scr, r, {
+            ui,
+            projects: panes.projects,
+            projectIndex: panes.projectIndex,
+            sessions: panes.sessions,
+            sessionStatus: panes.sessionStatus,
+            ports: panes.ports,
+            sample: true,
+            portsMinY: r.y + Math.floor(h / 2),
+          });
+          expect(outside(scr, r), `${at}: right column ${focusName(ui)}`).toEqual([]);
+          if (h > 0) expect(res.end).toBeLessThanOrEqual(r.y + h - 1);
+        }
+      }
     }
   });
 });

@@ -329,6 +329,51 @@ describe("drawPhases: the unfocused radius-0 window keeps its indicators (Phase 
   });
 });
 
+describe("drawPhases: narrow rects (Phase 10 plan 10-02, WR-06)", () => {
+  /** Cells drawn outside `r`, as "x,y". */
+  function outside(scr: Screen, r: { x: number; y: number; w: number; h: number }): string[] {
+    const out: string[] = [];
+    scr.toLines().forEach((l, y) => {
+      let x = 0;
+      for (const seg of l) {
+        for (const g of graphemes(seg.text)) {
+          const inside = y >= r.y && y < r.y + r.h && x >= r.x && x < r.x + r.w;
+          if (!inside && (g !== " " || seg.bg !== undefined)) out.push(`${x},${y}`);
+          x += cellWidth(g);
+        }
+      }
+    });
+    return out;
+  }
+
+  it.each([1, 2, 5, 7, 8, 9, 10, 12])("WR-06 w=%i: nothing is painted outside r (focused and unfocused)", (w) => {
+    for (const focused of [false, true]) {
+      for (const h of [1, 3, 5, 6, 12, 20]) {
+        const scr = new Screen(175, 40);
+        const r = { x: 101, y: 4, w, h };
+        drawPhases(scr, r, { projects: SAMPLE.projects, projectIndex: 1, focused, cursor: null });
+        expect(outside(scr, r), `focused ${focused}, h=${h}`).toEqual([]);
+      }
+    }
+  });
+
+  it("WR-06 w=7 focused: no ← → hint and no done/total", () => {
+    const scr = new Screen(175, 40);
+    const r = { x: 101, y: 4, w: 7, h: 12 };
+    drawPhases(scr, r, { projects: SAMPLE.projects, projectIndex: 1, focused: true, cursor: null });
+    const all = paneText(scr, r);
+    expect(all[0]).not.toContain("←");
+    expect(all[2]).not.toContain("2/12");
+  });
+
+  it("WR-06 w=9 focused: the ← → hint fits again", () => {
+    const scr = new Screen(175, 40);
+    const r = { x: 101, y: 4, w: 9, h: 12 };
+    drawPhases(scr, r, { projects: SAMPLE.projects, projectIndex: 1, focused: true, cursor: null });
+    expect(paneText(scr, r)[0]).toContain("← →");
+  });
+});
+
 describe("drawPhases mini-bar scaling", () => {
   it("scales a 30-plan current phase to at most 12 cells", () => {
     const { scr } = pane({ projects: [project(3, 1, [15, 30])], projectIndex: 0 });

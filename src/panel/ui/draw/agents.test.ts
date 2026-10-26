@@ -212,6 +212,22 @@ describe("drawCard: other states and missing data", () => {
     expect(cellWidth(meta)).toBeLessThanOrEqual(41);
   });
 
+  it("IN-02 keeps the uptime and start-truncates a long dir", () => {
+    const scr = card({ ...CHECKOUT, dir: "a-very-long-project-directory-name-here", uptime: "3h 51m" });
+    const meta = text(scr, 2, 4, 45);
+    expect(meta.endsWith(" · 3h 51m")).toBe(true);
+    expect(meta.startsWith("…")).toBe(true);
+    expect(meta).toContain("name-here");
+    expect(cellWidth(meta)).toBeLessThanOrEqual(41);
+  });
+
+  it("IN-02 keeps the uptime with a long dir and a long branch", () => {
+    const scr = card({ ...CHECKOUT, dir: "d".repeat(60), branch: "b".repeat(60), uptime: "53h" });
+    const meta = text(scr, 2, 4, 45);
+    expect(meta.endsWith(" · 53h")).toBe(true);
+    expect(cellWidth(meta)).toBeLessThanOrEqual(41);
+  });
+
   it("keeps a long name inside 41 cells", () => {
     const scr = card({ ...CHECKOUT, name: "Logitech MK295 Mac tutukluluk sorunu ve daha fazlasi" });
     expect(text(scr, 1, 4, 45)).toContain("…");
@@ -458,6 +474,61 @@ describe("drawAgentsPane: clipping by whole card rows (D-08)", () => {
     expect(res).toEqual({ rows: 2, moreBelow: 8 });
     expect(text(scr, 3)).toBe("  ↓ 8 more");
     for (let y = 4; y < 40; y++) expect(text(scr, y)).toBe("");
+  });
+});
+
+describe("drawAgentsPane: narrower than a card (Phase 10 plan 10-02, WR-06)", () => {
+  /** Cells drawn outside `r`, as "x,y". */
+  function outside(scr: Screen, r: { x: number; y: number; w: number; h: number }): string[] {
+    const out: string[] = [];
+    scr.toLines().forEach((l, y) => {
+      let x = 0;
+      for (const seg of l) {
+        for (const g of graphemes(seg.text)) {
+          const inside = y >= r.y && y < r.y + r.h && x >= r.x && x < r.x + r.w;
+          if (!inside && (g !== " " || seg.bg !== undefined)) out.push(`${x},${y}`);
+          x += cellWidth(g);
+        }
+      }
+    });
+    return out;
+  }
+
+  it("WR-06 w=46: only the title and ↓ 8 more, no card cells, nothing outside r", () => {
+    const scr = new Screen(60, 30);
+    const r = { x: 3, y: 2, w: 46, h: 20 };
+    const res = drawAgentsPane(scr, r, PANE);
+    expect(text(scr, 2, 3, 49).startsWith("▐AGENTS▌")).toBe(true);
+    expect(text(scr, 3, 3, 49)).toBe("  ↓ 8 more");
+    for (let y = 4; y < 30; y++) expect(text(scr, y)).toBe("");
+    expect(outside(scr, r)).toEqual([]);
+    expect(res).toEqual({ rows: 2, moreBelow: 8 });
+  });
+
+  it("WR-06 w=46, h=1: the title only", () => {
+    const scr = new Screen(60, 30);
+    const r = { x: 3, y: 2, w: 46, h: 1 };
+    const res = drawAgentsPane(scr, r, PANE);
+    expect(res.rows).toBe(1);
+    expect(outside(scr, r)).toEqual([]);
+  });
+
+  it("WR-06 w=47: one card column as before", () => {
+    const scr = new Screen(60, 30);
+    const r = { x: 0, y: 2, w: 47, h: 9 };
+    drawAgentsPane(scr, r, PANE);
+    expect(text(scr, 3, 0, 47)).toMatch(/^▄{47}$/);
+    expect(text(scr, 10)).toBe("  ↓ 7 more");
+    expect(outside(scr, r)).toEqual([]);
+  });
+
+  it.each([1, 2, 5, 7, 30])("WR-06 w=%i: nothing outside r", (w) => {
+    for (const h of [0, 1, 2, 3, 9, 20]) {
+      const scr = new Screen(60, 30);
+      const r = { x: 3, y: 2, w, h };
+      drawAgentsPane(scr, r, PANE);
+      expect(outside(scr, r), `h=${h}`).toEqual([]);
+    }
   });
 });
 
