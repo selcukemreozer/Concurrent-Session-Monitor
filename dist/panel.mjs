@@ -5902,14 +5902,14 @@ var require_react_reconciler_production = __commonJS({
             popProvider(CacheContext);
         }
       }
-      function commitHookEffectListMount(flags, finishedWork) {
+      function commitHookEffectListMount(flags2, finishedWork) {
         try {
           var updateQueue = finishedWork.updateQueue, lastEffect = null !== updateQueue ? updateQueue.lastEffect : null;
           if (null !== lastEffect) {
             var firstEffect = lastEffect.next;
             updateQueue = firstEffect;
             do {
-              if ((updateQueue.tag & flags) === flags) {
+              if ((updateQueue.tag & flags2) === flags2) {
                 lastEffect = void 0;
                 var create3 = updateQueue.create, inst = updateQueue.inst;
                 lastEffect = create3();
@@ -5922,14 +5922,14 @@ var require_react_reconciler_production = __commonJS({
           captureCommitPhaseError(finishedWork, finishedWork.return, error);
         }
       }
-      function commitHookEffectListUnmount(flags, finishedWork, nearestMountedAncestor$jscomp$0) {
+      function commitHookEffectListUnmount(flags2, finishedWork, nearestMountedAncestor$jscomp$0) {
         try {
           var updateQueue = finishedWork.updateQueue, lastEffect = null !== updateQueue ? updateQueue.lastEffect : null;
           if (null !== lastEffect) {
             var firstEffect = lastEffect.next;
             updateQueue = firstEffect;
             do {
-              if ((updateQueue.tag & flags) === flags) {
+              if ((updateQueue.tag & flags2) === flags2) {
                 var inst = updateQueue.inst, destroy = inst.destroy;
                 if (void 0 !== destroy) {
                   inst.destroy = void 0;
@@ -6461,22 +6461,22 @@ var require_react_reconciler_production = __commonJS({
       }
       function commitBeforeMutationEffects_complete(isViewTransitionEligible$jscomp$0) {
         for (; null !== nextEffect; ) {
-          var fiber = nextEffect, isViewTransitionEligible = isViewTransitionEligible$jscomp$0, current = fiber.alternate, flags = fiber.flags;
+          var fiber = nextEffect, isViewTransitionEligible = isViewTransitionEligible$jscomp$0, current = fiber.alternate, flags2 = fiber.flags;
           switch (fiber.tag) {
             case 0:
             case 11:
             case 15:
               break;
             case 1:
-              if (0 !== (flags & 1024) && null !== current) {
+              if (0 !== (flags2 & 1024) && null !== current) {
                 isViewTransitionEligible = void 0;
-                flags = current.memoizedProps;
+                flags2 = current.memoizedProps;
                 current = current.memoizedState;
                 var instance2 = fiber.stateNode;
                 try {
                   var resolvedPrevProps = resolveClassComponentProps(
                     fiber.type,
-                    flags
+                    flags2
                   );
                   isViewTransitionEligible = instance2.getSnapshotBeforeUpdate(
                     resolvedPrevProps,
@@ -6489,7 +6489,7 @@ var require_react_reconciler_production = __commonJS({
               }
               break;
             case 3:
-              0 !== (flags & 1024) && supportsMutation && clearContainer(fiber.stateNode.containerInfo);
+              0 !== (flags2 & 1024) && supportsMutation && clearContainer(fiber.stateNode.containerInfo);
               break;
             case 5:
             case 26:
@@ -6502,16 +6502,16 @@ var require_react_reconciler_production = __commonJS({
               isViewTransitionEligible && null !== current && (isViewTransitionEligible = getViewTransitionName(
                 current.memoizedProps,
                 current.stateNode
-              ), flags = fiber.memoizedProps, flags = getViewTransitionClassName(flags.default, flags.update), "none" !== flags && applyViewTransitionToHostInstances(
+              ), flags2 = fiber.memoizedProps, flags2 = getViewTransitionClassName(flags2.default, flags2.update), "none" !== flags2 && applyViewTransitionToHostInstances(
                 current,
                 isViewTransitionEligible,
-                flags,
+                flags2,
                 current.memoizedState = [],
                 true
               ));
               break;
             default:
-              if (0 !== (flags & 1024)) throw Error(formatProdErrorMessage(163));
+              if (0 !== (flags2 & 1024)) throw Error(formatProdErrorMessage(163));
           }
           current = fiber.sibling;
           if (null !== current) {
@@ -6523,17 +6523,17 @@ var require_react_reconciler_production = __commonJS({
         }
       }
       function commitLayoutEffectOnFiber(finishedRoot, current, finishedWork) {
-        var flags = finishedWork.flags;
+        var flags2 = finishedWork.flags;
         switch (finishedWork.tag) {
           case 0:
           case 11:
           case 15:
             recursivelyTraverseLayoutEffects(finishedRoot, finishedWork);
-            flags & 4 && commitHookEffectListMount(5, finishedWork);
+            flags2 & 4 && commitHookEffectListMount(5, finishedWork);
             break;
           case 1:
             recursivelyTraverseLayoutEffects(finishedRoot, finishedWork);
-            if (flags & 4)
+            if (flags2 & 4)
               if (finishedRoot = finishedWork.stateNode, null === current)
                 try {
                   finishedRoot.componentDidMount();
@@ -6560,12 +6560,12 @@ var require_react_reconciler_production = __commonJS({
                   );
                 }
               }
-            flags & 64 && commitClassCallbacks(finishedWork);
-            flags & 512 && safelyAttachRef(finishedWork, finishedWork.return);
+            flags2 & 64 && commitClassCallbacks(finishedWork);
+            flags2 & 512 && safelyAttachRef(finishedWork, finishedWork.return);
             break;
           case 3:
             recursivelyTraverseLayoutEffects(finishedRoot, finishedWork);
-            if (flags & 64 && (flags = finishedWork.updateQueue, null !== flags)) {
+            if (flags2 & 64 && (flags2 = finishedWork.updateQueue, null !== flags2)) {
               finishedRoot = null;
               if (null !== finishedWork.child)
                 switch (finishedWork.child.tag) {
@@ -6577,20 +6577,20 @@ var require_react_reconciler_production = __commonJS({
                     finishedRoot = finishedWork.child.stateNode;
                 }
               try {
-                commitCallbacks(flags, finishedRoot);
+                commitCallbacks(flags2, finishedRoot);
               } catch (error) {
                 captureCommitPhaseError(finishedWork, finishedWork.return, error);
               }
             }
             break;
           case 27:
-            supportsSingletons && null === current && flags & 4 && commitHostSingletonAcquisition(finishedWork);
+            supportsSingletons && null === current && flags2 & 4 && commitHostSingletonAcquisition(finishedWork);
           case 26:
           case 5:
             recursivelyTraverseLayoutEffects(finishedRoot, finishedWork);
             if (null === current) {
-              if (flags & 4) commitHostMount(finishedWork);
-              else if (flags & 64) {
+              if (flags2 & 4) commitHostMount(finishedWork);
+              else if (flags2 & 64) {
                 finishedRoot = finishedWork.type;
                 current = finishedWork.memoizedProps;
                 prevProps = finishedWork.stateNode;
@@ -6606,34 +6606,34 @@ var require_react_reconciler_production = __commonJS({
                 }
               }
             }
-            flags & 512 && safelyAttachRef(finishedWork, finishedWork.return);
+            flags2 & 512 && safelyAttachRef(finishedWork, finishedWork.return);
             break;
           case 12:
             recursivelyTraverseLayoutEffects(finishedRoot, finishedWork);
             break;
           case 31:
             recursivelyTraverseLayoutEffects(finishedRoot, finishedWork);
-            flags & 4 && commitActivityHydrationCallbacks(finishedRoot, finishedWork);
+            flags2 & 4 && commitActivityHydrationCallbacks(finishedRoot, finishedWork);
             break;
           case 13:
             recursivelyTraverseLayoutEffects(finishedRoot, finishedWork);
-            flags & 4 && commitSuspenseHydrationCallbacks(finishedRoot, finishedWork);
-            flags & 64 && (flags = finishedWork.memoizedState, null !== flags && (flags = flags.dehydrated, null !== flags && (finishedWork = retryDehydratedSuspenseBoundary.bind(
+            flags2 & 4 && commitSuspenseHydrationCallbacks(finishedRoot, finishedWork);
+            flags2 & 64 && (flags2 = finishedWork.memoizedState, null !== flags2 && (flags2 = flags2.dehydrated, null !== flags2 && (finishedWork = retryDehydratedSuspenseBoundary.bind(
               null,
               finishedWork
-            ), registerSuspenseInstanceRetry(flags, finishedWork))));
+            ), registerSuspenseInstanceRetry(flags2, finishedWork))));
             break;
           case 22:
-            flags = null !== finishedWork.memoizedState || offscreenSubtreeIsHidden;
-            if (!flags) {
+            flags2 = null !== finishedWork.memoizedState || offscreenSubtreeIsHidden;
+            if (!flags2) {
               var newOffscreenSubtreeWasHidden = null !== current && null !== current.memoizedState || offscreenSubtreeWasHidden;
               current = offscreenSubtreeIsHidden;
               prevProps = offscreenSubtreeWasHidden;
-              offscreenSubtreeIsHidden = flags;
-              (offscreenSubtreeWasHidden = newOffscreenSubtreeWasHidden) && !prevProps ? (flags = supportsSingletons ? 2 : 0, 0 !== (finishedWork.subtreeFlags & 8772) && (flags |= 1), recursivelyTraverseReappearLayoutEffects(
+              offscreenSubtreeIsHidden = flags2;
+              (offscreenSubtreeWasHidden = newOffscreenSubtreeWasHidden) && !prevProps ? (flags2 = supportsSingletons ? 2 : 0, 0 !== (finishedWork.subtreeFlags & 8772) && (flags2 |= 1), recursivelyTraverseReappearLayoutEffects(
                 finishedRoot,
                 finishedWork,
-                flags
+                flags2
               )) : recursivelyTraverseLayoutEffects(finishedRoot, finishedWork);
               offscreenSubtreeIsHidden = current;
               offscreenSubtreeWasHidden = prevProps;
@@ -6641,10 +6641,10 @@ var require_react_reconciler_production = __commonJS({
             break;
           case 30:
             recursivelyTraverseLayoutEffects(finishedRoot, finishedWork);
-            flags & 512 && safelyAttachRef(finishedWork, finishedWork.return);
+            flags2 & 512 && safelyAttachRef(finishedWork, finishedWork.return);
             break;
           case 7:
-            flags & 512 && safelyAttachRef(finishedWork, finishedWork.return);
+            flags2 & 512 && safelyAttachRef(finishedWork, finishedWork.return);
           default:
             recursivelyTraverseLayoutEffects(finishedRoot, finishedWork);
         }
@@ -6980,34 +6980,34 @@ var require_react_reconciler_production = __commonJS({
             commitMutationEffectsOnFiber(parentFiber, root$jscomp$0, lanes), parentFiber = parentFiber.sibling;
       }
       function commitMutationEffectsOnFiber(finishedWork, root, lanes) {
-        var current = finishedWork.alternate, flags = finishedWork.flags;
+        var current = finishedWork.alternate, flags2 = finishedWork.flags;
         switch (finishedWork.tag) {
           case 0:
           case 11:
           case 14:
           case 15:
-            if (flags & 4 && (current = finishedWork.updateQueue, current = null !== current ? current.events : null, null !== current))
+            if (flags2 & 4 && (current = finishedWork.updateQueue, current = null !== current ? current.events : null, null !== current))
               for (var ii = 0; ii < current.length; ii++) {
                 var _eventPayloads$ii2 = current[ii];
                 _eventPayloads$ii2.ref.impl = _eventPayloads$ii2.nextImpl;
               }
             recursivelyTraverseMutationEffects(root, finishedWork, lanes);
             commitReconciliationEffects(finishedWork);
-            flags & 4 && (commitHookEffectListUnmount(3, finishedWork, finishedWork.return), commitHookEffectListMount(3, finishedWork), commitHookEffectListUnmount(5, finishedWork, finishedWork.return));
+            flags2 & 4 && (commitHookEffectListUnmount(3, finishedWork, finishedWork.return), commitHookEffectListMount(3, finishedWork), commitHookEffectListUnmount(5, finishedWork, finishedWork.return));
             break;
           case 1:
             recursivelyTraverseMutationEffects(root, finishedWork, lanes);
             commitReconciliationEffects(finishedWork);
-            flags & 512 && (offscreenSubtreeWasHidden || null === current || safelyDetachRef(current, current.return));
-            flags & 64 && offscreenSubtreeIsHidden && (finishedWork = finishedWork.updateQueue, null !== finishedWork && (root = finishedWork.callbacks, null !== root && (flags = finishedWork.shared.hiddenCallbacks, finishedWork.shared.hiddenCallbacks = null === flags ? root : flags.concat(root))));
+            flags2 & 512 && (offscreenSubtreeWasHidden || null === current || safelyDetachRef(current, current.return));
+            flags2 & 64 && offscreenSubtreeIsHidden && (finishedWork = finishedWork.updateQueue, null !== finishedWork && (root = finishedWork.callbacks, null !== root && (flags2 = finishedWork.shared.hiddenCallbacks, finishedWork.shared.hiddenCallbacks = null === flags2 ? root : flags2.concat(root))));
             break;
           case 26:
             if (supportsResources) {
               ii = currentHoistableRoot;
               recursivelyTraverseMutationEffects(root, finishedWork, lanes);
               commitReconciliationEffects(finishedWork);
-              flags & 512 && (offscreenSubtreeWasHidden || null === current || safelyDetachRef(current, current.return));
-              flags & 4 && (lanes = null !== current ? current.memoizedState : null, flags = finishedWork.memoizedState, null === current ? null === flags ? null === finishedWork.stateNode ? finishedWork.stateNode = offscreenSubtreeIsHidden ? createHoistableInstance(
+              flags2 & 512 && (offscreenSubtreeWasHidden || null === current || safelyDetachRef(current, current.return));
+              flags2 & 4 && (lanes = null !== current ? current.memoizedState : null, flags2 = finishedWork.memoizedState, null === current ? null === flags2 ? null === finishedWork.stateNode ? finishedWork.stateNode = offscreenSubtreeIsHidden ? createHoistableInstance(
                 finishedWork.type,
                 finishedWork.memoizedProps,
                 root.containerInfo,
@@ -7023,13 +7023,13 @@ var require_react_reconciler_production = __commonJS({
                 finishedWork.stateNode
               ) : finishedWork.stateNode = acquireResource(
                 ii,
-                flags,
+                flags2,
                 finishedWork.memoizedProps
-              ) : lanes !== flags ? (null === lanes ? (root = current.stateNode, null === root || offscreenSubtreeWasHidden || unmountHoistable(root)) : releaseResource(lanes), null === flags ? offscreenSubtreeIsHidden || mountHoistable(
+              ) : lanes !== flags2 ? (null === lanes ? (root = current.stateNode, null === root || offscreenSubtreeWasHidden || unmountHoistable(root)) : releaseResource(lanes), null === flags2 ? offscreenSubtreeIsHidden || mountHoistable(
                 ii,
                 finishedWork.type,
                 finishedWork.stateNode
-              ) : acquireResource(ii, flags, finishedWork.memoizedProps)) : null === flags && null !== finishedWork.stateNode && commitHostUpdate(
+              ) : acquireResource(ii, flags2, finishedWork.memoizedProps)) : null === flags2 && null !== finishedWork.stateNode && commitHostUpdate(
                 finishedWork,
                 finishedWork.memoizedProps,
                 current.memoizedProps
@@ -7040,8 +7040,8 @@ var require_react_reconciler_production = __commonJS({
             if (supportsSingletons) {
               recursivelyTraverseMutationEffects(root, finishedWork, lanes);
               commitReconciliationEffects(finishedWork);
-              flags & 512 && (offscreenSubtreeWasHidden || null === current || safelyDetachRef(current, current.return));
-              null !== current && flags & 4 && commitHostUpdate(
+              flags2 & 512 && (offscreenSubtreeWasHidden || null === current || safelyDetachRef(current, current.return));
+              null !== current && flags2 & 4 && commitHostUpdate(
                 finishedWork,
                 finishedWork.memoizedProps,
                 current.memoizedProps
@@ -7054,7 +7054,7 @@ var require_react_reconciler_production = __commonJS({
             recursivelyTraverseMutationEffects(root, finishedWork, lanes);
             offscreenDirectParentIsHidden = ii;
             commitReconciliationEffects(finishedWork);
-            flags & 512 && (offscreenSubtreeWasHidden || null === current || safelyDetachRef(current, current.return));
+            flags2 & 512 && (offscreenSubtreeWasHidden || null === current || safelyDetachRef(current, current.return));
             if (supportsMutation) {
               if (finishedWork.flags & 32) {
                 root = finishedWork.stateNode;
@@ -7064,26 +7064,26 @@ var require_react_reconciler_production = __commonJS({
                   captureCommitPhaseError(finishedWork, finishedWork.return, error);
                 }
               }
-              flags & 4 && null != finishedWork.stateNode && (root = finishedWork.memoizedProps, commitHostUpdate(
+              flags2 & 4 && null != finishedWork.stateNode && (root = finishedWork.memoizedProps, commitHostUpdate(
                 finishedWork,
                 root,
                 null !== current ? current.memoizedProps : root
               ));
-              flags & 1024 && (needsFormReset = true);
+              flags2 & 1024 && (needsFormReset = true);
             } else
               supportsPersistence && null !== finishedWork.alternate && (finishedWork.alternate.stateNode = finishedWork.stateNode);
             break;
           case 6:
             recursivelyTraverseMutationEffects(root, finishedWork, lanes);
             commitReconciliationEffects(finishedWork);
-            if (flags & 4 && supportsMutation) {
+            if (flags2 & 4 && supportsMutation) {
               if (null === finishedWork.stateNode)
                 throw Error(formatProdErrorMessage(162));
               root = finishedWork.memoizedProps;
-              flags = null !== current ? current.memoizedProps : root;
+              flags2 = null !== current ? current.memoizedProps : root;
               lanes = finishedWork.stateNode;
               try {
-                commitTextUpdate(lanes, flags, root), viewTransitionMutationContext = true;
+                commitTextUpdate(lanes, flags2, root), viewTransitionMutationContext = true;
               } catch (error) {
                 captureCommitPhaseError(finishedWork, finishedWork.return, error);
               }
@@ -7093,7 +7093,7 @@ var require_react_reconciler_production = __commonJS({
             viewTransitionMutationContext = false;
             supportsResources ? (prepareToCommitHoistables(), ii = currentHoistableRoot, currentHoistableRoot = getHoistableRoot(root.containerInfo), recursivelyTraverseMutationEffects(root, finishedWork, lanes), currentHoistableRoot = ii) : recursivelyTraverseMutationEffects(root, finishedWork, lanes);
             commitReconciliationEffects(finishedWork);
-            if (flags & 4) {
+            if (flags2 & 4) {
               if (supportsMutation && supportsHydration && null !== current && current.memoizedState.isDehydrated)
                 try {
                   commitHydratedContainer(root.containerInfo);
@@ -7101,10 +7101,10 @@ var require_react_reconciler_production = __commonJS({
                   captureCommitPhaseError(finishedWork, finishedWork.return, error);
                 }
               if (supportsPersistence) {
-                flags = root.containerInfo;
+                flags2 = root.containerInfo;
                 root = root.pendingChildren;
                 try {
-                  replaceContainerChildren(flags, root), viewTransitionMutationContext = true;
+                  replaceContainerChildren(flags2, root), viewTransitionMutationContext = true;
                 } catch (error) {
                   captureCommitPhaseError(finishedWork, finishedWork.return, error);
                 }
@@ -7123,7 +7123,7 @@ var require_react_reconciler_production = __commonJS({
             viewTransitionMutationContext && inUpdateViewTransition && (rootViewTransitionAffected = true);
             viewTransitionMutationContext = ii;
             offscreenDirectParentIsHidden = current;
-            flags & 4 && supportsPersistence && commitHostPortalContainerChildren(
+            flags2 & 4 && supportsPersistence && commitHostPortalContainerChildren(
               finishedWork.stateNode,
               finishedWork,
               finishedWork.stateNode.pendingChildren
@@ -7136,13 +7136,13 @@ var require_react_reconciler_production = __commonJS({
           case 31:
             recursivelyTraverseMutationEffects(root, finishedWork, lanes);
             commitReconciliationEffects(finishedWork);
-            flags & 4 && (root = finishedWork.updateQueue, null !== root && (finishedWork.updateQueue = null, attachSuspenseRetryListeners(finishedWork, root)));
+            flags2 & 4 && (root = finishedWork.updateQueue, null !== root && (finishedWork.updateQueue = null, attachSuspenseRetryListeners(finishedWork, root)));
             break;
           case 13:
             recursivelyTraverseMutationEffects(root, finishedWork, lanes);
             commitReconciliationEffects(finishedWork);
             finishedWork.child.flags & 8192 && null !== finishedWork.memoizedState !== (null !== current && null !== current.memoizedState) && (globalMostRecentFallbackTime = now());
-            flags & 4 && (root = finishedWork.updateQueue, null !== root && (finishedWork.updateQueue = null, attachSuspenseRetryListeners(finishedWork, root)));
+            flags2 & 4 && (root = finishedWork.updateQueue, null !== root && (finishedWork.updateQueue = null, attachSuspenseRetryListeners(finishedWork, root)));
             break;
           case 22:
             ii = null !== finishedWork.memoizedState;
@@ -7156,17 +7156,17 @@ var require_react_reconciler_production = __commonJS({
             offscreenDirectParentIsHidden = prevOffscreenDirectParentIsHidden$147;
             offscreenSubtreeIsHidden = prevOffscreenSubtreeIsHidden;
             commitReconciliationEffects(finishedWork);
-            flags & 8192 && (root = finishedWork.stateNode, root._visibility = ii ? root._visibility & -2 : root._visibility | 1, !ii || null === current || _eventPayloads$ii2 || offscreenSubtreeIsHidden || offscreenSubtreeWasHidden || (root = supportsSingletons ? 2 : 0, lanes = _eventPayloads$ii2 || offscreenSubtreeWasHidden, current = offscreenSubtreeIsHidden, _eventPayloads$ii2 = offscreenSubtreeWasHidden, offscreenSubtreeIsHidden = ii || offscreenSubtreeIsHidden, offscreenSubtreeWasHidden = lanes, recursivelyTraverseDisappearLayoutEffects(finishedWork, root), offscreenSubtreeIsHidden = current, offscreenSubtreeWasHidden = _eventPayloads$ii2), supportsMutation && (ii || !offscreenDirectParentIsHidden) && hideOrUnhideAllChildren(finishedWork, ii));
-            flags & 4 && (root = finishedWork.updateQueue, null !== root && (flags = root.retryQueue, null !== flags && (root.retryQueue = null, attachSuspenseRetryListeners(finishedWork, flags))));
+            flags2 & 8192 && (root = finishedWork.stateNode, root._visibility = ii ? root._visibility & -2 : root._visibility | 1, !ii || null === current || _eventPayloads$ii2 || offscreenSubtreeIsHidden || offscreenSubtreeWasHidden || (root = supportsSingletons ? 2 : 0, lanes = _eventPayloads$ii2 || offscreenSubtreeWasHidden, current = offscreenSubtreeIsHidden, _eventPayloads$ii2 = offscreenSubtreeWasHidden, offscreenSubtreeIsHidden = ii || offscreenSubtreeIsHidden, offscreenSubtreeWasHidden = lanes, recursivelyTraverseDisappearLayoutEffects(finishedWork, root), offscreenSubtreeIsHidden = current, offscreenSubtreeWasHidden = _eventPayloads$ii2), supportsMutation && (ii || !offscreenDirectParentIsHidden) && hideOrUnhideAllChildren(finishedWork, ii));
+            flags2 & 4 && (root = finishedWork.updateQueue, null !== root && (flags2 = root.retryQueue, null !== flags2 && (root.retryQueue = null, attachSuspenseRetryListeners(finishedWork, flags2))));
             break;
           case 19:
             recursivelyTraverseMutationEffects(root, finishedWork, lanes);
             commitReconciliationEffects(finishedWork);
-            flags & 4 && (root = finishedWork.updateQueue, null !== root && (finishedWork.updateQueue = null, attachSuspenseRetryListeners(finishedWork, root)));
+            flags2 & 4 && (root = finishedWork.updateQueue, null !== root && (finishedWork.updateQueue = null, attachSuspenseRetryListeners(finishedWork, root)));
             break;
           case 30:
-            flags & 512 && (offscreenSubtreeWasHidden || null === current || safelyDetachRef(current, current.return));
-            flags = pushMutationContext();
+            flags2 & 512 && (offscreenSubtreeWasHidden || null === current || safelyDetachRef(current, current.return));
+            flags2 = pushMutationContext();
             ii = inUpdateViewTransition;
             _eventPayloads$ii2 = (lanes & 335544064) === lanes;
             prevOffscreenSubtreeIsHidden = finishedWork.memoizedProps;
@@ -7178,19 +7178,19 @@ var require_react_reconciler_production = __commonJS({
             commitReconciliationEffects(finishedWork);
             _eventPayloads$ii2 && null !== current && viewTransitionMutationContext && (finishedWork.flags |= 4);
             inUpdateViewTransition = ii;
-            viewTransitionMutationContext = flags;
+            viewTransitionMutationContext = flags2;
             break;
           case 21:
             break;
           case 7:
-            flags & 512 && (offscreenSubtreeWasHidden || null === current || safelyDetachRef(current, current.return)), current && null !== current.stateNode && updateFragmentInstanceFiber(finishedWork, current.stateNode);
+            flags2 & 512 && (offscreenSubtreeWasHidden || null === current || safelyDetachRef(current, current.return)), current && null !== current.stateNode && updateFragmentInstanceFiber(finishedWork, current.stateNode);
           default:
             recursivelyTraverseMutationEffects(root, finishedWork, lanes), commitReconciliationEffects(finishedWork);
         }
       }
       function commitReconciliationEffects(finishedWork) {
-        var flags = finishedWork.flags;
-        if (flags & 2) {
+        var flags2 = finishedWork.flags;
+        if (flags2 & 2) {
           try {
             for (var hostParentFiber, parentFiber = finishedWork.return; null !== parentFiber; ) {
               if (isHostParent(parentFiber)) {
@@ -7257,7 +7257,7 @@ var require_react_reconciler_production = __commonJS({
           }
           finishedWork.flags &= -3;
         }
-        flags & 4096 && (finishedWork.flags &= -4097);
+        flags2 & 4096 && (finishedWork.flags &= -4097);
       }
       function recursivelyResetForms(parentFiber) {
         if (parentFiber.subtreeFlags & 1024)
@@ -7429,7 +7429,7 @@ var require_react_reconciler_production = __commonJS({
       function recursivelyTraverseReappearLayoutEffects(finishedRoot$jscomp$0, parentFiber, layoutEffectTraversalFlags) {
         layoutEffectTraversalFlags = 0 !== (parentFiber.subtreeFlags & 8772) ? layoutEffectTraversalFlags : layoutEffectTraversalFlags & -2;
         for (parentFiber = parentFiber.child; null !== parentFiber; ) {
-          var current = parentFiber.alternate, finishedRoot = finishedRoot$jscomp$0, finishedWork = parentFiber, flags = finishedWork.flags, includeWorkInProgressEffects = 0 !== (layoutEffectTraversalFlags & 1);
+          var current = parentFiber.alternate, finishedRoot = finishedRoot$jscomp$0, finishedWork = parentFiber, flags2 = finishedWork.flags, includeWorkInProgressEffects = 0 !== (layoutEffectTraversalFlags & 1);
           switch (finishedWork.tag) {
             case 0:
             case 11:
@@ -7468,7 +7468,7 @@ var require_react_reconciler_production = __commonJS({
                   captureCommitPhaseError(current, current.return, error);
                 }
               }
-              includeWorkInProgressEffects && flags & 64 && commitClassCallbacks(finishedWork);
+              includeWorkInProgressEffects && flags2 & 64 && commitClassCallbacks(finishedWork);
               safelyAttachRef(finishedWork, finishedWork.return);
               break;
             case 27:
@@ -7480,7 +7480,7 @@ var require_react_reconciler_production = __commonJS({
                 finishedWork,
                 layoutEffectTraversalFlags
               );
-              includeWorkInProgressEffects && null === current && flags & 4 && commitHostMount(finishedWork);
+              includeWorkInProgressEffects && null === current && flags2 & 4 && commitHostMount(finishedWork);
               safelyAttachRef(finishedWork, finishedWork.return);
               break;
             case 6:
@@ -7497,7 +7497,7 @@ var require_react_reconciler_production = __commonJS({
                 finishedWork,
                 layoutEffectTraversalFlags
               );
-              includeWorkInProgressEffects && null === current && flags & 4 && commitHostMount(finishedWork);
+              includeWorkInProgressEffects && null === current && flags2 & 4 && commitHostMount(finishedWork);
               safelyAttachRef(finishedWork, finishedWork.return);
               break;
             case 12:
@@ -7513,7 +7513,7 @@ var require_react_reconciler_production = __commonJS({
                 finishedWork,
                 layoutEffectTraversalFlags
               );
-              includeWorkInProgressEffects && flags & 4 && commitActivityHydrationCallbacks(finishedRoot, finishedWork);
+              includeWorkInProgressEffects && flags2 & 4 && commitActivityHydrationCallbacks(finishedRoot, finishedWork);
               break;
             case 13:
               recursivelyTraverseReappearLayoutEffects(
@@ -7521,7 +7521,7 @@ var require_react_reconciler_production = __commonJS({
                 finishedWork,
                 layoutEffectTraversalFlags
               );
-              includeWorkInProgressEffects && flags & 4 && commitSuspenseHydrationCallbacks(finishedRoot, finishedWork);
+              includeWorkInProgressEffects && flags2 & 4 && commitSuspenseHydrationCallbacks(finishedRoot, finishedWork);
               break;
             case 22:
               null === finishedWork.memoizedState && recursivelyTraverseReappearLayoutEffects(
@@ -7579,7 +7579,7 @@ var require_react_reconciler_production = __commonJS({
       function commitPassiveMountOnFiber(finishedRoot, finishedWork, committedLanes, committedTransitions) {
         var isViewTransitionEligible = (committedLanes & 335544064) === committedLanes;
         isViewTransitionEligible && null === finishedWork.alternate && null !== finishedWork.return && null !== finishedWork.return.alternate && restoreEnterOrExitViewTransitions(finishedWork);
-        var flags = finishedWork.flags;
+        var flags2 = finishedWork.flags;
         switch (finishedWork.tag) {
           case 0:
           case 11:
@@ -7590,7 +7590,7 @@ var require_react_reconciler_production = __commonJS({
               committedLanes,
               committedTransitions
             );
-            flags & 2048 && commitHookEffectListMount(9, finishedWork);
+            flags2 & 2048 && commitHookEffectListMount(9, finishedWork);
             break;
           case 1:
             recursivelyTraversePassiveMountEffects(
@@ -7608,10 +7608,10 @@ var require_react_reconciler_production = __commonJS({
               committedTransitions
             );
             isViewTransitionEligible && supportsMutation && rootViewTransitionNameCanceled && restoreRootViewTransitionName(finishedRoot.containerInfo);
-            flags & 2048 && (finishedRoot = null, null !== finishedWork.alternate && (finishedRoot = finishedWork.alternate.memoizedState.cache), finishedWork = finishedWork.memoizedState.cache, finishedWork !== finishedRoot && (finishedWork.refCount++, null != finishedRoot && releaseCache(finishedRoot)));
+            flags2 & 2048 && (finishedRoot = null, null !== finishedWork.alternate && (finishedRoot = finishedWork.alternate.memoizedState.cache), finishedWork = finishedWork.memoizedState.cache, finishedWork !== finishedRoot && (finishedWork.refCount++, null != finishedRoot && releaseCache(finishedRoot)));
             break;
           case 12:
-            if (flags & 2048) {
+            if (flags2 & 2048) {
               recursivelyTraversePassiveMountEffects(
                 finishedRoot,
                 finishedWork,
@@ -7679,7 +7679,7 @@ var require_react_reconciler_production = __commonJS({
               committedTransitions,
               0 !== (finishedWork.subtreeFlags & 10256) || false
             )));
-            flags & 2048 && commitOffscreenPassiveMountEffects(id, finishedWork);
+            flags2 & 2048 && commitOffscreenPassiveMountEffects(id, finishedWork);
             break;
           case 24:
             recursivelyTraversePassiveMountEffects(
@@ -7688,7 +7688,7 @@ var require_react_reconciler_production = __commonJS({
               committedLanes,
               committedTransitions
             );
-            flags & 2048 && commitCachePassiveMountEffect(finishedWork.alternate, finishedWork);
+            flags2 & 2048 && commitCachePassiveMountEffect(finishedWork.alternate, finishedWork);
             break;
           case 30:
             isViewTransitionEligible && (isViewTransitionEligible = finishedWork.alternate, null !== isViewTransitionEligible && (restoreViewTransitionOnHostInstances(
@@ -7714,7 +7714,7 @@ var require_react_reconciler_production = __commonJS({
       function recursivelyTraverseReconnectPassiveEffects(finishedRoot$jscomp$0, parentFiber, committedLanes$jscomp$0, committedTransitions$jscomp$0, includeWorkInProgressEffects) {
         includeWorkInProgressEffects = includeWorkInProgressEffects && (0 !== (parentFiber.subtreeFlags & 10256) || false);
         for (parentFiber = parentFiber.child; null !== parentFiber; ) {
-          var finishedRoot = finishedRoot$jscomp$0, finishedWork = parentFiber, committedLanes = committedLanes$jscomp$0, committedTransitions = committedTransitions$jscomp$0, flags = finishedWork.flags;
+          var finishedRoot = finishedRoot$jscomp$0, finishedWork = parentFiber, committedLanes = committedLanes$jscomp$0, committedTransitions = committedTransitions$jscomp$0, flags2 = finishedWork.flags;
           switch (finishedWork.tag) {
             case 0:
             case 11:
@@ -7748,7 +7748,7 @@ var require_react_reconciler_production = __commonJS({
                 committedTransitions,
                 includeWorkInProgressEffects
               ));
-              includeWorkInProgressEffects && flags & 2048 && commitOffscreenPassiveMountEffects(
+              includeWorkInProgressEffects && flags2 & 2048 && commitOffscreenPassiveMountEffects(
                 finishedWork.alternate,
                 finishedWork
               );
@@ -7761,7 +7761,7 @@ var require_react_reconciler_production = __commonJS({
                 committedTransitions,
                 includeWorkInProgressEffects
               );
-              includeWorkInProgressEffects && flags & 2048 && commitCachePassiveMountEffect(finishedWork.alternate, finishedWork);
+              includeWorkInProgressEffects && flags2 & 2048 && commitCachePassiveMountEffect(finishedWork.alternate, finishedWork);
               break;
             default:
               recursivelyTraverseReconnectPassiveEffects(
@@ -7778,18 +7778,18 @@ var require_react_reconciler_production = __commonJS({
       function recursivelyTraverseAtomicPassiveEffects(finishedRoot$jscomp$0, parentFiber) {
         if (parentFiber.subtreeFlags & 10256)
           for (parentFiber = parentFiber.child; null !== parentFiber; ) {
-            var finishedRoot = finishedRoot$jscomp$0, finishedWork = parentFiber, flags = finishedWork.flags;
+            var finishedRoot = finishedRoot$jscomp$0, finishedWork = parentFiber, flags2 = finishedWork.flags;
             switch (finishedWork.tag) {
               case 22:
                 recursivelyTraverseAtomicPassiveEffects(finishedRoot, finishedWork);
-                flags & 2048 && commitOffscreenPassiveMountEffects(
+                flags2 & 2048 && commitOffscreenPassiveMountEffects(
                   finishedWork.alternate,
                   finishedWork
                 );
                 break;
               case 24:
                 recursivelyTraverseAtomicPassiveEffects(finishedRoot, finishedWork);
-                flags & 2048 && commitCachePassiveMountEffect(
+                flags2 & 2048 && commitCachePassiveMountEffect(
                   finishedWork.alternate,
                   finishedWork
                 );
@@ -13502,8 +13502,8 @@ function terminalSize() {
 }
 var devTty = () => {
   try {
-    const flags = process3.platform === "darwin" ? fs.constants.O_EVTONLY | fs.constants.O_NONBLOCK : fs.constants.O_NONBLOCK;
-    const { columns, rows } = tty.WriteStream(fs.openSync("/dev/tty", flags));
+    const flags2 = process3.platform === "darwin" ? fs.constants.O_EVTONLY | fs.constants.O_NONBLOCK : fs.constants.O_NONBLOCK;
+    const { columns, rows } = tty.WriteStream(fs.openSync("/dev/tty", flags2));
     return { columns, rows };
   } catch {
   }
@@ -18156,12 +18156,12 @@ var kittyFlags = {
   reportAllKeysAsEscapeCodes: 8,
   reportAssociatedText: 16
 };
-function resolveFlags(flags) {
+function resolveFlags(flags2) {
   let result = 0;
-  for (const flag of flags) {
+  for (const flag of flags2) {
     result |= kittyFlags[flag];
   }
-  if (flags.includes("reportAssociatedText")) {
+  if (flags2.includes("reportAssociatedText")) {
     result |= kittyFlags.reportAllKeysAsEscapeCodes;
   }
   return result;
@@ -19944,24 +19944,24 @@ var Ink = class {
     if (mode === "disabled") {
       return;
     }
-    const flags = options.flags ?? ["disambiguateEscapeCodes"];
+    const flags2 = options.flags ?? ["disambiguateEscapeCodes"];
     if (mode === "enabled") {
       if (isTty(this.options.stdin) && this.options.stdout.isTTY) {
-        this.enableKittyProtocol(flags);
+        this.enableKittyProtocol(flags2);
       }
       return;
     }
     if (!this.interactive || !isTty(this.options.stdin) || !this.options.stdout.isTTY) {
       return;
     }
-    this.confirmKittySupport(flags);
+    this.confirmKittySupport(flags2);
   }
-  confirmKittySupport(flags) {
+  confirmKittySupport(flags2) {
     const finish = (isSupported) => {
       this.finishKittyDetection = void 0;
       clearTimeout(timer);
       if (isSupported && !this.isUnmounted) {
-        this.enableKittyProtocol(flags);
+        this.enableKittyProtocol(flags2);
       }
     };
     const timer = setTimeout(() => {
@@ -19970,10 +19970,10 @@ var Ink = class {
     this.finishKittyDetection = finish;
     this.options.stdout.write("\x1B[?u");
   }
-  enableKittyProtocol(flags) {
-    this.options.stdout.write(`\x1B[>${resolveFlags(flags)}u`);
+  enableKittyProtocol(flags2) {
+    this.options.stdout.write(`\x1B[>${resolveFlags(flags2)}u`);
     this.kittyProtocolEnabled = true;
-    this.kittyFlags = flags;
+    this.kittyFlags = flags2;
   }
   beginSuspend() {
     if (!this.interactive) {
@@ -24100,6 +24100,8 @@ var initialUi = {
   lastKeyAt: 0
 };
 var FOCUS_ORDER = ["agents", "right", "ports"];
+var SELECTION_IDLE_MS = 15e3;
+var FLASH_MS = 2500;
 function step(focus, delta) {
   const n = FOCUS_ORDER.length;
   const i = FOCUS_ORDER.indexOf(focus);
@@ -24149,6 +24151,19 @@ function uiReducer(s, a) {
     case "noop":
       return s;
   }
+}
+function flashVisible(ui, now) {
+  const f = ui.flash;
+  if (f === null) return null;
+  if (now < f.at || now >= f.at + FLASH_MS) return null;
+  return { text: f.text, ok: f.ok };
+}
+function selectionExpired(ui, now) {
+  return ui.selectedAgentId !== null && now - ui.lastKeyAt >= SELECTION_IDLE_MS;
+}
+function effectiveUi(ui, agentIds) {
+  if (ui.selectedAgentId === null || agentIds.has(ui.selectedAgentId)) return ui;
+  return { ...ui, selectedAgentId: null };
 }
 
 // src/panel/ui/keymap.ts
@@ -24855,7 +24870,7 @@ function sumItems(slots, from, to) {
   return n;
 }
 function drawAgentsPane(scr, r2, m) {
-  if (r2.h < 1 || r2.w < 1) return { rows: 0, moreBelow: 0 };
+  if (r2.h < 1 || r2.w < 1) return { rows: 0, moreBelow: 0, firstRow: 0, visibleRows: 0 };
   const nA = m.agents.length;
   const nI = m.idle.length;
   const right = nA === 0 && nI === 0 ? "0 active" : nA === 0 ? `${nI} idle` : `${nA} active${SEP3}${nI} idle`;
@@ -24871,16 +24886,16 @@ function drawAgentsPane(scr, r2, m) {
       scr.put(r2.x + 2, r2.y + 2, plainText(EMPTY_BODY, r2.w - 2), { fg: PALETTE.dim2 });
       rows2 = 3;
     }
-    return { rows: rows2, moreBelow: 0 };
+    return { rows: rows2, moreBelow: 0, firstRow: 0, visibleRows: 0 };
   }
   const fit = Math.floor((r2.w + 2) / CARD_PITCH_X);
   if (fit === 0) {
     const n = nA + nI;
     if (r2.h >= 2 && r2.w > 2) {
       scr.put(r2.x + 2, r2.y + 1, plainText(`${V2.down} ${n} more`, r2.w - 2), dimSt);
-      return { rows: 2, moreBelow: n };
+      return { rows: 2, moreBelow: n, firstRow: 0, visibleRows: 0 };
     }
-    return { rows: 1, moreBelow: n };
+    return { rows: 1, moreBelow: n, firstRow: 0, visibleRows: 0 };
   }
   const want = Number.isFinite(m.cardCols) ? Math.trunc(m.cardCols) : 1;
   const cols = Math.min(fit, Math.max(1, want));
@@ -24888,7 +24903,9 @@ function drawAgentsPane(scr, r2, m) {
   for (let j = 0; j < nI; j += 3) slots.push({ strips: m.idle.slice(j, j + 3) });
   const cardRows = Math.ceil(slots.length / cols);
   const fr = Number.isFinite(m.firstRow) ? Math.trunc(m.firstRow) : 0;
-  const first = Math.min(Math.max(0, fr), Math.max(0, cardRows - 1));
+  const allFit = cardRows * CARD_PITCH_Y - 1 <= r2.h - 1;
+  const maxStart = allFit ? 0 : Math.max(0, cardRows - Math.max(1, Math.floor((r2.h - 1) / CARD_PITCH_Y)));
+  const first = Math.min(Math.max(0, fr), maxStart);
   const up = first > 0 && r2.h >= 2;
   const available = r2.h - 1 - (up ? 1 : 0);
   const remaining = cardRows - first;
@@ -24938,7 +24955,7 @@ function drawAgentsPane(scr, r2, m) {
     scr.put(r2.x + 2, dy, `${V2.down} ${below} more`, dimSt);
     rows = dy - r2.y + 1;
   }
-  return { rows: Math.min(rows, r2.h), moreBelow: below };
+  return { rows: Math.min(rows, r2.h), moreBelow: below, firstRow: first, visibleRows: k };
 }
 
 // src/panel/ui/draw/files.ts
@@ -25479,7 +25496,7 @@ function drawTabsBody(scr, r2, m, bodyH) {
   if (r2.w <= 0 || r2.h <= 0) return { end: r2.y - 1, bodyRows: 0 };
   const ui = m.ui;
   const rightFocused = ui.focus === "right";
-  drawTabs(scr, r2.x, r2.y, r2.w, { active: ui.rightTab, columnFocused: rightFocused, sample: m.sample });
+  drawTabs(scr, r2.x, r2.y, r2.w, { active: ui.rightTab, columnFocused: rightFocused, sample: m.sampleTabs ?? m.sample });
   const h = Math.max(0, Math.min(Math.trunc(bodyH) || 0, r2.h - 2));
   const bodyRect = { x: r2.x, y: r2.y + 2, w: r2.w, h };
   const bodyRows = ui.rightTab === "phases" ? drawPhases(scr, bodyRect, {
@@ -25508,7 +25525,7 @@ function drawBand(scr, r2, band, m) {
       ports: m.ports,
       focused: portsFocused,
       cursorKey: portsFocused ? m.ports[0]?.key ?? null : null,
-      sample: m.sample
+      sample: m.samplePorts ?? m.sample
     }
   );
   const end = Math.min(bottom - 1, Math.max(r2.y, left.end, r2.y + portsRows - 1));
@@ -25548,7 +25565,7 @@ function drawRightColumn(scr, r2, m) {
       ports: m.ports,
       focused: portsFocused,
       cursorKey: portsFocused ? m.ports[0]?.key ?? null : null,
-      sample: m.sample
+      sample: m.samplePorts ?? m.sample
     }
   );
   const end = Math.min(bottom - 1, portsRows > 0 ? portsY + portsRows - 1 : Math.max(r2.y, bodyEnd));
@@ -25631,6 +25648,18 @@ function drawTooSmall(cols, rows, h) {
 }
 
 // src/panel/ui/draw/shell.ts
+var NO_WINDOW = Object.freeze({ offset: 0, visible: 0 });
+var EMPTY_SCROLL = Object.freeze({
+  grid: NO_WINDOW,
+  phases: NO_WINDOW,
+  sessions: NO_WINDOW,
+  ports: NO_WINDOW
+});
+function flags(input) {
+  const s = input.sample;
+  if (typeof s === "boolean") return { agents: s, files: s, phases: s, sessions: s, ports: s };
+  return s;
+}
 var BODY_Y = 2;
 var CHROME_ROWS2 = 4;
 var MAX_CONFLICT_ROWS2 = 3;
@@ -25640,16 +25669,16 @@ var RIGHT_MIN = 7;
 var RIGHT_FOCUS_MIN = 10;
 var BAND_MIN = 5;
 var AGENTS_COLLAPSED = 2;
-function agentsModel(input, cardCols) {
+function agentsModel(input, cardCols, natural = false) {
   return {
     agents: input.panes.agents,
     idle: input.panes.idle,
     focused: input.ui.focus === "agents",
-    sample: input.sample,
+    sample: flags(input).agents,
     cardCols,
     tick: input.tick,
     selectedId: input.ui.selectedAgentId,
-    firstRow: 0
+    firstRow: natural ? 0 : input.scroll?.grid.offset ?? 0
   };
 }
 function filesModel(input) {
@@ -25658,11 +25687,12 @@ function filesModel(input) {
     groups: input.panes.groups,
     paused: input.ui.filesPaused,
     step: input.step,
-    sample: input.sample
+    sample: flags(input).files
   };
 }
 function rightModel(input, portsMinY) {
   const p = input.panes;
+  const f = flags(input);
   return {
     ui: input.ui,
     projects: p.projects,
@@ -25670,7 +25700,9 @@ function rightModel(input, portsMinY) {
     sessions: p.sessions,
     sessionStatus: p.sessionStatus,
     ports: p.ports,
-    sample: input.sample,
+    sample: f.phases || f.sessions,
+    sampleTabs: f[input.ui.rightTab],
+    samplePorts: f.ports,
     portsMinY
   };
 }
@@ -25693,7 +25725,7 @@ function measureLeft(input, w2, cardCols) {
   const p = input.panes;
   const slots = p.agents.length + Math.ceil(p.idle.length / 3);
   const h = CARD_PITCH_Y * (slots + 1) + 2;
-  const a = drawAgentsPane(new Screen(w2, h), { x: 0, y: 0, w: w2, h }, agentsModel(input, cardCols));
+  const a = drawAgentsPane(new Screen(w2, h), { x: 0, y: 0, w: w2, h }, agentsModel(input, cardCols, true));
   const f = drawFilesPane(new Screen(w2, FILES_MAX_H), { x: 0, y: 0, w: w2, h: FILES_MAX_H }, filesModel(input));
   const filesHard = Math.min(f, 1 + Math.min(p.conflicts.length, MAX_CONFLICT_ROWS2));
   return { agents: a.rows, filesHard, filesTicker: f - filesHard };
@@ -25704,7 +25736,12 @@ function bandNatural(rm, leftW, rightW, h) {
   const ports = drawPortsPane(
     new Screen(rightW, h),
     { x: 0, y: 0, w: rightW, h },
-    { ports: rm.ports, focused, cursorKey: focused ? rm.ports[0]?.key ?? null : null, sample: rm.sample }
+    {
+      ports: rm.ports,
+      focused,
+      cursorKey: focused ? rm.ports[0]?.key ?? null : null,
+      sample: rm.samplePorts ?? rm.sample
+    }
   );
   return Math.max(left, ports);
 }
@@ -25715,11 +25752,11 @@ function drawLeft(scr, input, x, w2, cardCols, agentsH, filesH, bottom) {
   const fh = Math.max(0, Math.min(filesH, bottom - filesY));
   const f = drawFilesPane(scr, { x, y: filesY, w: w2, h: fh }, filesModel(input));
   const end = f > 0 ? filesY + f - 1 : BODY_Y + a.rows - 1;
-  return { filesY, end };
+  return { filesY, end, grid: { offset: a.firstRow, visible: a.visibleRows } };
 }
-function drawShell(input) {
+function drawShellFrame(input) {
   const g = geometry(input.cols, input.rows);
-  if (g.mode === "small") return drawTooSmall(g.cols, g.rows, input.header);
+  if (g.mode === "small") return { lines: drawTooSmall(g.cols, g.rows, input.header), scroll: EMPTY_SCROLL };
   const cols = g.cols;
   const rows = g.rows;
   const scr = new Screen(cols, rows);
@@ -25727,6 +25764,7 @@ function drawShell(input) {
   const total = rows - CHROME_ROWS2;
   const bottom = BODY_Y + total;
   let end;
+  let gridWin = NO_WINDOW;
   if (g.split && g.divX !== null) {
     const m = measureLeft(input, g.LW, g.cardCols);
     const [grid, gridSpacer] = gridDemands(m);
@@ -25748,6 +25786,7 @@ function drawShell(input) {
       bottom
     );
     const right = drawRightColumn(scr, { x: g.RX, y: BODY_Y, w: g.RW, h: total }, rightModel(input, left.filesY));
+    gridWin = left.grid;
     end = Math.max(left.end, right.end);
     for (let y = BODY_Y; y <= end; y++) scr.put(g.divX, y, V2.vline, { fg: PALETTE.edge });
   } else {
@@ -25785,6 +25824,7 @@ function drawShell(input) {
       (b.filesHard ?? 0) + (b.ticker ?? 0),
       bottom
     );
+    gridWin = left.grid;
     end = left.end;
     const ry = left.end + 1 + (b.rightSpacer ?? 0);
     const rH = Math.max(0, Math.min(b[rid] ?? 0, bottom - ry));
@@ -25796,7 +25836,8 @@ function drawShell(input) {
   }
   const footerY = Math.min(end + 2, rows - 1);
   drawFooter(scr, footerY, cols, { hints: hintsFor(input.ui), keysOff: input.keysOff, flash: input.flash });
-  return scr.toLines(footerY + 1);
+  const scroll = { grid: gridWin, phases: NO_WINDOW, sessions: NO_WINDOW, ports: NO_WINDOW };
+  return { lines: scr.toLines(footerY + 1), scroll };
 }
 
 // src/panel/ui/sample.ts
@@ -26023,6 +26064,7 @@ function ScreenView({ lines }) {
 
 // src/panel/PanelApp.tsx
 var import_jsx_runtime4 = __toESM(require_jsx_runtime(), 1);
+var SAMPLE_FLAGS = { agents: true, files: true, phases: true, sessions: true, ports: true };
 var TICKER_VISIBLE = 6;
 function PanelApp(props = {}) {
   const tickMs = props.tickMs ?? UI_TICK_MS;
@@ -26032,8 +26074,10 @@ function PanelApp(props = {}) {
   const { rows, columns } = use_window_size_default();
   useResizeRepaint();
   const { isRawModeSupported } = use_stdin_default();
-  const uiRef = import_react47.default.useRef(initialUi);
-  const [ui, setUi] = import_react47.default.useState(initialUi);
+  const { exit } = useApp();
+  const [start] = import_react47.default.useState(() => ({ ...initialUi, ...props.initialUi }));
+  const uiRef = import_react47.default.useRef(start);
+  const [ui, setUi] = import_react47.default.useState(start);
   const apply = import_react47.default.useCallback((action) => {
     const next = uiReducer(uiRef.current, action);
     if (next === uiRef.current) return;
@@ -26041,7 +26085,19 @@ function PanelApp(props = {}) {
     setUi(next);
   }, []);
   const animating = SAMPLE.agents.some((a) => a.state === "running") || tickerRows(SAMPLE.groups).length > TICKER_VISIBLE;
-  const { tick, step: step2 } = useUiTick({ active: animating, paused: ui.filesPaused, tickMs });
+  const flash = flashVisible(ui, now());
+  const { tick, step: step2 } = useUiTick({
+    active: animating || flash !== null || ui.selectedAgentId !== null,
+    paused: ui.filesPaused,
+    tickMs
+  });
+  import_react47.default.useEffect(() => {
+    if (selectionExpired(uiRef.current, now())) apply({ t: "clearSelection" });
+  }, [tick, ui.selectedAgentId, ui.lastKeyAt]);
+  const viewRef = import_react47.default.useRef({ agentIds: /* @__PURE__ */ new Set() });
+  viewRef.current = { agentIds: SAMPLE_AGENT_IDS };
+  const scrollRef = import_react47.default.useRef(EMPTY_SCROLL);
+  const uiForDraw = effectiveUi(ui, viewRef.current.agentIds);
   const header = headerFromRoster(roster, updateTo, now());
   const headerKey = [
     header.agents,
@@ -26051,43 +26107,85 @@ function PanelApp(props = {}) {
     header.clock,
     header.update ?? ""
   ].join("|");
-  const lines = import_react47.default.useMemo(
-    () => drawShell({
+  const flashKey = flash === null ? "" : `${flash.ok ? 1 : 0}|${flash.text}`;
+  const sc = scrollRef.current;
+  const scrollKey = [sc.grid, sc.phases, sc.sessions, sc.ports].map((w2) => w2.offset).join("|");
+  const frame = import_react47.default.useMemo(
+    () => drawShellFrame({
       rows,
       cols: columns,
-      ui,
+      ui: uiForDraw,
       tick,
       step: step2,
       header,
       panes: SAMPLE,
       keysOff: !isRawModeSupported,
-      flash: null,
-      sample: true
+      flash,
+      sample: SAMPLE_FLAGS,
+      scroll: scrollRef.current
     }),
-    // `header` is keyed by its fields (headerKey): a fresh object with the same
-    // values never re-draws the frame.
+    // `header` is keyed by its fields (headerKey), the flash by its visible
+    // text (flashKey) and the fed-back windows by their offsets (scrollKey): a
+    // fresh object with the same values never re-draws the frame.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rows, columns, ui, tick, step2, isRawModeSupported, headerKey]
+    [rows, columns, ui, uiForDraw.selectedAgentId, tick, step2, isRawModeSupported, headerKey, flashKey, scrollKey]
   );
-  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(Box_default, { flexDirection: "column", children: [
-    isRawModeSupported ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(V2Keyboard, { uiRef, apply }) : null,
-    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ScreenView, { lines })
-  ] });
-}
-function V2Keyboard({
-  uiRef,
-  apply
-}) {
-  const { exit } = useApp();
-  use_input_default((input, key) => {
-    const action = resolve3(input, key, uiRef.current);
+  scrollRef.current = frame.scroll;
+  const intentSpy = props.intentSpy;
+  const intentRef = import_react47.default.useRef(() => void 0);
+  intentRef.current = (intent, ctx) => {
+    intentSpy?.(intent, ctx);
+    switch (ctx) {
+      case "agents":
+      // select / move in the grid: 10-09
+      case "agentsSelected":
+        return;
+      case "phases":
+      // browse + project: 10-13
+      case "sessions":
+        return;
+      case "ports":
+        return;
+      case "menu":
+      case "confirm":
+      case "confirmKill":
+      case "edit":
+        return;
+    }
+  };
+  const onKeyRef = import_react47.default.useRef(() => void 0);
+  onKeyRef.current = (input, key) => {
+    const t = now();
+    if (selectionExpired(uiRef.current, t)) apply({ t: "clearSelection" });
+    apply({ t: "keyAt", at: t });
+    const eff = effectiveUi(uiRef.current, viewRef.current.agentIds);
+    if (eff !== uiRef.current) apply({ t: "clearSelection" });
+    const action = resolve3(input, key, eff);
     if (action === null) return;
-    if (isIntent(action)) return;
+    if (isIntent(action)) {
+      intentRef.current(action, contextOf(eff));
+      return;
+    }
     if (action.t === "quit") {
       exit();
       return;
     }
     apply(action);
+  };
+  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(Box_default, { flexDirection: "column", children: [
+    isRawModeSupported ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(V2Keyboard, { onKeyRef }) : null,
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ScreenView, { lines: frame.lines })
+  ] });
+}
+var SAMPLE_AGENT_IDS = /* @__PURE__ */ new Set([
+  ...SAMPLE.agents.map((a) => a.id),
+  ...SAMPLE.idle.map((s) => s.id)
+]);
+function V2Keyboard({
+  onKeyRef
+}) {
+  use_input_default((input, key) => {
+    onKeyRef.current(input, key);
   });
   return null;
 }

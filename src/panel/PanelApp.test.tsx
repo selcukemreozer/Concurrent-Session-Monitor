@@ -277,8 +277,10 @@ describe("PanelApp selection idle drop (10-08, D-09)", () => {
     const { lastFrame, stdin } = await mountTty(
       <PanelApp tickMs={20} now={() => clock.t} initialUi={{ selectedAgentId: CARD_ID, lastKeyAt: 0 }} />,
     );
+    expect(lastFrame()).toContain("ci pipeline monitoring");
     press(stdin, KEYS.r);
-    await vi.waitFor(() => expect(footer(lastFrame())).toContain("r phases"));
+    // the right column switches to SESSIONS (agentsSelected hints carry no r)
+    await vi.waitFor(() => expect(lastFrame()).not.toContain("ci pipeline monitoring"));
     clock.t = 19_999;
     await nextTick(lastFrame);
     expect(lastFrame()).toContain("┏");

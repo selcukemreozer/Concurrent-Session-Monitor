@@ -5,9 +5,17 @@ import { useUpdateCheck } from "./hooks/useUpdateCheck.js";
 import { useUiTick, UI_TICK_MS } from "./hooks/useUiTick.js";
 import { useResizeRepaint } from "./hooks/useResizeRepaint.js";
 import { headerFromRoster } from "./ui/headerModel.js";
-import { initialUi, uiReducer, type Action, type UiState } from "./ui/uiState.js";
-import { isIntent, resolve } from "./ui/keymap.js";
-import { drawShell } from "./ui/draw/shell.js";
+import {
+  effectiveUi,
+  flashVisible,
+  initialUi,
+  selectionExpired,
+  uiReducer,
+  type Action,
+  type UiState,
+} from "./ui/uiState.js";
+import { contextOf, isIntent, resolve, type HintContext, type Intent, type KeyInput } from "./ui/keymap.js";
+import { drawShellFrame, EMPTY_SCROLL, type SampleFlags, type ScrollState } from "./ui/draw/shell.js";
 import { tickerRows } from "./ui/draw/files.js";
 import { SAMPLE } from "./ui/sample.js";
 import { ScreenView } from "./ui/ScreenView.js";
@@ -37,11 +45,42 @@ import { ScreenView } from "./ui/ScreenView.js";
  *     flicker.
  *   - Phase 9 PanelApp never opens a URL, kills a process, copies to the
  *     clipboard or launches anything: every P10–P12 key resolves to a noop.
+ *
+ * Phase 10 plan 10-08 (KEYS-01..03, D-09, D-12, D-23, LAYOUT-02):
+ *   - One intent dispatcher behind the single V2Keyboard (`onKey`): every key
+ *     first records `keyAt(now())`, then resolves against
+ *     `effectiveUi(uiRef.current, view ids)`, so a vanished selection never
+ *     routes as `agentsSelected` (Pitfall 4). `quit` exits, an intent goes to
+ *     `onIntent(intent, ctx)` (per-context cases filled by later plans; all
+ *     no-ops here, so SAMPLE panes never trigger anything, T-10-19), every
+ *     other action goes to the reducer.
+ *   - `viewRef` holds the per-render view facts the dispatcher reads (the
+ *     drawn agent ids for now); `scrollRef` holds the ScrollState returned by
+ *     drawShellFrame and feeds it back on the next draw (sticky windows, no
+ *     state, no extra render).
+ *   - The footer flash slot shows a flash for FLASH_MS (2500 ms) on the
+ *     injected clock; an agent selection drops after SELECTION_IDLE_MS (15 s)
+ *     without a key. The UI tick runs while either is pending, so both expire
+ *     on time without a key press.
+ *   - The draw and the footer hints use `effectiveUi`, so a selection that no
+ *     longer resolves never shows `⏎ go to pane` (KEYS-03).
  */
 export interface PanelAppProps {
   tickMs?: number;
   now?: () => number;
+  /** Tests only: merged over `initialUi` once at mount. */
+  initialUi?: Partial<UiState>;
+  /** Tests only: observes every intent the dispatcher routes, with its context. */
+  intentSpy?: (intent: Intent, ctx: HintContext) => void;
 }
+
+/** The view facts the dispatcher resolves keys against (10-08; later plans add rows, ports, phases, sessions). */
+interface ViewFacts {
+  agentIds: ReadonlySet<string>;
+}
+
+/** Every pane still draws SAMPLE (D-20); each flag turns false when its pane goes live (D-23). */
+const SAMPLE_FLAGS: SampleFlags = { agents: true, files: true, phases: true, sessions: true, ports: true };
 
 /** Rows the FILES ticker shows before it starts scrolling. */
 const TICKER_VISIBLE = 6;
@@ -59,11 +98,13 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
   // bookkeeping so no ghost header survives Warp's reflow. v2 only (D-04).
   useResizeRepaint();
   const { isRawModeSupported } = useStdin();
+  const { exit } = useApp();
 
   // The ref is assigned before the state so quick successive keys each see the
   // previous key's effect (the T-08-11 stale-closure pattern).
-  const uiRef = React.useRef<UiState>(initialUi);
-  const [ui, setUi] = React.useState<UiState>(initialUi);
+  const [start] = React.useState<UiState>(() => ({ ...initialUi, ...props.initialUi }));
+  const uiRef = React.useRef<UiState>(start);
+  const [ui, setUi] = React.useState<UiState>(start);
   const apply = React.useCallback((action: Action) => {
     const next = uiReducer(uiRef.current, action);
     if (next === uiRef.current) return;
@@ -74,7 +115,25 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
   const animating =
     SAMPLE.agents.some((a) => a.state === "running") ||
     tickerRows(SAMPLE.groups).length > TICKER_VISIBLE;
-  const { tick, step } = useUiTick({ active: animating, paused: ui.filesPaused, tickMs });
+  const flash = flashVisible(ui, now());
+  // D-09 / D-12: the clock also runs while a flash is up or a selection may expire
+  const { tick, step } = useUiTick({
+    active: animating || flash !== null || ui.selectedAgentId !== null,
+    paused: ui.filesPaused,
+    tickMs,
+  });
+
+  // D-09: a selection idle for SELECTION_IDLE_MS is dropped (no special case for go-to)
+  React.useEffect(() => {
+    if (selectionExpired(uiRef.current, now())) apply({ t: "clearSelection" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tick, ui.selectedAgentId, ui.lastKeyAt]);
+
+  // The view facts of the panes drawn this render (SAMPLE: cards + idle strips).
+  const viewRef = React.useRef<ViewFacts>({ agentIds: new Set() });
+  viewRef.current = { agentIds: SAMPLE_AGENT_IDS };
+  const scrollRef = React.useRef<ScrollState>(EMPTY_SCROLL);
+  const uiForDraw = effectiveUi(ui, viewRef.current.agentIds);
 
   const header = headerFromRoster(roster, updateTo, now());
   const headerKey = [
@@ -86,58 +145,107 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
     header.update ?? "",
   ].join("|");
 
-  const lines = React.useMemo(
+  const flashKey = flash === null ? "" : `${flash.ok ? 1 : 0}|${flash.text}`;
+  const sc = scrollRef.current;
+  const scrollKey = [sc.grid, sc.phases, sc.sessions, sc.ports].map((w) => w.offset).join("|");
+
+  const frame = React.useMemo(
     () =>
-      drawShell({
+      drawShellFrame({
         rows,
         cols: columns,
-        ui,
+        ui: uiForDraw,
         tick,
         step,
         header,
         panes: SAMPLE,
         keysOff: !isRawModeSupported,
-        flash: null,
-        sample: true,
+        flash,
+        sample: SAMPLE_FLAGS,
+        scroll: scrollRef.current,
       }),
-    // `header` is keyed by its fields (headerKey): a fresh object with the same
-    // values never re-draws the frame.
+    // `header` is keyed by its fields (headerKey), the flash by its visible
+    // text (flashKey) and the fed-back windows by their offsets (scrollKey): a
+    // fresh object with the same values never re-draws the frame.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rows, columns, ui, tick, step, isRawModeSupported, headerKey],
+    [rows, columns, ui, uiForDraw.selectedAgentId, tick, step, isRawModeSupported, headerKey, flashKey, scrollKey],
   );
+  // Pattern 3: the windows drawn are fed back on the next draw (a ref: no state, no extra render)
+  scrollRef.current = frame.scroll;
 
-  return (
-    <Box flexDirection="column">
-      {isRawModeSupported ? <V2Keyboard uiRef={uiRef} apply={apply} /> : null}
-      <ScreenView lines={lines} />
-    </Box>
-  );
-}
+  // The dispatcher's per-context intent handlers, reassigned every render so
+  // they read the latest view-model. Every case is a no-op in 10-08: a handler
+  // is added only by the plan that makes its pane live (T-10-19).
+  const intentSpy = props.intentSpy;
+  const intentRef = React.useRef<(intent: Intent, ctx: HintContext) => void>(() => undefined);
+  intentRef.current = (intent: Intent, ctx: HintContext): void => {
+    intentSpy?.(intent, ctx);
+    switch (ctx) {
+      case "agents": // select / move in the grid: 10-09
+      case "agentsSelected": // move + go to pane: 10-09, 10-10
+        return;
+      case "phases": // browse + project: 10-13
+      case "sessions": // browse + copy + open: 10-13
+        return;
+      case "ports": // browse + actions: 10-14
+        return;
+      case "menu":
+      case "confirm":
+      case "confirmKill":
+      case "edit":
+        return;
+    }
+  };
 
-/**
- * The ONLY input handler in v2 (KEYS-01). A key resolves through the keymap
- * against the freshest UI state; `quit` becomes Ink's exit, every other action
- * goes to the reducer. Mounted only on a TTY (see PanelApp).
- */
-function V2Keyboard({
-  uiRef,
-  apply,
-}: {
-  uiRef: React.RefObject<UiState>;
-  apply: (action: Action) => void;
-}): null {
-  const { exit } = useApp();
-  useInput((input, key) => {
-    const action = resolve(input, key, uiRef.current);
+  // The single dispatcher (KEYS-01): keyAt first, then resolve against effectiveUi.
+  const onKeyRef = React.useRef<(input: string, key: KeyInput) => void>(() => undefined);
+  onKeyRef.current = (input: string, key: KeyInput): void => {
+    const t = now();
+    // D-09: an already-expired selection is dropped before this key counts
+    if (selectionExpired(uiRef.current, t)) apply({ t: "clearSelection" });
+    apply({ t: "keyAt", at: t });
+    const eff = effectiveUi(uiRef.current, viewRef.current.agentIds);
+    // Pitfall 4: a selection that no longer resolves fails closed in the state too
+    if (eff !== uiRef.current) apply({ t: "clearSelection" });
+    const action = resolve(input, key, eff);
     if (action === null) return;
-    // 10-07: P10 rows emit intents (move/page/project/goto/copy/open); they
-    // are ignored here until 10-08 routes them through the dispatcher.
-    if (isIntent(action)) return;
+    if (isIntent(action)) {
+      intentRef.current(action, contextOf(eff));
+      return;
+    }
     if (action.t === "quit") {
       exit();
       return;
     }
     apply(action);
+  };
+
+  return (
+    <Box flexDirection="column">
+      {isRawModeSupported ? <V2Keyboard onKeyRef={onKeyRef} /> : null}
+      <ScreenView lines={frame.lines} />
+    </Box>
+  );
+}
+
+/** The SAMPLE cards and idle strips a selection may resolve to. */
+const SAMPLE_AGENT_IDS: ReadonlySet<string> = new Set([
+  ...SAMPLE.agents.map((a) => a.id),
+  ...SAMPLE.idle.map((s) => s.id),
+]);
+
+/**
+ * The ONLY input handler in v2 (KEYS-01). Every key goes to PanelApp's single
+ * dispatcher (`onKeyRef`, reassigned each render so it sees the latest view).
+ * Mounted only on a TTY (see PanelApp).
+ */
+function V2Keyboard({
+  onKeyRef,
+}: {
+  onKeyRef: React.RefObject<(input: string, key: KeyInput) => void>;
+}): null {
+  useInput((input, key) => {
+    onKeyRef.current(input, key);
   });
   return null;
 }
