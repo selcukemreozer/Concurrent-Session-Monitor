@@ -31,6 +31,10 @@ import { storeRoot } from "../paths.js";
 
 export const CRASH_LOG = "crash.log";
 export const CRASH_LOG_CAP = 256 * 1024;
+/** The most bytes of body one crash.log entry keeps (IN-03, Phase 10 plan 10-02). */
+export const CRASH_ENTRY_CAP = CRASH_LOG_CAP / 4;
+/** The line that replaces a cut entry body's tail. */
+const TRUNCATED = sanitize("\u2026[truncated]");
 export const CRASH_MSG_CELLS = 120;
 
 /** Everything the crash handler touches, injected so it is unit-testable. */
@@ -80,10 +84,26 @@ export function crashMessage(err: unknown): string {
   return m === "" ? "unknown error" : m;
 }
 
+/** The longest prefix of `s` that is at most `cap` UTF-8 bytes, cut between code points. */
+function capBytes(s: string, cap: number): string {
+  if (Buffer.byteLength(s) <= cap) return s;
+  let bytes = 0;
+  let i = 0;
+  for (const cp of s) {
+    const b = Buffer.byteLength(cp);
+    if (bytes + b > cap) break;
+    bytes += b;
+    i += cp.length;
+  }
+  return s.slice(0, i);
+}
+
 /**
  * The crash.log entry: `[<ISO>] pid <pid>`, then the Error's stack (else its
  * message, else String(err)), every line passed through sanitize, ending with
- * a newline. Never serializes the error object as a whole.
+ * a newline. Never serializes the error object as a whole. A body longer than
+ * CRASH_ENTRY_CAP bytes is cut on a code-point boundary and followed by a
+ * `...[truncated]` line, so one huge throw cannot outgrow the log cap (IN-03).
  */
 export function crashEntry(err: unknown, now: Date, pid: number): string {
   let body = "";
@@ -98,7 +118,10 @@ export function crashEntry(err: unknown, now: Date, pid: number): string {
   }
   if (body === "") body = safeString(err);
   const lines = body.split(/\r?\n/).map((l) => sanitize(l));
-  return `[${now.toISOString()}] pid ${pid}\n${lines.join("\n")}\n`;
+  const full = lines.join("\n");
+  const kept = capBytes(full, CRASH_ENTRY_CAP);
+  const tail = kept.length < full.length ? `\n${TRUNCATED}` : "";
+  return `[${now.toISOString()}] pid ${pid}\n${kept}${tail}\n`;
 }
 
 /**
@@ -153,7 +176,9 @@ export function installCrashHandlers(
  *   - past CRASH_LOG_CAP the file rotates ONCE to crash.log.1 (replacing any
  *     older rotation), and only when lstat says it is a regular file;
  *   - the open is O_APPEND | O_CREAT | O_NOFOLLOW with mode 0600, so a
- *     pre-placed symlink is refused (ELOOP) and never written through.
+ *     pre-placed symlink is refused (ELOOP) and never written through;
+ *   - the mode is forced to 0600 with fchmod on every append, so a
+ *     pre-existing looser crash.log is tightened (IN-03, Phase 10 plan 10-02).
  */
 export function appendCrashLog(entry: string, dir: string = storeRoot()): void {
   try {
@@ -175,6 +200,7 @@ export function appendCrashLog(entry: string, dir: string = storeRoot()): void {
     const { O_WRONLY, O_APPEND, O_CREAT, O_NOFOLLOW } = fs.constants;
     const fd = fs.openSync(file, O_WRONLY | O_APPEND | O_CREAT | O_NOFOLLOW, 0o600);
     try {
+      fs.fchmodSync(fd, 0o600);
       fs.writeSync(fd, entry);
     } finally {
       fs.closeSync(fd);

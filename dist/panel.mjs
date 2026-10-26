@@ -23968,7 +23968,7 @@ function uiReducer(s, a) {
 // src/panel/ui/keymap.ts
 var NORMAL = ["agents", "agentsSelected", "phases", "sessions", "ports"];
 var OVERLAYS = ["menu", "confirm", "confirmKill"];
-var NOT_EDIT = [...NORMAL, ...OVERLAYS];
+var TAB_CONTEXTS = [...NORMAL, "menu"];
 var plain = (key) => !key.ctrl && !key.meta;
 var char = (c) => (input, key) => plain(key) && input === c;
 var anyArrow = (_, k) => !!(k.upArrow || k.downArrow || k.leftArrow || k.rightArrow);
@@ -23978,6 +23978,14 @@ var esc = (_, k) => !!k.escape;
 var enter = (_, k) => !!k.return;
 var noop2 = (id) => () => ({ t: "noop", binding: id });
 var KEYMAP = [
+  {
+    // IN-01: before `close`, so Esc in a confirm is the hinted `n / esc` cancel.
+    id: "confirmNo",
+    built: 11,
+    contexts: ["confirm", "confirmKill"],
+    match: (i, k) => plain(k) && i === "n" || !!k.escape,
+    action: noop2("confirmNo")
+  },
   {
     id: "close",
     built: 9,
@@ -24000,16 +24008,17 @@ var KEYMAP = [
     action: noop2("editSave")
   },
   {
+    // IN-01: Tab closes an open menu but never dismisses a confirm.
     id: "focus",
     built: 9,
-    contexts: NOT_EDIT,
+    contexts: TAB_CONTEXTS,
     match: (_, k) => !!k.tab && !k.shift,
     action: () => ({ t: "focusNext" })
   },
   {
     id: "focusPrev",
     built: 9,
-    contexts: NOT_EDIT,
+    contexts: TAB_CONTEXTS,
     match: (_, k) => !!k.tab && !!k.shift,
     action: () => ({ t: "focusPrev" })
   },
@@ -24033,13 +24042,6 @@ var KEYMAP = [
     contexts: ["confirm"],
     match: (i, k) => plain(k) && i === "y" || !!k.return,
     action: noop2("confirmYes")
-  },
-  {
-    id: "confirmNo",
-    built: 11,
-    contexts: ["confirm", "confirmKill"],
-    match: char("n"),
-    action: noop2("confirmNo")
   },
   {
     id: "sigkillYes",
@@ -24567,8 +24569,9 @@ function countText(n) {
   return v > 999 ? "999+" : String(v);
 }
 function metaLine(c) {
-  const dir = plainText(c.dir, TEXT_W);
   const up = plainText(c.uptime, TEXT_W);
+  const dirW = TEXT_W - cellWidth(up) - 2 * cellWidth(SEP3) - 1;
+  const dir = pathText(c.dir, Math.max(1, dirW));
   const room = TEXT_W - cellWidth(dir) - cellWidth(up) - 2 * cellWidth(SEP3);
   const branch = plainText(c.branch, Math.max(1, room));
   return plainText(`${dir}${SEP3}${branch}${SEP3}${up}`, TEXT_W);
@@ -24663,7 +24666,15 @@ function drawAgentsPane(scr, r2, m) {
     }
     return { rows: rows2, moreBelow: 0 };
   }
-  const fit = Math.max(1, Math.floor((r2.w + 2) / CARD_PITCH_X));
+  const fit = Math.floor((r2.w + 2) / CARD_PITCH_X);
+  if (fit === 0) {
+    const n = nA + nI;
+    if (r2.h >= 2 && r2.w > 2) {
+      scr.put(r2.x + 2, r2.y + 1, plainText(`${V2.down} ${n} more`, r2.w - 2), dimSt);
+      return { rows: 2, moreBelow: n };
+    }
+    return { rows: 1, moreBelow: n };
+  }
   const want = Number.isFinite(m.cardCols) ? Math.trunc(m.cardCols) : 1;
   const cols = Math.min(fit, Math.max(1, want));
   const slots = m.agents.map((card, index) => ({ card, index }));
@@ -24783,8 +24794,8 @@ function drawFilesPane(scr, r2, m) {
     putIn2(scr, r2.x, y, V2.rowMark, red, end);
     putIn2(scr, r2.x + 2, y, V2.conflict, redB, end);
     const c = m.conflicts[i];
-    if (i === MAX_CONFLICT_ROWS - 1 && nConf > MAX_CONFLICT_ROWS) {
-      putIn2(scr, r2.x + 4, y, `+${nConf - (MAX_CONFLICT_ROWS - 1)} more conflicts`, { fg: PALETTE.hi }, pend);
+    if (i === confRows - 1 && nConf > confRows) {
+      putIn2(scr, r2.x + 4, y, `+${nConf - i} more conflicts`, { fg: PALETTE.hi }, pend);
     } else if (c) {
       let cx = putIn2(scr, r2.x + 4, y, nameText(c.a, NAME_W) || DASH2, hiB, end);
       cx = putIn2(scr, cx, y, JOIN2, redB, end);
@@ -24932,6 +24943,7 @@ var NUM_W = 5;
 var MINI_MAX = 12;
 var PHASES_HEADER_ROWS = 4;
 var HEADER_ROWS = PHASES_HEADER_ROWS;
+var HINT_MIN_W = 9;
 var SEP5 = ` ${V2.sep} `;
 var DIM = { fg: PALETTE.dim };
 var HI_BOLD = { fg: PALETTE.hi, bold: true };
@@ -24956,7 +24968,7 @@ function drawPhases(scr, r2, m) {
   const end = r2.x + r2.w;
   const bottom = r2.y + r2.h;
   const put = (dx, y2, text, st) => {
-    if (y2 < r2.y || y2 >= bottom) return x + dx + cellWidth(text);
+    if (y2 < r2.y || y2 >= bottom || dx < 0) return x + dx + cellWidth(text);
     return putIn3(scr, x + dx, y2, text, st, end);
   };
   if (m.projects.length === 0) {
@@ -24968,8 +24980,9 @@ function drawPhases(scr, r2, m) {
   const phases2 = p.phases;
   const total = phases2.length;
   const compact = m.focused && total > 0 && r2.h < HEADER_ROWS + 2;
-  const head = compact ? 1 : HEADER_ROWS;
-  const hint = m.focused && m.projects.length > 1;
+  const tight = !m.focused && total > 1 && r2.h === HEADER_ROWS + 1;
+  const head = compact ? 1 : tight ? HEADER_ROWS - 1 : HEADER_ROWS;
+  const hint = m.focused && m.projects.length > 1 && r2.w >= HINT_MIN_W;
   put(1, r2.y, plainText(p.name, hint ? r2.w - 7 : r2.w - 1), HI_BOLD);
   if (hint) put(r2.w - 5, r2.y, `${V2.left} ${V2.right}`, DIM);
   if (!compact) {
@@ -24986,7 +24999,7 @@ function drawPhases(scr, r2, m) {
     put(1, r2.y + 2, V2.heavyH.repeat(f), { fg: PALETTE.running });
     put(1 + f, r2.y + 2, V2.heavyH.repeat(bw - f), { fg: PALETTE.edge });
   }
-  if (!compact) put(r2.w - 7, r2.y + 2, `${done}/${total}`, DIM);
+  if (!compact && r2.w - 7 >= 1 + Math.max(0, bw)) put(r2.w - 7, r2.y + 2, `${done}/${total}`, DIM);
   const curIdx = phases2.findIndex((ph) => ph.status === "current");
   const center = curIdx >= 0 ? curIdx : Math.min(done, total - 1);
   const phaseRows = (k, last, contAfter, cursorHere) => {
@@ -25041,6 +25054,12 @@ function drawPhases(scr, r2, m) {
       if (more > 0) list.push(moreRow(plural2(more, "more phase", "more phases")));
       rows = list;
       if (list.length <= budget) break;
+      if (radius === 0) {
+        const cur = phaseRows(center, true, false, false).slice(0, 1);
+        const tail = more > 0 && budget >= 2 ? [moreRow(plural2(more, "more phase", "more phases"))] : [];
+        const head2 = a0 > 0 && budget >= 2 + tail.length ? [moreRow(plural2(a0, "earlier phase", "earlier phases"))] : [];
+        rows = [...head2, ...cur, ...tail];
+      }
     }
   } else {
     const cursor = m.cursor === null ? center : Math.min(total - 1, Math.max(0, Math.trunc(m.cursor)));
@@ -25148,7 +25167,9 @@ function putIn5(scr, x, y, text, st, end) {
 }
 function visiblePortEntries(ports, focused) {
   if (focused) return { shown: [...ports], others: 0 };
-  const shown = ports.filter((p) => p.owner !== null || p.exposed);
+  const exposed = ports.filter((p) => p.exposed);
+  const owned = ports.filter((p) => !p.exposed && p.owner !== null);
+  const shown = [...exposed, ...owned];
   return { shown, others: ports.length - shown.length };
 }
 function drawPortsPane(scr, r2, m) {
@@ -25170,9 +25191,16 @@ function drawPortsPane(scr, r2, m) {
     return 3;
   }
   const { shown, others } = visiblePortEntries(m.ports, m.focused);
-  let listH = r2.h - 2;
-  const showOthers = others > 0 && listH >= 2;
+  const avail = r2.h - 2;
+  let listH = avail;
+  let showOthers = others > 0 && avail >= 2;
+  if (showOthers && avail - 1 === 1 && shown.length > 1) showOthers = false;
   if (showOthers) listH -= 1;
+  const hiddenOthers = showOthers ? 0 : others;
+  if (listH === 1 && (shown.length > 1 || hiddenOthers > 0)) {
+    put(PORT_X, y++, `${V2.down} ${shown.length + hiddenOthers} more`, DIM3);
+    return y - r2.y;
+  }
   const cursor = m.focused && m.cursorKey !== null ? shown.findIndex((p) => p.key === m.cursorKey) : -1;
   const win = windowSlice({
     len: shown.length,
@@ -25202,7 +25230,7 @@ function drawPortsPane(scr, r2, m) {
       y++;
     }
   }
-  if (win.down) put(PORT_X, y++, `${V2.down} ${win.below} more`, DIM3);
+  if (win.down) put(PORT_X, y++, `${V2.down} ${win.below + hiddenOthers} more`, DIM3);
   if (showOthers) put(PORT_X, y++, `+${others} others`, DIM22);
   return y - r2.y;
 }
@@ -25264,6 +25292,9 @@ function drawRightColumn(scr, r2, m) {
   let portsY = Math.max(bodyEnd + 2, Math.trunc(m.portsMinY) || 0);
   const portsNeed = portsFocused ? budget.ports ?? PORTS_MIN : PORTS_MIN;
   if (bottom - portsY < portsNeed) portsY = bodyEnd + 2;
+  if (portsFocused && bodyRows === 0 && bottom - portsY === PORTS_MIN && portRowsNeeded(m.ports, true) > 1) {
+    portsY -= 1;
+  }
   const portsRows = drawPortsPane(
     scr,
     { x: r2.x, y: portsY, w: r2.w, h: Math.max(0, bottom - portsY) },
@@ -25964,6 +25995,8 @@ import * as os8 from "node:os";
 import * as path11 from "node:path";
 var CRASH_LOG = "crash.log";
 var CRASH_LOG_CAP = 256 * 1024;
+var CRASH_ENTRY_CAP = CRASH_LOG_CAP / 4;
+var TRUNCATED = sanitize("\u2026[truncated]");
 var CRASH_MSG_CELLS = 120;
 function safeString(x) {
   try {
@@ -25986,6 +26019,18 @@ function crashMessage(err) {
   const m = truncateEnd(oneLine(rawMessage(err)), CRASH_MSG_CELLS);
   return m === "" ? "unknown error" : m;
 }
+function capBytes(s, cap) {
+  if (Buffer.byteLength(s) <= cap) return s;
+  let bytes = 0;
+  let i = 0;
+  for (const cp of s) {
+    const b = Buffer.byteLength(cp);
+    if (bytes + b > cap) break;
+    bytes += b;
+    i += cp.length;
+  }
+  return s.slice(0, i);
+}
 function crashEntry(err, now, pid) {
   let body = "";
   if (err instanceof Error) {
@@ -25999,8 +26044,12 @@ function crashEntry(err, now, pid) {
   }
   if (body === "") body = safeString(err);
   const lines = body.split(/\r?\n/).map((l) => sanitize(l));
+  const full = lines.join("\n");
+  const kept = capBytes(full, CRASH_ENTRY_CAP);
+  const tail = kept.length < full.length ? `
+${TRUNCATED}` : "";
   return `[${now.toISOString()}] pid ${pid}
-${lines.join("\n")}
+${kept}${tail}
 `;
 }
 function createCrashHandler(d) {
@@ -26049,6 +26098,7 @@ function appendCrashLog(entry, dir = storeRoot()) {
     const { O_WRONLY, O_APPEND, O_CREAT, O_NOFOLLOW } = fs10.constants;
     const fd = fs10.openSync(file, O_WRONLY | O_APPEND | O_CREAT | O_NOFOLLOW, 384);
     try {
+      fs10.fchmodSync(fd, 384);
       fs10.writeSync(fd, entry);
     } finally {
       fs10.closeSync(fd);

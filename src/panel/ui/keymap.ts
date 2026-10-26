@@ -13,6 +13,11 @@
  *     (the UI-SPEC sample-shell scope: hinted P10–P12 keys are silent no-ops
  *     on sample data, T-09-11a). Each phase replaces its rows' actions.
  *   - Ctrl+C is not a row: Ink's `exitOnCtrlC` consumes it before `useInput`.
+ *   - Overlays (Phase 10 plan 10-02, IN-01): in `confirm` / `confirmKill`
+ *     Esc resolves to `confirmNo` (the binding the `n / esc` hint names; its
+ *     row sits before `close`), and `q` still closes. Tab / Shift+Tab move
+ *     focus in the normal contexts and close an open menu (UI-SPEC), but a
+ *     confirm is never dismissed by Tab.
  */
 import type { Action, UiState } from "./uiState.js";
 
@@ -61,7 +66,8 @@ type HintSpec = { binding: string; key: string; label: string | ((ui: UiState) =
 
 const NORMAL: readonly HintContext[] = ["agents", "agentsSelected", "phases", "sessions", "ports"];
 const OVERLAYS: readonly HintContext[] = ["menu", "confirm", "confirmKill"];
-const NOT_EDIT: readonly HintContext[] = [...NORMAL, ...OVERLAYS];
+/** Tab / Shift+Tab: the normal contexts and the menu, never a confirm (IN-01). */
+const TAB_CONTEXTS: readonly HintContext[] = [...NORMAL, "menu"];
 
 const plain = (key: KeyInput): boolean => !key.ctrl && !key.meta;
 const char = (c: string) => (input: string, key: KeyInput) => plain(key) && input === c;
@@ -73,6 +79,14 @@ const enter = (_: string, k: KeyInput) => !!k.return;
 const noop = (id: string) => (): Action => ({ t: "noop", binding: id });
 
 export const KEYMAP: readonly Binding[] = [
+  {
+    // IN-01: before `close`, so Esc in a confirm is the hinted `n / esc` cancel.
+    id: "confirmNo",
+    built: 11,
+    contexts: ["confirm", "confirmKill"],
+    match: (i, k) => (plain(k) && i === "n") || !!k.escape,
+    action: noop("confirmNo"),
+  },
   {
     id: "close",
     built: 9,
@@ -95,16 +109,17 @@ export const KEYMAP: readonly Binding[] = [
     action: noop("editSave"),
   },
   {
+    // IN-01: Tab closes an open menu but never dismisses a confirm.
     id: "focus",
     built: 9,
-    contexts: NOT_EDIT,
+    contexts: TAB_CONTEXTS,
     match: (_, k) => !!k.tab && !k.shift,
     action: () => ({ t: "focusNext" }),
   },
   {
     id: "focusPrev",
     built: 9,
-    contexts: NOT_EDIT,
+    contexts: TAB_CONTEXTS,
     match: (_, k) => !!k.tab && !!k.shift,
     action: () => ({ t: "focusPrev" }),
   },
@@ -128,13 +143,6 @@ export const KEYMAP: readonly Binding[] = [
     contexts: ["confirm"],
     match: (i, k) => (plain(k) && i === "y") || !!k.return,
     action: noop("confirmYes"),
-  },
-  {
-    id: "confirmNo",
-    built: 11,
-    contexts: ["confirm", "confirmKill"],
-    match: char("n"),
-    action: noop("confirmNo"),
   },
   {
     id: "sigkillYes",
