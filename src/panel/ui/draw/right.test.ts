@@ -4,8 +4,13 @@ import { cellWidth, graphemes } from "../text.js";
 import { SAMPLE } from "../sample.js";
 import { initialUi, type UiState } from "../uiState.js";
 import type { Rect } from "../models.js";
+import type { Band } from "../geometry.js";
+import { PHASES_HEADER_ROWS } from "./phases.js";
 import {
+  bandFloor,
+  drawBand,
   drawRightColumn,
+  drawTabsBody,
   focusedFloor,
   FOCUSED_PORTS_FLOOR,
   FOCUSED_TAB_FLOOR,
@@ -381,5 +386,154 @@ describe("focusedFloor (WR-09 content-aware floor)", () => {
   it("clamps the project index like drawPhases", () => {
     expect(focusedFloor(model({ focus: "right" }, { projectIndex: 99 }))).toBe(9);
     expect(focusedFloor(model({ focus: "right" }, { projectIndex: Number.NaN }))).toBe(9);
+  });
+});
+
+// --- Phase 10 plan 10-03 (LAYOUT-04): the S2 bottom band ---------------------
+
+describe("drawTabsBody (the tabs + active body, no PORTS)", () => {
+  const r: Rect = { x: 0, y: 0, w: 47, h: 10 };
+
+  it("draws the tabs on r.y and the PHASES body from r.y + 2, and no PORTS", () => {
+    const scr = new Screen(47, 20);
+    const { end } = drawTabsBody(scr, r, model({}), 8);
+    expect(text(scr, 0)).toMatch(/^ PHASES {3}SESSIONS /);
+    expect(text(scr, 0).endsWith("[r]")).toBe(true);
+    expect(text(scr, 1)).toBe("");
+    expect(text(scr, 2)).toBe(" Scale & Insights v2.1");
+    for (let y = 0; y < 20; y++) expect(text(scr, y)).not.toMatch(/PORTS/);
+    expect(end).toBeGreaterThanOrEqual(2);
+    expect(end).toBeLessThanOrEqual(r.y + r.h - 1);
+    for (let y = end + 1; y < 20; y++) expect(text(scr, y)).toBe("");
+  });
+
+  it("draws the SESSIONS body on the sessions tab, focused when the right column has focus", () => {
+    const scr = new Screen(47, 20);
+    drawTabsBody(scr, r, model({ focus: "right", rightTab: "sessions" }), 8);
+    expect(text(scr, 0)).toMatch(/^ PHASES {2}▐SESSIONS▌ /);
+    expect(text(scr, 2)).toMatch(/csm p8 plan/);
+    expect(cellAt(scr, 0, 2)).toMatchObject({ ch: "▸", bold: true });
+  });
+
+  it("never returns an end past the rect, even for a body taller than the rect", () => {
+    for (const h of [1, 2, 3, 5]) {
+      const scr = new Screen(47, 20);
+      const { end } = drawTabsBody(scr, { x: 0, y: 4, w: 47, h }, model({ focus: "right" }), 30);
+      expect(end).toBeLessThanOrEqual(4 + h - 1);
+      for (let y = 4 + h; y < 20; y++) expect(text(scr, y)).toBe("");
+    }
+  });
+});
+
+describe("drawBand (S2: PHASES|SESSIONS left, PORTS right; LAYOUT-04)", () => {
+  const BAND: Band = { leftW: 47, divX: 49, rightX: 52, rightW: 48 };
+  const R: Rect = { x: 0, y: 20, w: 100, h: 12 };
+  const UIS: ReadonlyArray<Partial<UiState>> = [
+    {},
+    { rightTab: "sessions" },
+    { focus: "right" },
+    { focus: "right", rightTab: "sessions" },
+    { focus: "ports" },
+    { focus: "ports", rightTab: "sessions" },
+  ];
+
+  function band(ui: Partial<UiState>, r = R) {
+    const scr = new Screen(100, 40);
+    const out = drawBand(scr, r, BAND, model(ui));
+    return { scr, ...out };
+  }
+
+  it("puts the tabs row and the PORTS title on the same row", () => {
+    for (const ui of UIS) {
+      const { scr } = band(ui);
+      expect(text(scr, 20, 0, 47)).toMatch(/PHASES/);
+      expect(text(scr, 20, 0, 47)).toMatch(/SESSIONS/);
+      expect(text(scr, 20, 52, 100)).toMatch(/^[ ▐]PORTS\b/);
+    }
+  });
+
+  it("draws the │ divider at divX on the band rows only, and nothing else in the gutter", () => {
+    for (const ui of UIS) {
+      const { scr, end } = band(ui);
+      expect(end).toBeGreaterThanOrEqual(20);
+      expect(end).toBeLessThanOrEqual(31);
+      for (let y = 0; y < 40; y++) {
+        const inBand = y >= 20 && y <= end;
+        expect(cellAt(scr, 49, y).ch, `row ${y}`).toBe(inBand ? "│" : " ");
+        if (inBand) expect(cellAt(scr, 49, y).fg).toBe("#3a3936");
+        for (const x of [47, 48, 50, 51]) expect(cellAt(scr, x, y).ch, `${x},${y}`).toBe(" ");
+      }
+    }
+  });
+
+  it("keeps each half inside its rect", () => {
+    for (const ui of UIS) {
+      const { scr } = band(ui);
+      for (let y = 0; y < 40; y++) {
+        if (y < 20 || y > 31) expect(text(scr, y)).toBe("");
+      }
+    }
+  });
+
+  it("the divider stops at the taller half's last row", () => {
+    const { scr, end } = band({}, { x: 0, y: 20, w: 100, h: 18 });
+    let last = 20;
+    for (let y = 20; y < 38; y++) {
+      if (text(scr, y, 0, 47) !== "" || text(scr, y, 52, 100) !== "") last = y;
+    }
+    expect(end).toBe(last);
+    expect(cellAt(scr, 49, end + 1).ch).toBe(" ");
+  });
+
+  it("a focused PORTS half shows every port or a ↓ N more row", () => {
+    for (const h of [3, 4, 5, 8, 12]) {
+      const r: Rect = { x: 0, y: 20, w: 100, h };
+      const { scr } = band({ focus: "ports" }, r);
+      expect(text(scr, 20, 52, 100).startsWith("▐PORTS▌")).toBe(true);
+      const list: string[] = [];
+      for (let y = 21; y < 20 + h; y++) list.push(text(scr, y, 52, 100));
+      const drawn = list.filter((s) => /(^|\s):\d+/.test(s)).length;
+      expect(drawn + arrows(list), `h=${h} ${JSON.stringify(list)}`).toBe(SAMPLE.ports.length);
+    }
+  });
+
+  it("a focused PHASES half at bandFloor shows a phase marker", () => {
+    const h = bandFloor(model({ focus: "right" }));
+    const r: Rect = { x: 0, y: 20, w: 100, h };
+    const { scr } = band({ focus: "right" }, r);
+    expect(text(scr, 20, 0, 47).startsWith("▐PHASES▌")).toBe(true);
+    const body: string[] = [];
+    for (let y = 22; y < 20 + h; y++) body.push(text(scr, y, 0, 47));
+    expect(body.some((s) => /[●◉○]|[↑↓] \d+ more/.test(s)), JSON.stringify(body)).toBe(true);
+  });
+
+  it("draws nothing into a 0-row or 0-width rect", () => {
+    const scr = new Screen(100, 40);
+    expect(drawBand(scr, { x: 0, y: 20, w: 100, h: 0 }, BAND, model({})).end).toBe(19);
+    for (let y = 0; y < 40; y++) expect(text(scr, y)).toBe("");
+  });
+});
+
+describe("bandFloor (the S2 band's focused floor)", () => {
+  it("PORTS focused: title + spacer + one port row, + the ↓ row when the list needs more than one row", () => {
+    expect(bandFloor(model({ focus: "ports" }, { ports: [SAMPLE.ports[3]!] }))).toBe(3);
+    expect(bandFloor(model({ focus: "ports" }, { ports: [] }))).toBe(3);
+    expect(bandFloor(model({ focus: "ports" }))).toBe(4);
+  });
+
+  it("PHASES focused: tabs + spacer + the header rows + one timeline row (+1 with more than one phase)", () => {
+    expect(bandFloor(model({ focus: "right" }))).toBe(2 + PHASES_HEADER_ROWS + 1 + 1);
+    const one = [{ ...SAMPLE.projects[0]!, phases: SAMPLE.projects[0]!.phases.slice(0, 1) }];
+    expect(bandFloor(model({ focus: "right" }, { projects: one, projectIndex: 0 }))).toBe(2 + PHASES_HEADER_ROWS + 1);
+  });
+
+  it("SESSIONS focused, or PHASES with no phases: tabs + spacer + one row", () => {
+    expect(bandFloor(model({ focus: "right", rightTab: "sessions" }))).toBe(3);
+    const none = [{ ...SAMPLE.projects[0]!, phases: [] }];
+    expect(bandFloor(model({ focus: "right" }, { projects: none, projectIndex: 0 }))).toBe(3);
+  });
+
+  it("AGENTS focused: tabs + spacer + the 3-row body minimum", () => {
+    expect(bandFloor(model({}))).toBe(5);
   });
 });
