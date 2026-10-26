@@ -27,6 +27,11 @@
  *     port count (focused and unfocused), and an unfocused pane that draws any
  *     port draws the exposed one; FILES conflict rows + `+N more conflicts`
  *     equal the conflict count.
+ *   - S2 (10-03, LAYOUT-04): at 100-164 columns the PHASES|SESSIONS tabs row
+ *     and the PORTS title share the band's first line, the `│` divider is at
+ *     band.divX on the band rows only, the gutter is empty, and the focused
+ *     band pane draws its inverse title. The WR-04/05/08/09 sweeps above read
+ *     the band halves through `regions()`.
  *
  * Later plans of Phase 10 append to this file.
  */
@@ -142,12 +147,39 @@ function arrowCount(rows: readonly string[]): number {
   return n;
 }
 
-/** The left column (AGENTS + FILES) and right column (tabs + PORTS) text, per frame. */
-function regions(lines: Line[], rows: number, cols: number): { left: string[]; right: string[] } {
+/**
+ * The S2 band's first row (10-03): the first line from row 2 whose left half
+ * holds the PHASES|SESSIONS tabs, or -1 when the frame is not S2 or the band
+ * is not drawn (a collapsed bottom pane).
+ */
+function bandTop(lines: Line[], rows: number, cols: number): number {
+  const band = geometry(cols, rows).band;
+  if (band === null) return -1;
+  const half = columns(lines, 0, band.leftW);
+  return half.findIndex((s, y) => y >= 2 && /PHASES/.test(s) && /SESSIONS/.test(s));
+}
+
+/**
+ * Per frame: the AGENTS + FILES text (`left`), the PHASES|SESSIONS text
+ * (`tabs`) and the PORTS text (`right`). Split: the left column and the right
+ * column. S1: every region is the full width. S2 (10-03): the full width
+ * above the band; on the band rows `tabs` is the left half [0, leftW) and
+ * `right` the right half [rightX, cols).
+ */
+function regions(lines: Line[], rows: number, cols: number): { left: string[]; tabs: string[]; right: string[] } {
   const g = geometry(cols, rows);
-  if (g.split) return { left: columns(lines, 0, g.LW), right: columns(lines, g.RX, g.cols) };
+  if (g.split) {
+    const right = columns(lines, g.RX, g.cols);
+    return { left: columns(lines, 0, g.LW), tabs: right, right };
+  }
   const all = columns(lines, 0, g.cols);
-  return { left: all, right: all };
+  const top = bandTop(lines, rows, cols);
+  if (g.band === null || top < 0) return { left: all, tabs: all, right: all };
+  const half = (x0: number, x1: number): string[] => {
+    const cut = columns(lines, x0, x1);
+    return all.map((s, y) => (y >= top ? cut[y]! : s));
+  };
+  return { left: all, tabs: half(0, g.band.leftW), right: half(g.band.rightX, g.cols) };
 }
 
 const FILES_TITLE = /^ FILES\b/;
@@ -234,7 +266,7 @@ describe("v2 content: focused PHASES shows a phase marker or arrow row (WR-09)",
       expect(project?.phases.length, `${name}: the fixture project has phases`).toBeGreaterThan(0);
       const ui: UiState = { ...initialUi, focus: "right", rightTab: "phases" };
       const lines = frame(rows, cols, ui, panes);
-      const { right } = regions(lines, rows, cols);
+      const { tabs: right } = regions(lines, rows, cols);
       const footer = right.length - 1;
       const tabsY = right.findIndex((s, y) => y >= 2 && /PHASES/.test(s) && /SESSIONS/.test(s));
       expect(tabsY, `${name}: tabs row`).toBeGreaterThan(0);
@@ -267,7 +299,7 @@ describe("v2 content: unfocused PHASES hidden phases imply a ⋮ row (WR-04)", (
       for (const focus of ["agents", "ports"] as const) {
         const ui: UiState = { ...initialUi, focus, rightTab: "phases" };
         const lines = frame(rows, cols, ui, panes);
-        const { right } = regions(lines, rows, cols);
+        const { tabs: right } = regions(lines, rows, cols);
         const footer = right.length - 1;
         const tabsY = right.findIndex((s, y) => y >= 2 && /PHASES/.test(s) && /SESSIONS/.test(s));
         // a short stacked frame focused on AGENTS collapses the right column
@@ -521,5 +553,57 @@ describe("v2 content: drawShell with non-finite sizes (WR-07)", () => {
     expect(lines.length).toBeGreaterThan(0);
     expect(lines[0]).toContain("◆ CSM");
     expect(lines).toEqual(text(drawTooSmall(norm(cols), norm(rows), SAMPLE_HEADER)));
+  });
+});
+
+// --- S2 (10-03, LAYOUT-04): the side-by-side bottom band ---------------------
+
+const S2_SIZES: ReadonlyArray<readonly [number, number]> = ROWS.flatMap((r) =>
+  [100, 120, 164].map((c) => [r, c] as const),
+);
+
+describe("v2 content: S2 band (LAYOUT-04)", () => {
+  it.each(S2_SIZES)("S2 %i rows x %i cols: tabs row and PORTS title share a line, divider on band rows only", (rows, cols) => {
+    const band = geometry(cols, rows).band!;
+    expect(band).not.toBeNull();
+    for (const [name, panes] of PORT_FIXTURES) {
+      for (const focus of FOCUS_ORDER) {
+        for (const rightTab of TABS) {
+          const ui: UiState = { ...initialUi, focus, rightTab };
+          const lines = frame(rows, cols, ui, panes);
+          const all = text(lines);
+          const msg = `${name}, ${focusName(ui)}`;
+          const top = bandTop(lines, rows, cols);
+          // only a short frame focused on AGENTS may collapse the band
+          if (top < 0) {
+            expect(focus, `${msg}: band missing`).toBe("agents");
+            expect(all.some((s) => PORTS_TITLE.test(s.trimStart()) || /PORTS/.test(s)), msg).toBe(false);
+            continue;
+          }
+          const { tabs, right } = regions(lines, rows, cols);
+          expect(right[top], `${msg}: PORTS title on the tabs row`).toMatch(PORTS_TITLE);
+          expect(tabs[top]!.trimEnd().endsWith("[r]"), `${msg}: [r] in the left half`).toBe(true);
+          // FILES is above the band
+          const filesY = all.findIndex((s, y) => y > 2 && FILES_TITLE.test(s));
+          expect(filesY, msg).toBeGreaterThan(0);
+          expect(filesY, msg).toBeLessThan(top);
+          // band rows: top .. the row above the footer spacer
+          const footer = lines.length - 1;
+          const gutter = columns(lines, band.leftW, band.rightX);
+          for (let y = top; y <= footer - 2; y++) {
+            expect(gutter[y], `${msg}: gutter row ${y}`).toBe("  │  ");
+          }
+          expect(gutter[footer - 1]!.trim(), `${msg}: spacer row`).toBe("");
+          // the focused band pane draws its inverse title
+          if (focus === "ports") expect(right[top]!.startsWith("▐PORTS▌"), msg).toBe(true);
+          if (focus === "right") {
+            expect(tabs[top], msg).toContain(rightTab === "phases" ? "▐PHASES▌" : "▐SESSIONS▌");
+          }
+          // never more lines than rows, never wider than cols
+          expect(lines.length, msg).toBeLessThanOrEqual(rows);
+          for (const l of lines) expect(cells(l).length, msg).toBeLessThanOrEqual(cols);
+        }
+      }
+    }
   });
 });

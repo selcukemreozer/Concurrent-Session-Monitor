@@ -192,7 +192,10 @@ describe("drawShell: breakpoints (D-27)", () => {
     for (const s of t) expect(cellWidth(s)).toBeLessThanOrEqual(220);
   });
 
-  it("stacks AGENTS -> FILES -> PHASES|SESSIONS -> PORTS at 120x40", () => {
+  // S2 logic change (Phase 10 plan 10-03, LAYOUT-04): 120 columns is S2, so
+  // PHASES|SESSIONS and PORTS now sit side by side in a band under FILES
+  // (Phase 9 drew every width below 165 as the S1 full-width stack).
+  it("S2 band at 120x40: AGENTS -> FILES -> PHASES|SESSIONS beside PORTS", () => {
     const lines = drawShell(input({ cols: 120, rows: 40 }));
     const t = texts(lines);
     expect(lines.length).toBeLessThanOrEqual(40);
@@ -202,19 +205,46 @@ describe("drawShell: breakpoints (D-27)", () => {
     expect(cut(t[3] as string, 0, 47)).toBe(edge);
     expect(cut(t[3] as string, 49, 47)).toBe(edge);
     expect(cut(t[3] as string, 98, 1)).toBe("");
-    // no divider column
-    for (let x = 0; x < 120; x++) {
-      const all = t.slice(2, t.length - 2).every((s) => cellAt(s, x) === "│");
-      expect(all).toBe(false);
-    }
+    // band: leftW 57, divX 59, rightX 62
     const files = rowOf(t, (s) => s.startsWith(" FILES "));
-    const tabs = rowOf(t, (s) => s.includes("PHASES") && s.includes("SESSIONS") && s.includes("[r]"));
-    const ports = rowOf(t, (s) => s.startsWith(" PORTS "));
+    const tabs = rowOf(t, (s) => /PHASES/.test(cut(s, 0, 57)) && /SESSIONS/.test(cut(s, 0, 57)));
     expect(files).toBeGreaterThan(9);
     expect(tabs).toBeGreaterThan(files);
-    expect(ports).toBeGreaterThan(tabs);
+    expect(cut(t[tabs] as string, 0, 57).trimEnd().endsWith("[r]")).toBe(true);
+    expect(cut(t[tabs] as string, 62, 58)).toMatch(/^ PORTS /);
+    expect(cellAt(t[tabs] as string, 59)).toBe("│");
+    // the divider runs on the band rows only: band rows .. the row above the footer spacer
+    for (let y = tabs; y <= t.length - 3; y++) expect(cellAt(t[y] as string, 59), `row ${y}`).toBe("│");
+    expect(cellAt(t[t.length - 2] as string, 59)).toBe("");
+    for (let y = files; y < tabs; y++) expect(cellAt(t[y] as string, 59)).not.toBe("│");
+    // no row of the band draws anything else in the gutter
+    for (let y = tabs; y < t.length - 1; y++) {
+      for (const x of [57, 58, 60, 61]) expect(cellAt(t[y] as string, x)).toBe("");
+    }
+    // the PORTS half shows the exposed port beside the PHASES body
+    expect(t.slice(tabs).some((s) => /:27036 .*⇡ exposed/.test(cut(s, 62, 58)))).toBe(true);
+    expect(t.slice(tabs).some((s) => /◉ {2}33/.test(cut(s, 0, 57)))).toBe(true);
     expect(t[t.length - 1]).toContain("q quit");
     for (const s of t) expect(cellWidth(s)).toBeLessThanOrEqual(120);
+  });
+
+  it.each([
+    [16, 100],
+    [20, 120],
+    [24, 164],
+  ])("S2 %i rows x %i cols: the focused band pane draws its inverse title", (rows, cols) => {
+    const leftW = Math.floor((cols - 5) / 2);
+    for (const focus of ["right", "ports"] as const) {
+      for (const rightTab of ["phases", "sessions"] as const) {
+        const t = texts(drawShell(input({ cols, rows, ui: ui({ focus, rightTab }) })));
+        expect(t.length).toBeLessThanOrEqual(rows);
+        const tabs = rowOf(t, (s) => /PHASES/.test(cut(s, 0, leftW)) && /SESSIONS/.test(cut(s, 0, leftW)));
+        expect(tabs, `${focus} ${rightTab}`).toBeGreaterThan(1);
+        const ports = cut(t[tabs] as string, leftW + 5, cols);
+        if (focus === "ports") expect(ports.startsWith("▐PORTS▌")).toBe(true);
+        else expect(cut(t[tabs] as string, 0, leftW)).toContain(rightTab === "phases" ? "▐PHASES▌" : "▐SESSIONS▌");
+      }
+    }
   });
 
   const measure = (rows: number, focus: UiState["focus"]) => {
