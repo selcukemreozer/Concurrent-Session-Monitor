@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import React from "react";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -22,6 +22,7 @@ import { initialUi } from "./ui/uiState.js";
 import { SAMPLE } from "./ui/sample.js";
 import { PALETTE } from "./ui/palette.js";
 import { lineText } from "./ui/screen.js";
+import { buildAgents, stableOrder } from "./ui/build/agents.js";
 
 // Phase 9 plan 09-12 Task 2: the v2 root through real Ink. The store is mocked
 // to two live rows (one asking, one waiting) so the LIVE header (D-20) is
@@ -47,6 +48,16 @@ function makeRow(overrides: Partial<SessionRow> = {}): SessionRow {
 const ROWS = vi.hoisted(() => ({ list: [] as SessionRow[] }));
 vi.mock("../aggregate.js", () => ({ readAll: vi.fn(() => ROWS.list) }));
 vi.mock("../prune.js", () => ({ pruneSession: vi.fn() }));
+// 10-09: PanelApp calls useBranches, which spawns git; mock only the scan and
+// its cadence (as App.test.tsx does), keeping the pure liveBranch fallback.
+vi.mock("../branch.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../branch.js")>();
+  return {
+    ...actual,
+    scanBranches: vi.fn(async () => new Map<string, string>()),
+    branchScanMs: vi.fn(() => 10_000_000),
+  };
+});
 const { UPDATE_STOP } = vi.hoisted(() => ({ UPDATE_STOP: vi.fn() }));
 vi.mock("../update.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../update.js")>();
@@ -57,10 +68,11 @@ vi.mock("../update.js", async (importOriginal) => {
   };
 });
 
-ROWS.list = [
+const DEFAULT_ROWS = [
   makeRow({ session_id: "sess-ask", asking: true }),
   makeRow({ session_id: "sess-wait", attention: true }),
 ];
+ROWS.list = DEFAULT_ROWS;
 
 const R = 55;
 const C = 175;
@@ -95,6 +107,8 @@ async function mountTty(el: React.ReactElement = <PanelApp />) {
 }
 
 const lines = (frame: string): string[] => frameLines(frame);
+/** The left (AGENTS / FILES) column of a line: everything before the first divider. */
+const leftOf = (l: string): string => l.split("│")[0] ?? l;
 const footer = (frame: string): string => {
   const ls = lines(frame).filter((l) => l.trim() !== "");
   return ls[ls.length - 1] ?? "";
@@ -110,9 +124,11 @@ describe("PanelApp live header (D-20)", () => {
     expect(ls[0]).toContain(" 1 asking ");
     expect(ls[0]).toContain(" 1 waiting ");
     expect(ls[0]).not.toContain("sample");
+    // 10-09: AGENTS is live, so its title has no sample chip (D-23)
     const agentsTitle = ls.find((l) => l.includes("AGENTS"));
     expect(agentsTitle).toBeDefined();
-    expect(agentsTitle).toContain("sample");
+    expect(leftOf(agentsTitle!)).toContain("AGENTS");
+    expect(leftOf(agentsTitle!)).not.toContain("sample");
   });
 });
 
@@ -168,16 +184,16 @@ describe("PanelApp r and space (D-15)", () => {
 
     // The tabs row in the frame is exactly the shell's row for rightTab
     // sessions, whose SESSIONS segment carries the active-tab background.
-    const header = headerFromRoster(
-      {
-        display: ROWS.list.map((row) => ({ id: row.session_id, row, ended: false })),
-        live: 2,
-        idle: 0,
-        conflicts: [],
-      },
-      null,
-      NOW,
-    );
+    const display = ROWS.list.map((row) => ({ id: row.session_id, row, ended: false }));
+    const header = headerFromRoster({ display, live: 2, idle: 0, conflicts: [] }, null, NOW);
+    // 10-09: AGENTS is live; every other pane is still SAMPLE
+    const ag = buildAgents({
+      display,
+      conflicts: [],
+      branches: new Map(),
+      order: stableOrder(new Map(), ROWS.list),
+      now: NOW,
+    });
     const expected = drawShell({
       rows: R,
       cols: C,
@@ -185,10 +201,10 @@ describe("PanelApp r and space (D-15)", () => {
       tick: 0,
       step: 0,
       header,
-      panes: SAMPLE,
+      panes: { ...SAMPLE, agents: ag.agents, idle: ag.idle },
       keysOff: false,
       flash: null,
-      sample: true,
+      sample: { agents: false, files: true, phases: true, sessions: true, ports: true },
     });
     const tabsY = expected.findIndex((l) => lineText(l).includes("[r]"));
     expect(tabsY).toBeGreaterThan(0);
@@ -219,11 +235,11 @@ describe("PanelApp unbound keys (D-19)", () => {
   });
 });
 
-describe("PanelApp ignores keymap intents until 10-08 wires them (10-07)", () => {
-  it("↓, ←, Enter and PgDn with AGENTS focused leave the frame unchanged", async () => {
+describe("PanelApp go-to stays a no-op until 10-10 (10-07, 10-09)", () => {
+  it("Enter with AGENTS focused leaves the frame unchanged", async () => {
     const { lastFrame, stdin } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
     const before = lastFrame();
-    press(stdin, KEYS.down, KEYS.left, KEYS.enter, String.fromCharCode(27) + "[6~");
+    press(stdin, KEYS.enter);
     await sleep(150);
     expect(lastFrame()).toBe(before);
     expect(before).toContain("▐AGENTS▌");
@@ -241,7 +257,8 @@ async function nextTick(lastFrame: () => string): Promise<void> {
   await vi.waitFor(() => expect(lastFrame()).not.toBe(f0), { timeout: 5000 });
 }
 
-const CARD_ID = SAMPLE.agents[0]!.id;
+/** A live card id from the default mocked roster (AGENTS is live from 10-09). */
+const CARD_ID = "sess-ask";
 
 describe("PanelApp footer flash slot (10-08, D-12)", () => {
   it("shows a flash for 2500 ms on the injected clock, then clears it", async () => {
@@ -290,16 +307,16 @@ describe("PanelApp selection idle drop (10-08, D-09)", () => {
 });
 
 describe("PanelApp intent dispatcher (10-08, KEYS-01, KEYS-02)", () => {
-  it("↓ with AGENTS focused reaches the dispatcher as a move intent; no handler, no change", async () => {
+  it("↓ with AGENTS focused reaches the dispatcher as a move intent and selects (10-09)", async () => {
     const seen: Array<{ intent: unknown; ctx: string }> = [];
     const { lastFrame, stdin } = await mountTty(
       <PanelApp tickMs={FROZEN} now={() => NOW} intentSpy={(intent, ctx) => seen.push({ intent, ctx })} />,
     );
-    const before = lastFrame();
+    expect(lastFrame()).not.toContain("┏");
     press(stdin, KEYS.down);
     await vi.waitFor(() => expect(seen).toHaveLength(1));
     expect(seen[0]).toEqual({ intent: { t: "move", dir: "down" }, ctx: "agents" });
-    expect(lastFrame()).toBe(before);
+    await vi.waitFor(() => expect(lastFrame()).toContain("┏"));
   });
 
   it("resolves keys against effectiveUi: a vanished selection routes as plain AGENTS", async () => {
@@ -404,6 +421,142 @@ describe("PanelApp resize repaint (LAYOUT-05, D-01/D-02)", () => {
     expect(ls.filter((l) => l.includes("◆ CSM"))).toHaveLength(1);
     expect(ls.length).toBeLessThanOrEqual(40);
     for (const l of ls) expect(cellWidth(l)).toBeLessThanOrEqual(120);
+  });
+});
+
+// --- Phase 10 plan 10-09: the live AGENTS pane (LAYOUT-07, KEYS-02, D-05, D-06, D-08)
+// The readAll mock is driven through ROWS; a changed prompt marks the next poll.
+
+const PG_DN = String.fromCharCode(27) + "[6~";
+const T1 = "2026-10-20T07:00:00.000Z";
+const T2 = "2026-10-20T08:00:00.000Z";
+const T3 = "2026-10-20T09:00:00.000Z";
+
+function liveRows(prompt = "fix the login bug"): SessionRow[] {
+  return [
+    makeRow({
+      session_id: "s-alpha",
+      title: "alpha task",
+      start_time: T1,
+      running: true,
+      transcript_model: "claude-opus-4-7",
+      last_prompt: prompt,
+    }),
+    makeRow({ session_id: "s-beta", title: "beta task", start_time: T2, asking: true, model: "claude-sonnet-4-5" }),
+    makeRow({ session_id: "s-gamma", title: "gamma idle", start_time: T3 }),
+  ];
+}
+
+/** The line holding both card names (2 card columns at 175x55). */
+const nameRow = (frame: string): string =>
+  lines(frame).find((l) => l.includes("alpha task") && l.includes("beta task")) ?? "";
+
+describe("PanelApp live AGENTS (10-09)", () => {
+  beforeEach(() => {
+    ROWS.list = liveRows();
+  });
+  afterEach(() => {
+    ROWS.list = DEFAULT_ROWS;
+  });
+
+  it("shows 2 cards and 1 strip in start order with live names, model and prompt; no AGENTS sample chip", async () => {
+    const { lastFrame } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
+    const f = lastFrame();
+    const row = nameRow(f);
+    expect(row.indexOf("alpha task")).toBeGreaterThanOrEqual(0);
+    expect(row.indexOf("alpha task")).toBeLessThan(row.indexOf("beta task"));
+    expect(f).toContain("gamma idle");
+    expect(f).toContain("opus 4.7");
+    expect(f).toContain("sonnet 4.5");
+    expect(f).toContain("fix the login bug");
+    const title = lines(f).find((l) => l.includes("AGENTS"))!;
+    expect(leftOf(title)).toContain("2 active · 1 idle");
+    expect(leftOf(title)).not.toContain("sample");
+  });
+
+  it("FILES, PHASES / SESSIONS and PORTS keep their sample chips", async () => {
+    const { lastFrame, stdin } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
+    const ls = lines(lastFrame());
+    expect(ls.find((l) => leftOf(l).includes("FILES"))).toContain("sample");
+    expect(ls.find((l) => l.includes("PORTS"))).toContain("sample");
+    expect(ls.find((l) => l.includes("[r]"))).toContain("sample");
+    press(stdin, KEYS.r);
+    await vi.waitFor(() => expect(footer(lastFrame())).toContain("r phases"));
+    expect(lines(lastFrame()).find((l) => l.includes("[r]"))).toContain("sample");
+  });
+
+  it("a reversed readAll and a compact (start_time rewritten) never move a card", async () => {
+    const { lastFrame } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
+    const before = nameRow(lastFrame());
+    expect(before).not.toBe("");
+
+    ROWS.list = liveRows("second prompt").reverse();
+    await vi.waitFor(() => expect(lastFrame()).toContain("second prompt"), { timeout: 5000 });
+    expect(nameRow(lastFrame())).toBe(before);
+
+    const compacted = liveRows("third prompt");
+    compacted[0] = { ...compacted[0]!, start_time: new Date(NOW).toISOString() };
+    ROWS.list = compacted;
+    await vi.waitFor(() => expect(lastFrame()).toContain("third prompt"), { timeout: 5000 });
+    expect(nameRow(lastFrame())).toBe(before);
+  });
+
+  it("↓ selects the first card, → walks to the next card and then onto the idle strip", async () => {
+    const { lastFrame, stdin } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
+    press(stdin, KEYS.down);
+    await vi.waitFor(() => expect(lastFrame()).toContain("┏"));
+    const heavy = (f: string): number => lines(f).find((l) => l.includes("┏"))!.indexOf("┏");
+    expect(heavy(lastFrame())).toBe(0);
+    expect(footer(lastFrame())).toContain("go to pane");
+
+    press(stdin, KEYS.right);
+    await vi.waitFor(() => expect(heavy(lastFrame())).toBeGreaterThan(0));
+    // the heavy frame sits on the beta card's column
+    expect(heavy(lastFrame())).toBe(nameRow(lastFrame()).indexOf("beta task") - 4);
+
+    press(stdin, KEYS.right);
+    // the strip is selected: no heavy frame, but the selection still resolves
+    await vi.waitFor(() => expect(lastFrame()).not.toContain("┏"));
+    expect(footer(lastFrame())).toContain("go to pane");
+  });
+
+  it("PgDn moves the selection by the visible card rows", async () => {
+    ROWS.list = Array.from({ length: 12 }, (_, i) =>
+      makeRow({
+        session_id: `s-${String(i).padStart(2, "0")}`,
+        title: `card ${String(i).padStart(2, "0")}`,
+        start_time: new Date(Date.parse(T1) + i * 60_000).toISOString(),
+        running: true,
+      }),
+    );
+    const { lastFrame, stdin } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
+    // the visible card rows = the lines whose left card is a `card NN` name
+    const visible = lines(lastFrame()).filter((l) => /^│ . card \d\d/.test(l)).length;
+    expect(visible).toBeGreaterThan(0);
+    expect(visible).toBeLessThan(6);
+
+    press(stdin, KEYS.down);
+    await vi.waitFor(() => expect(lastFrame()).toContain("┏"));
+    press(stdin, PG_DN);
+    const target = `card ${String(visible * 2).padStart(2, "0")}`;
+    await vi.waitFor(() => {
+      const ls = lines(lastFrame());
+      const top = ls.findIndex((l) => l.includes("┏"));
+      expect(top).toBeGreaterThanOrEqual(0);
+      expect(ls[top + 1]).toContain(target);
+      // the selected card is fully drawn
+      expect(ls[top + 6]).toContain("┗");
+    });
+  });
+
+  it("the selected session leaving the roster clears the selection within one poll (fails closed)", async () => {
+    const { lastFrame, stdin } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
+    press(stdin, KEYS.down);
+    await vi.waitFor(() => expect(lastFrame()).toContain("┏"));
+    ROWS.list = liveRows().slice(1);
+    await vi.waitFor(() => expect(lastFrame()).not.toContain("┏"), { timeout: 5000 });
+    expect(footer(lastFrame())).toContain("select agent");
+    expect(lastFrame()).not.toContain("alpha task");
   });
 });
 
