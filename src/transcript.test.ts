@@ -21,8 +21,10 @@ import {
   readPermissionModeAsync,
   readTailCustomTitle,
   readTailFactsAsync,
+  readTranscriptCard,
   readTranscriptTitle,
   resetTranscriptTitleCache,
+  scanCardFacts,
   scanCustomTitle,
   scanFirstPrompt,
   scanHeadFacts,
@@ -946,5 +948,124 @@ describe("scanPermissionMode / readPermissionModeAsync", () => {
     expect(await readPermissionModeAsync(tail, id3)).toBe("plan");
 
     await expect(readPermissionModeAsync(path.join(raw, "missing", `${ID}.jsonl`), ID)).resolves.toBeUndefined();
+  });
+});
+
+// 10-06 (D-07, 09 D-11): the card facts (last assistant model + last prompt)
+// come from the SAME cached tail window as the custom title.
+
+/** An assistant line in the verified RESEARCH Q3 shape. */
+function asst(model: unknown, extra: Record<string, unknown> = {}, text = ""): string {
+  return JSON.stringify({
+    parentUuid: null,
+    isSidechain: false,
+    message: { model, role: "assistant", content: [{ type: "text", text }] },
+    type: "assistant",
+    sessionId: ID,
+    ...extra,
+  });
+}
+
+/** A compact last-prompt record. */
+function lp(text: unknown, sid: string | undefined = ID): string {
+  return JSON.stringify({ type: "last-prompt", lastPrompt: text, sessionId: sid });
+}
+
+describe("scanCardFacts", () => {
+  it("C1: the newest assistant model wins (a /model switch)", () => {
+    const b = buf(body([asst("claude-opus-4-7"), userLine("hi"), asst("claude-opus-4-8")]));
+    expect(scanCardFacts(b, true, ID).model).toBe("claude-opus-4-8");
+  });
+
+  it("C2: a <synthetic> model after a real one keeps the real one", () => {
+    const b = buf(body([asst("claude-opus-4-7"), asst("<synthetic>")]));
+    expect(scanCardFacts(b, true, ID).model).toBe("claude-opus-4-7");
+  });
+
+  it("C3: sidechain and foreign-session assistant lines are ignored", () => {
+    const b = buf(
+      body([
+        asst("claude-opus-4-7"),
+        asst("claude-haiku-4-5", { isSidechain: true }),
+        asst("claude-sonnet-4-5", { sessionId: "other-id" }),
+      ]),
+    );
+    expect(scanCardFacts(b, true, ID).model).toBe("claude-opus-4-7");
+  });
+
+  it("C4: an over-long assistant line yields its model from the 2 KiB prefix", () => {
+    const long = asst("claude-opus-5-5", {}, "x".repeat(MAX_SCAN_LINE + 1000));
+    expect(long.length).toBeGreaterThan(MAX_SCAN_LINE);
+    expect(long.indexOf('"model":"claude-opus-5-5"')).toBeLessThan(2048);
+    expect(scanCardFacts(buf(body([asst("claude-opus-4-7"), long])), true, ID).model).toBe("claude-opus-5-5");
+  });
+
+  it("C4b: an over-long sidechain, synthetic or foreign-session line is ignored", () => {
+    const pad = "x".repeat(MAX_SCAN_LINE + 1000);
+    const side = asst("claude-haiku-4-5", { isSidechain: true }, pad);
+    const synth = asst("<synthetic>", {}, pad);
+    const foreign = asst("claude-sonnet-4-5", { sessionId: "other-id" }, pad);
+    const b = buf(body([asst("claude-opus-4-7"), side, synth, foreign]));
+    expect(scanCardFacts(b, true, ID).model).toBe("claude-opus-4-7");
+  });
+
+  it("C5: the last-prompt record follows the Phase 8 rules", () => {
+    expect(scanCardFacts(buf(body([lp("first"), lp("fix the tests")])), true, ID).lastPrompt).toBe("fix the tests");
+    expect(scanCardFacts(buf(body([lp("mine"), lp("theirs", "other-id")])), true, ID).lastPrompt).toBe("mine");
+    expect(scanCardFacts(buf(body([lp("ok"), lp("y".repeat(MAX_TITLE_LINE))])), true, ID).lastPrompt).toBe("ok");
+    expect(scanCardFacts(buf(body([lp(7)])), true, ID).lastPrompt).toBeUndefined();
+  });
+
+  it("C6: an escaped assistant mention inside a user line never counts", () => {
+    const b = buf(body([JSON.stringify({ type: "user", message: { content: asst("claude-evil-1") }, sessionId: ID })]));
+    expect(scanCardFacts(b, true, ID)).toEqual({});
+  });
+});
+
+describe("readTranscriptCard (cache)", () => {
+  it("K1: returns the facts cached by readTranscriptTitle without touching the file", () => {
+    const p = writeTranscript(ID, [ct("T", ID), asst("claude-opus-4-8"), lp("fix the tests")]);
+    expect(readTranscriptTitle(ID, p)?.title).toBe("T");
+    // No IO: the values survive the file disappearing.
+    fs.rmSync(p);
+    expect(readTranscriptCard(ID)).toEqual({ lastPrompt: "fix the tests", model: "claude-opus-4-8" });
+  });
+
+  it("K2: no entry gives an empty object", () => {
+    expect(readTranscriptCard(ID)).toEqual({});
+  });
+
+  it("K3: sticky: a changed scan with no such lines keeps both values", () => {
+    const p = writeTranscript(ID, [asst("claude-opus-4-7"), lp("keep me")], "p", 1700000000);
+    readTranscriptTitle(ID, p);
+    appendLines(p, [userLine("more")], 1700000100);
+    readTranscriptTitle(ID, p);
+    expect(readTranscriptCard(ID)).toEqual({ lastPrompt: "keep me", model: "claude-opus-4-7" });
+    appendLines(p, [asst("claude-opus-4-8")], 1700000200);
+    readTranscriptTitle(ID, p);
+    expect(readTranscriptCard(ID)).toEqual({ lastPrompt: "keep me", model: "claude-opus-4-8" });
+  });
+
+  it("K4: a shrink resets both values", () => {
+    const p = writeTranscript(ID, [userLine("a".repeat(200)), asst("claude-opus-4-7"), lp("gone")], "p", 1700000000);
+    readTranscriptTitle(ID, p);
+    writeTranscript(ID, [userLine("b")], "p", 1700000100);
+    readTranscriptTitle(ID, p);
+    expect(readTranscriptCard(ID)).toEqual({});
+  });
+
+  it("K5: a changed transcript path resets both values", () => {
+    const p = writeTranscript(ID, [asst("claude-opus-4-7"), lp("old")], "p");
+    readTranscriptTitle(ID, p);
+    const q = writeTranscript(ID, [userLine("fresh")], "q");
+    readTranscriptTitle(ID, q);
+    expect(readTranscriptCard(ID)).toEqual({});
+  });
+
+  it("K6: the title semantics are unchanged by the card facts", () => {
+    const p = writeTranscript(ID, [ct("Alpha", ID), asst("claude-opus-4-7")], "p", 1700000000);
+    expect(readTranscriptTitle(ID, p)).toEqual({ title: "Alpha", changedAtMs: Number.NEGATIVE_INFINITY });
+    appendLines(p, [asst("claude-opus-4-8")], 1700000100);
+    expect(readTranscriptTitle(ID, p)).toEqual({ title: "Alpha", changedAtMs: Number.NEGATIVE_INFINITY });
   });
 });
