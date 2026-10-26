@@ -2,6 +2,9 @@ import type { Screen } from "../screen.js";
 import type { Flash, PortEntry, Project, Rect, SessionEntry } from "../models.js";
 import type { UiState } from "../uiState.js";
 import { allocate } from "../layout.js";
+import type { Band } from "../geometry.js";
+import { PALETTE } from "../palette.js";
+import { V2 } from "../glyphs.js";
 import { drawTabs } from "./title.js";
 import { drawPhases, PHASES_HEADER_ROWS } from "./phases.js";
 import { drawSessions } from "./sessions.js";
@@ -44,6 +47,18 @@ import { drawPortsPane, visiblePortEntries } from "./ports.js";
  * With 9+ rows and the default focus (every split-mode column) the output is
  * unchanged from Phase 9.
  * Returns the last row used (`end`, absolute) and the PORTS title row. Pure.
+ *
+ * The S2 bottom band (Phase 10 plan 10-03; LAYOUT-04, UI-SPEC § Layout &
+ * Breakpoints, the S2 row and the stacked S2 schematic): at 100-164 columns
+ * the shell draws AGENTS -> FILES -> a band in which PHASES|SESSIONS (left,
+ * `band.leftW` = floor((cols - 5) / 2) wide) and PORTS (right, from
+ * `band.rightX`) sit side by side, their titles on the band's first row, with
+ * an edge-colored `│` at `band.divX` on the band's rows only. `drawTabsBody`
+ * (the tabs + active body, shared with `drawRightColumn`) draws the left half
+ * and `drawPortsPane` the right half; both clip to their half (WR-06), so no
+ * half bleeds into the gutter or the other half. `bandFloor()` is the band's
+ * focused floor: PORTS sits beside the tabs, so each half only needs its own
+ * rows.
  */
 
 export interface RightColumnModel {
@@ -95,13 +110,98 @@ export function focusedFloor(m: RightColumnModel): number {
   return FOCUSED_TAB_FLOOR;
 }
 
+/**
+ * The S2 band's focused floor (10-03): the rows the band needs before the
+ * focused half shows real content. PORTS: title + spacer + one port row, + 1
+ * for the `↓ N more` row when the list needs more than one row (the same rule
+ * as focusedFloor, so the cursor row is never traded for the arrow row).
+ * PHASES on a project with phases: tabs, spacer, the header rows, one
+ * timeline row, + 1 when there is more than one phase. SESSIONS (or PHASES
+ * with no phases): tabs, spacer, one row. AGENTS focused: tabs, spacer and
+ * the 3-row body minimum.
+ */
+export function bandFloor(m: RightColumnModel): number {
+  if (m.ui.focus === "ports") return PORTS_MIN + (portRowsNeeded(m.ports, true) > 1 ? 1 : 0);
+  if (m.ui.focus === "right") {
+    if (m.ui.rightTab === "phases" && m.projects.length > 0) {
+      const pi = Math.min(Math.max(0, Math.trunc(m.projectIndex) || 0), m.projects.length - 1);
+      const n = m.projects[pi]?.phases.length ?? 0;
+      if (n > 0) return 2 + PHASES_HEADER_ROWS + 1 + (n > 1 ? 1 : 0);
+    }
+    return 3;
+  }
+  return 2 + BODY_MIN;
+}
+
+/**
+ * The PHASES | SESSIONS tabs on `r.y` and the active tab body (focused when
+ * the right column has focus) in `{ r.x, r.y + 2, r.w, bodyH }`, the body cut
+ * to the rect. Draws no PORTS. Returns the last row used (`end`, absolute,
+ * never past `r.y + r.h - 1`) and the body rows drawn.
+ */
+export function drawTabsBody(
+  scr: Screen,
+  r: Rect,
+  m: RightColumnModel,
+  bodyH: number,
+): { end: number; bodyRows: number } {
+  if (r.w <= 0 || r.h <= 0) return { end: r.y - 1, bodyRows: 0 };
+  const ui = m.ui;
+  const rightFocused = ui.focus === "right";
+  drawTabs(scr, r.x, r.y, r.w, { active: ui.rightTab, columnFocused: rightFocused, sample: m.sample });
+
+  const h = Math.max(0, Math.min(Math.trunc(bodyH) || 0, r.h - 2));
+  const bodyRect: Rect = { x: r.x, y: r.y + 2, w: r.w, h };
+  const bodyRows =
+    ui.rightTab === "phases"
+      ? drawPhases(scr, bodyRect, {
+          projects: m.projects,
+          projectIndex: m.projectIndex,
+          focused: rightFocused,
+          cursor: null,
+        })
+      : drawSessions(scr, bodyRect, {
+          sessions: m.sessions,
+          focused: rightFocused,
+          cursorId: m.sessions[0]?.id ?? null,
+          status: m.sessionStatus,
+          scanning: false,
+        });
+  return { end: bodyRows > 0 ? bodyRect.y + bodyRows - 1 : r.y, bodyRows };
+}
+
+/**
+ * The S2 bottom band (10-03, LAYOUT-04): PHASES|SESSIONS in
+ * `{ r.x, r.y, band.leftW, r.h }`, PORTS in
+ * `{ r.x + band.rightX, r.y, band.rightW, r.h }`, both titles on `r.y`, and
+ * the `│` divider at `r.x + band.divX` from `r.y` to the taller half's last
+ * row. Returns that row (`end`, absolute, never past `r.y + r.h - 1`). Pure.
+ */
+export function drawBand(scr: Screen, r: Rect, band: Band, m: RightColumnModel): { end: number } {
+  if (r.w <= 0 || r.h <= 0) return { end: r.y - 1 };
+  const bottom = r.y + r.h;
+  const left = drawTabsBody(scr, { x: r.x, y: r.y, w: band.leftW, h: r.h }, m, Math.max(0, r.h - 2));
+  const portsFocused = m.ui.focus === "ports";
+  const portsRows = drawPortsPane(
+    scr,
+    { x: r.x + band.rightX, y: r.y, w: band.rightW, h: r.h },
+    {
+      ports: m.ports,
+      focused: portsFocused,
+      cursorKey: portsFocused ? (m.ports[0]?.key ?? null) : null,
+      sample: m.sample,
+    },
+  );
+  const end = Math.min(bottom - 1, Math.max(r.y, left.end, r.y + portsRows - 1));
+  for (let y = r.y; y <= end; y++) scr.put(r.x + band.divX, y, V2.vline, { fg: PALETTE.edge });
+  return { end };
+}
+
 export function drawRightColumn(scr: Screen, r: Rect, m: RightColumnModel): { end: number; portsY: number } {
   const ui = m.ui;
   const rightFocused = ui.focus === "right";
   const bottom = r.y + r.h;
   if (r.w <= 0 || r.h <= 0) return { end: r.y - 1, portsY: r.y };
-
-  drawTabs(scr, r.x, r.y, r.w, { active: ui.rightTab, columnFocused: rightFocused, sample: m.sample });
 
   const portsFocused = ui.focus === "ports";
   const avail = Math.max(0, r.h - CHROME_ROWS);
@@ -119,23 +219,8 @@ export function drawRightColumn(scr: Screen, r: Rect, m: RightColumnModel): { en
     budget = allocate(avail, [body, { id: "ports", min: PORTS_MIN, max: PORTS_MIN }], ["body"]);
   }
 
-  const bodyRect: Rect = { x: r.x, y: r.y + 2, w: r.w, h: budget.body ?? 0 };
-  const bodyRows =
-    ui.rightTab === "phases"
-      ? drawPhases(scr, bodyRect, {
-          projects: m.projects,
-          projectIndex: m.projectIndex,
-          focused: rightFocused,
-          cursor: null,
-        })
-      : drawSessions(scr, bodyRect, {
-          sessions: m.sessions,
-          focused: rightFocused,
-          cursorId: m.sessions[0]?.id ?? null,
-          status: m.sessionStatus,
-          scanning: false,
-        });
-  const bodyEnd = bodyRect.y + bodyRows - 1;
+  const { bodyRows } = drawTabsBody(scr, r, m, budget.body ?? 0);
+  const bodyEnd = r.y + 2 + bodyRows - 1;
 
   // Line PORTS up with FILES, unless that costs a focused PORTS its budgeted
   // rows (WR-08) or leaves an unfocused PORTS below its minimum.
