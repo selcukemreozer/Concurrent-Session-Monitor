@@ -26,6 +26,11 @@ import { drawTitle } from "./title.js";
  *   - Windowed with `windowSlice` (an owned port is a 2-row item) and
  *     `^ N more` / `v N more` (dim, x2). The cursor is matched by
  *     `PortEntry.key`, never by index.
+ *   - Never silent (Phase 10 plan 10-02, WR-05): unfocused, exposed ports
+ *     come first; a 1-row list with ports hidden draws only `v N more`; when
+ *     `+N others` would leave such a 1-row list, the `v` row takes its place
+ *     and N counts the others too. Drawn port rows + the arrow N + the
+ *     others N always equal the port count.
  *   - Empty: `no listening ports` (dim, x2).
  *
  * The port action menu (D-17), the kill / SIGKILL confirm rows (D-18) and the
@@ -76,13 +81,19 @@ function putIn(scr: Screen, x: number, y: number, text: string, st: Style, end: 
   if (out !== "") scr.put(x, y, out, st);
 }
 
-/** The ports a pane shows: owned + exposed when unfocused, all when focused. */
+/**
+ * The ports a pane shows: owned + exposed when unfocused, all when focused.
+ * Unfocused, the list is a stable partition with the exposed ports first
+ * (WR-05, D-19): the red security marker is the last port row to drop.
+ */
 export function visiblePortEntries(
   ports: readonly PortEntry[],
   focused: boolean,
 ): { shown: PortEntry[]; others: number } {
   if (focused) return { shown: [...ports], others: 0 };
-  const shown = ports.filter((p) => p.owner !== null || p.exposed);
+  const exposed = ports.filter((p) => p.exposed);
+  const owned = ports.filter((p) => !p.exposed && p.owner !== null);
+  const shown = [...exposed, ...owned];
   return { shown, others: ports.length - shown.length };
 }
 
@@ -108,9 +119,21 @@ export function drawPortsPane(scr: Screen, r: Rect, m: PortsModel): number {
   }
 
   const { shown, others } = visiblePortEntries(m.ports, m.focused);
-  let listH = r.h - 2;
-  const showOthers = others > 0 && listH >= 2;
+  const avail = r.h - 2;
+  let listH = avail;
+  // WR-05: `+N others` takes a row only when it does not leave a 1-row list
+  // with shown ports hidden; then the `↓ N more` row wins that row and counts
+  // the others too.
+  let showOthers = others > 0 && avail >= 2;
+  if (showOthers && avail - 1 === 1 && shown.length > 1) showOthers = false;
   if (showOthers) listH -= 1;
+  const hiddenOthers = showOthers ? 0 : others;
+
+  // WR-05: never spend the only list row on an item while ports are hidden.
+  if (listH === 1 && (shown.length > 1 || hiddenOthers > 0)) {
+    put(PORT_X, y++, `${V2.down} ${shown.length + hiddenOthers} more`, DIM);
+    return y - r.y;
+  }
 
   const cursor = m.focused && m.cursorKey !== null ? shown.findIndex((p) => p.key === m.cursorKey) : -1;
   const win = windowSlice({
@@ -143,7 +166,7 @@ export function drawPortsPane(scr: Screen, r: Rect, m: PortsModel): number {
       y++;
     }
   }
-  if (win.down) put(PORT_X, y++, `${V2.down} ${win.below} more`, DIM);
+  if (win.down) put(PORT_X, y++, `${V2.down} ${win.below + hiddenOthers} more`, DIM);
   if (showOthers) put(PORT_X, y++, `+${others} others`, DIM2);
 
   return y - r.y;

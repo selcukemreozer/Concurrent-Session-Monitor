@@ -122,8 +122,10 @@ export function drawFilesPane(
     putIn(scr, r.x, y, V2.rowMark, red, end);
     putIn(scr, r.x + 2, y, V2.conflict, redB, end);
     const c = m.conflicts[i];
-    if (i === MAX_CONFLICT_ROWS - 1 && nConf > MAX_CONFLICT_ROWS) {
-      putIn(scr, r.x + 4, y, `+${nConf - (MAX_CONFLICT_ROWS - 1)} more conflicts`, { fg: PALETTE.hi }, pend);
+    // WR-05: the overflow count goes on the last DRAWN conflict row, so drawn
+    // conflicts + N always equal the conflict count, for every confRows.
+    if (i === confRows - 1 && nConf > confRows) {
+      putIn(scr, r.x + 4, y, `+${nConf - i} more conflicts`, { fg: PALETTE.hi }, pend);
     } else if (c) {
       let cx = putIn(scr, r.x + 4, y, nameText(c.a, NAME_W) || DASH, hiB, end);
       cx = putIn(scr, cx, y, JOIN, redB, end);

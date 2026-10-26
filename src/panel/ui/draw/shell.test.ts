@@ -39,11 +39,11 @@ const FRAME = [
   "                                                                                                  │",
   " FILES  sample  ─────────────────────────────────────────────────────────────────────── 14 files  │   PORTS  sample  ─────────────────────────────────────────────────────────",
   "▌ ! dashboard research ✕ checkout screen   src/server.js                                          │",
-  "  ■ dashboard research    src/lib/metrics.ts                                                   │  │    :3000   bun",
-  "                          src/pages/Overview.tsx                                               │  │      ↳ checkout screen",
-  "    ┄┄ back to top ┄┄                                                                          │  │    :5173   vite",
-  "  ■ csm p8 plan           .planning/ROADMAP.md                                                 ┃  │      ↳ dashboard research",
-  "                          .planning/phase-8.md                                                 ┃  │    :27036  steam_osx   ⇡ exposed",
+  "  ■ dashboard research    src/lib/metrics.ts                                                   │  │    :27036  steam_osx   ⇡ exposed",
+  "                          src/pages/Overview.tsx                                               │  │    :3000   bun",
+  "    ┄┄ back to top ┄┄                                                                          │  │      ↳ checkout screen",
+  "  ■ csm p8 plan           .planning/ROADMAP.md                                                 ┃  │    :5173   vite",
+  "                          .planning/phase-8.md                                                 ┃  │      ↳ dashboard research",
   "                          .planning/phase-9.md                                                 ┃  │    +5 others",
   "",
   " ✎ written   read   ! conflict                                                                         tab focus   ←↑↓→ select agent   space pause files   r sessions   q quit",
@@ -100,7 +100,9 @@ describe("drawShell: the approved 175x55 frame (LAYOUT-06, D-01/D-02/D-28)", () 
   const lines = drawShell(input());
   const t = texts(lines);
 
-  it("returns exactly the 37 frame lines", () => {
+  // WR-05 (Phase 10 plan 10-02, D-19): rows 29-33 of the right column list
+  // the exposed port first, so the red security marker is the last to drop.
+  it("WR-05 returns exactly the 37 frame lines (exposed port first in PORTS)", () => {
     expect(FRAME).toHaveLength(37);
     expect(lines).toHaveLength(37);
     expect(t.map((s) => s.trimEnd())).toEqual(FRAME);

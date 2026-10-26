@@ -288,14 +288,44 @@ describe("drawPhases: the unfocused radius-0 window keeps its indicators (Phase 
     expect(body[2]).toBe("  ⋮  9 more phases");
   });
 
-  it.each([6, 7, 8, 9, 10, 11, 12])("WR-04 h=%i: hidden phases always come with a ⋮ row", (h) => {
+  it("WR-04 h=5 (one timeline row): the blank header row goes, the current phase keeps its ⋮ row", () => {
+    const r = { x: 101, y: 4, w: 74, h: 5 };
+    const { scr, rows } = pane({}, r);
+    const all = paneText(scr, r);
+    expect(all[2]).toMatch(/2\/12$/);
+    expect(all[3]).toMatch(/^ {2}◉ {2}33 +ci pipeline monitoring$/);
+    expect(all[4]).toBe("  ⋮  9 more phases");
+    expect(rows).toBe(5);
+  });
+
+  it("WR-04 budget 2 with the last phase current: the earlier row takes the free slot", () => {
+    const r = { x: 101, y: 4, w: 74, h: 6 };
+    const { scr } = pane({ projects: [project(10, 9)], projectIndex: 0 }, r);
+    const body = paneText(scr, r).slice(4);
+    expect(body).toEqual(["  ⋮  9 earlier phases", "  ◉  10    phase 10"]);
+  });
+
+  it("WR-04 h=5 with a single phase keeps the 4-row header", () => {
+    const r = { x: 101, y: 4, w: 74, h: 5 };
+    const { scr } = pane({ projects: [project(1, 0)], projectIndex: 0 }, r);
+    const all = paneText(scr, r);
+    expect(all[3]).toBe("");
+    expect(all[4]).toMatch(/^ {2}◉ {2}1 +phase 1$/);
+  });
+
+  it.each([5, 6, 7, 8, 9, 10, 11, 12])("WR-04 h=%i: hidden phases always come with a ⋮ row", (h) => {
     const r = { x: 101, y: 4, w: 74, h };
     const { scr } = pane({}, r);
-    const body = paneText(scr, r).slice(4);
+    // the timeline starts on row +4, or +3 when the blank header row is dropped (h = 5)
+    const body = paneText(scr, r).slice(3);
     const drawn = body.filter((l) => /^ {2}[●◉○] /.test(l)).length;
     const counted = body.reduce((n, l) => n + Number(/⋮ {2}(\d+) /.exec(l)?.[1] ?? 0), 0);
     expect(drawn).toBeGreaterThan(0);
-    expect(drawn + counted).toBe(12);
+    // the current phase is always drawn, and hidden phases always come with a ⋮ row
+    expect(body.some((l) => l.includes("ci pipeline monitoring"))).toBe(true);
+    if (drawn < 12) expect(counted).toBeGreaterThan(0);
+    // budget >= 3 (h >= 7): every hidden phase is counted
+    if (h >= 7) expect(drawn + counted).toBe(12);
   });
 });
 

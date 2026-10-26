@@ -25,6 +25,11 @@ import { windowSlice } from "../viewport.js";
  *   - Unfocused: a +-2 window around the current phase, with
  *     `N earlier phases` / `N more phases` rows (dim, marker x2, text x5). In a
  *     short rect the window narrows to +-1, then to the current phase alone.
+ *     Phase 10 plan 10-02 (WR-04): when radius 0 is still too tall it becomes
+ *     `[earlier?, current phase, more?]` (the plan row and connector go first,
+ *     then `earlier`; `more` goes last), and a rect with room for one timeline
+ *     row (h = 5) drops the blank header row, so hidden phases always come
+ *     with a `⋮` row.
  *   - Focused: the full list with the cursor (hi bold, x0; default: the current
  *     phase), windowed with `windowSlice` and `^ N more` / `v N more` (dim, x2).
  *     A focused rect too short for the 4 header rows + 2 timeline rows (h < 6)
@@ -99,7 +104,10 @@ export function drawPhases(scr: Screen, r: Rect, m: PhasesModel): number {
 
   // WR-09: a short focused rect drops the dir, bar and blank rows for the timeline.
   const compact = m.focused && total > 0 && r.h < HEADER_ROWS + 2;
-  const head = compact ? 1 : HEADER_ROWS;
+  // WR-04: an unfocused rect with room for one timeline row only drops the
+  // blank row, so the current phase keeps its `⋮` row.
+  const tight = !m.focused && total > 1 && r.h === HEADER_ROWS + 1;
+  const head = compact ? 1 : tight ? HEADER_ROWS - 1 : HEADER_ROWS;
 
   // Row +0: the project name and the project hint.
   const hint = m.focused && m.projects.length > 1;
@@ -189,6 +197,16 @@ export function drawPhases(scr: Screen, r: Rect, m: PhasesModel): number {
       if (more > 0) list.push(moreRow(plural(more, "more phase", "more phases")));
       rows = list;
       if (list.length <= budget) break;
+      if (radius === 0) {
+        // WR-04: radius 0 is still too tall. Shed the plan row and connector,
+        // then the earlier row, but never slice off an indicator row:
+        // [earlier?, current phase, more?] sized to the budget.
+        const cur = phaseRows(center, true, false, false).slice(0, 1);
+        const tail = more > 0 && budget >= 2 ? [moreRow(plural(more, "more phase", "more phases"))] : [];
+        const head =
+          a0 > 0 && budget >= 2 + tail.length ? [moreRow(plural(a0, "earlier phase", "earlier phases"))] : [];
+        rows = [...head, ...cur, ...tail];
+      }
     }
   } else {
     const cursor = m.cursor === null ? center : Math.min(total - 1, Math.max(0, Math.trunc(m.cursor)));

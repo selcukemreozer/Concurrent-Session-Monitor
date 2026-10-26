@@ -55,6 +55,8 @@ const DIM2 = "#5c5a54";
 const IDLE = "#4a4945";
 
 // UI-SPEC primary frame rows 2..34, cut to cells 101..174 and right-trimmed.
+// WR-05 (Phase 10 plan 10-02, D-19): the unfocused PORTS list puts the exposed
+// port first, so the red security marker is the last port row to drop.
 const FRAME_RIGHT = [
   " PHASES   SESSIONS   sample  " + "─".repeat(41) + " [r]",
   "",
@@ -83,11 +85,11 @@ const FRAME_RIGHT = [
   "",
   " PORTS  sample  " + "─".repeat(57),
   "",
+  "  :27036  steam_osx   ⇡ exposed",
   "  :3000   bun",
   "    ↳ checkout screen",
   "  :5173   vite",
   "    ↳ dashboard research",
-  "  :27036  steam_osx   ⇡ exposed",
   "  +5 others",
 ];
 
@@ -110,7 +112,7 @@ function column(ui: Partial<UiState> = {}, rect = RECT, portsMinY = 27) {
 }
 
 describe("drawRightColumn frame fidelity", () => {
-  it("reproduces frame rows 2..34 of the right column", () => {
+  it("WR-05 reproduces frame rows 2..34 of the right column (exposed port first)", () => {
     const { scr, end, portsY } = column();
     const got: string[] = [];
     for (let y = 2; y <= 34; y++) got.push(text(scr, y, X, 175));
@@ -217,6 +219,22 @@ describe("drawRightColumn: a focused PORTS keeps its first port row (09-16)", ()
     expect(text(scr, portsY, X, 175).startsWith("▐PORTS▌")).toBe(true);
     expect(cellAt(scr, X, portsY + 2).ch).toBe("❯");
     expect(end).toBeLessThanOrEqual(2 + h - 1);
+  });
+
+  it("WR-05 h=6: the spacers around the empty body fold into one, so the cursor keeps a ↓ 7 more row", () => {
+    const r: Rect = { x: X, y: 2, w: 74, h: 6 };
+    const { scr, end, portsY } = column({ focus: "ports" }, r, 0);
+    expect(portsY).toBe(r.y + 2);
+    expect(text(scr, r.y + 1, X, 175)).toBe("");
+    expect(text(scr, portsY + 2, X, 175)).toMatch(/^❯ :3000 {3}bun/);
+    expect(text(scr, portsY + 3, X, 175)).toBe("  ↓ 7 more");
+    expect(end).toBe(2 + 6 - 1);
+  });
+
+  it("WR-05 h=7: one spacer row each side of the empty body (the 2-row list fits already)", () => {
+    const r: Rect = { x: X, y: 2, w: 74, h: 7 };
+    const { portsY } = column({ focus: "ports" }, r, 0);
+    expect(portsY).toBe(r.y + 3);
   });
 
   it("h=7 without PORTS focus still serves the 3-row body first", () => {

@@ -38,6 +38,9 @@ import { drawPortsPane, visiblePortEntries } from "./ports.js";
  *     row (+1 for the `↓ N more` row when there is more than one phase).
  *   - Otherwise: the body keeps 3 rows, PORTS its minimum (title + spacer +
  *     1 row) and the body takes the rest.
+ * A focused PORTS pane under an empty (0-row) body that would get only a
+ * 1-row list folds the two spacer rows into one (Phase 10 plan 10-02, WR-05),
+ * so the cursor row keeps its `↓ N more` row.
  * With 9+ rows and the default focus (every split-mode column) the output is
  * unchanged from Phase 9.
  * Returns the last row used (`end`, absolute) and the PORTS title row. Pure.
@@ -139,6 +142,13 @@ export function drawRightColumn(scr: Screen, r: Rect, m: RightColumnModel): { en
   let portsY = Math.max(bodyEnd + 2, Math.trunc(m.portsMinY) || 0);
   const portsNeed = portsFocused ? (budget.ports ?? PORTS_MIN) : PORTS_MIN;
   if (bottom - portsY < portsNeed) portsY = bodyEnd + 2;
+  // WR-05 (10-02): a focused PORTS pane under an empty body would get a
+  // 1-row list (one port, or only `↓ N more` and no cursor). The two spacer
+  // rows around the empty body fold into one, so the list keeps the cursor
+  // row and its `↓ N more` row.
+  if (portsFocused && bodyRows === 0 && bottom - portsY === PORTS_MIN && portRowsNeeded(m.ports, true) > 1) {
+    portsY -= 1;
+  }
   const portsRows = drawPortsPane(
     scr,
     { x: r.x, y: portsY, w: r.w, h: Math.max(0, bottom - portsY) },
