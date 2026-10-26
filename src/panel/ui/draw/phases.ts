@@ -45,7 +45,9 @@ const NUM_X = 5;
 const NAME_X = 11;
 const NUM_W = 5;
 const MINI_MAX = 12;
-const HEADER_ROWS = 4;
+/** Rows above the timeline: project name, `dir · project i/N`, the progress bar and a blank row. */
+export const PHASES_HEADER_ROWS = 4;
+const HEADER_ROWS = PHASES_HEADER_ROWS;
 const SEP = ` ${V2.sep} `;
 
 const DIM: Style = { fg: PALETTE.dim };

@@ -3,9 +3,9 @@ import type { Flash, PortEntry, Project, Rect, SessionEntry } from "../models.js
 import type { UiState } from "../uiState.js";
 import { allocate } from "../layout.js";
 import { drawTabs } from "./title.js";
-import { drawPhases } from "./phases.js";
+import { drawPhases, PHASES_HEADER_ROWS } from "./phases.js";
 import { drawSessions } from "./sessions.js";
-import { drawPortsPane } from "./ports.js";
+import { drawPortsPane, visiblePortEntries } from "./ports.js";
 
 /**
  * The v2 right column (Phase 9, plan 09-08; D-02, D-20; UI-SPEC W2 layout,
@@ -19,17 +19,27 @@ import { drawPortsPane } from "./ports.js";
  *      the cursor is the first session, the status is `sessionStatus`).
  *   3. The PORTS title on `max(bodyEnd + 2, portsMinY)`, so it lines up with
  *      the FILES title row in the left column. When that would leave PORTS
- *      fewer than 3 rows inside `r`, it goes right under the body instead
- *      (`bodyEnd + 2`).
+ *      fewer rows inside `r` than it needs (3, or a focused PORTS pane's
+ *      budget), it goes right under the body instead (`bodyEnd + 2`).
  *
- * The body height is budgeted with `allocate` before drawing: the body keeps
- * at least 3 rows, PORTS keeps its minimum (title + spacer + 1 row) and the
- * body takes the rest, so nothing passes `r.y + r.h - 1` (T-09-14a).
- * With PORTS focused, the PORTS minimum is served before the body minimum, so
- * a short column shrinks the unfocused PHASES|SESSIONS body (its tab row
- * stays) before PORTS loses its first port row (09-16, KEYS-01; UI-SPEC: in
- * stacked modes the bottom band collapses to its title row(s)). With 9+ rows,
- * which is every split-mode column, both minimums fit and nothing changes.
+ * The body height is budgeted with `allocate` before drawing, so nothing
+ * passes `r.y + r.h - 1` (T-09-14a). The budget depends on the focus
+ * (Phase 10 plan 10-01, D-19):
+ *   - PORTS focused (WR-08): PORTS is served first and grows to the rows its
+ *     ports need (`portRowsNeeded`: title + spacer + 2 rows per owned port,
+ *     1 per other port); the unfocused PHASES|SESSIONS body takes what is
+ *     left, down to 0 rows (its tab row stays). A focused PORTS pane is never
+ *     held to one port row while the body has rows to give. Its title still
+ *     lines up with FILES unless that would cost PORTS budgeted rows.
+ *   - PHASES|SESSIONS focused (WR-09): the body keeps at least 3 rows and
+ *     grows first; the unfocused PORTS pane may shrink to its title row.
+ *     `focusedFloor()` tells the shell how many rows the focused pane needs
+ *     to show real content: for PHASES the 4 header rows plus one timeline
+ *     row (+1 for the `↓ N more` row when there is more than one phase).
+ *   - Otherwise: the body keeps 3 rows, PORTS its minimum (title + spacer +
+ *     1 row) and the body takes the rest.
+ * With 9+ rows and the default focus (every split-mode column) the output is
+ * unchanged from Phase 9.
  * Returns the last row used (`end`, absolute) and the PORTS title row. Pure.
  */
 
@@ -54,6 +64,32 @@ export const FOCUSED_TAB_FLOOR = CHROME_ROWS + 1;
 /** Focused PORTS floor (09-16, D-13): tabs, spacer, a 0-row body, spacer, PORTS title + spacer + one port row. */
 export const FOCUSED_PORTS_FLOOR = CHROME_ROWS + PORTS_MIN;
 
+/** Rows the PORTS list needs to show every port it would list (+1 for the `+N others` row). */
+function portRowsNeeded(ports: readonly PortEntry[], focused: boolean): number {
+  const { shown, others } = visiblePortEntries(ports, focused);
+  let rows = others > 0 ? 1 : 0;
+  for (const p of shown) rows += p.owner !== null ? 2 : 1;
+  return rows;
+}
+
+/**
+ * The rows a focused right-column pane needs before it shows real content
+ * (D-13 floor; WR-09). PORTS: FOCUSED_PORTS_FLOOR. PHASES on a project with
+ * phases: tabs, spacer, the 4 header rows, one timeline row, the spacer above
+ * PORTS, and one more for the `↓ N more` row when there is more than one
+ * phase. Anything else (SESSIONS, a project with no phases, no projects):
+ * FOCUSED_TAB_FLOOR. The shell uses it to decide when the grid yields.
+ */
+export function focusedFloor(m: RightColumnModel): number {
+  if (m.ui.focus === "ports") return FOCUSED_PORTS_FLOOR;
+  if (m.ui.focus === "right" && m.ui.rightTab === "phases" && m.projects.length > 0) {
+    const pi = Math.min(Math.max(0, Math.trunc(m.projectIndex) || 0), m.projects.length - 1);
+    const n = m.projects[pi]?.phases.length ?? 0;
+    if (n > 0) return CHROME_ROWS + PHASES_HEADER_ROWS + 1 + (n > 1 ? 1 : 0);
+  }
+  return FOCUSED_TAB_FLOOR;
+}
+
 export function drawRightColumn(scr: Screen, r: Rect, m: RightColumnModel): { end: number; portsY: number } {
   const ui = m.ui;
   const rightFocused = ui.focus === "right";
@@ -64,9 +100,19 @@ export function drawRightColumn(scr: Screen, r: Rect, m: RightColumnModel): { en
 
   const portsFocused = ui.focus === "ports";
   const avail = Math.max(0, r.h - CHROME_ROWS);
-  const body = { id: "body", min: BODY_MIN, max: avail };
-  const ports = { id: "ports", min: PORTS_MIN, max: PORTS_MIN };
-  const budget = allocate(avail, portsFocused ? [ports, body] : [body, ports], ["body"]);
+  let budget: Record<string, number>;
+  if (portsFocused) {
+    // WR-08: PORTS first, up to every port row; the body takes what is left.
+    const ports = { id: "ports", min: PORTS_MIN, max: 2 + portRowsNeeded(m.ports, true) };
+    budget = allocate(avail, [ports, { id: "body", min: 0, max: avail }], ["ports", "body"]);
+  } else if (rightFocused) {
+    // WR-09: the focused body grows first; the unfocused PORTS may keep only its title.
+    const body = { id: "body", min: BODY_MIN, max: avail };
+    budget = allocate(avail, [body, { id: "ports", min: 1, max: PORTS_MIN }], ["body", "ports"]);
+  } else {
+    const body = { id: "body", min: BODY_MIN, max: avail };
+    budget = allocate(avail, [body, { id: "ports", min: PORTS_MIN, max: PORTS_MIN }], ["body"]);
+  }
 
   const bodyRect: Rect = { x: r.x, y: r.y + 2, w: r.w, h: budget.body ?? 0 };
   const bodyRows =
@@ -86,8 +132,11 @@ export function drawRightColumn(scr: Screen, r: Rect, m: RightColumnModel): { en
         });
   const bodyEnd = bodyRect.y + bodyRows - 1;
 
+  // Line PORTS up with FILES, unless that costs a focused PORTS its budgeted
+  // rows (WR-08) or leaves an unfocused PORTS below its minimum.
   let portsY = Math.max(bodyEnd + 2, Math.trunc(m.portsMinY) || 0);
-  if (bottom - portsY < PORTS_MIN) portsY = bodyEnd + 2;
+  const portsNeed = portsFocused ? (budget.ports ?? PORTS_MIN) : PORTS_MIN;
+  if (bottom - portsY < portsNeed) portsY = bodyEnd + 2;
   const portsRows = drawPortsPane(
     scr,
     { x: r.x, y: portsY, w: r.w, h: Math.max(0, bottom - portsY) },
