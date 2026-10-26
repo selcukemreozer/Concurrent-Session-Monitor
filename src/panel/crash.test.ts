@@ -6,6 +6,7 @@ import * as path from "node:path";
 import {
   CRASH_LOG,
   CRASH_LOG_CAP,
+  CRASH_ENTRY_CAP,
   CRASH_MSG_CELLS,
   crashMessage,
   crashEntry,
@@ -212,6 +213,61 @@ describe("installCrashHandlers", () => {
   });
 });
 
+describe("crashEntry size cap (Phase 10 plan 10-02, IN-03)", () => {
+  const now = new Date("2026-10-19T10:00:00.000Z");
+  const HEADER = "[2026-10-19T10:00:00.000Z] pid 9\n";
+
+  /** The body lines of an entry: between the header line and the marker line. */
+  function parts(entry: string): { header: string; body: string; marker: string } {
+    const lines = entry.split("\n");
+    expect(lines[lines.length - 1]).toBe("");
+    return {
+      header: lines[0] as string,
+      body: lines.slice(1, -2).join("\n"),
+      marker: lines[lines.length - 2] as string,
+    };
+  }
+
+  it("IN-03 CRASH_ENTRY_CAP is a quarter of the log cap", () => {
+    expect(CRASH_ENTRY_CAP).toBe(CRASH_LOG_CAP / 4);
+  });
+
+  it("IN-03 caps a 1 MB stack at CRASH_ENTRY_CAP bytes of body plus a marker line", () => {
+    const err = new Error("huge");
+    err.stack = "Error: huge\n" + "    at frame (file.ts:1:1)\n".repeat(40000);
+    expect(Buffer.byteLength(err.stack)).toBeGreaterThan(1024 * 1024);
+    const entry = crashEntry(err, now, 9);
+    expect(entry.startsWith(HEADER)).toBe(true);
+    const p = parts(entry);
+    expect(Buffer.byteLength(p.body)).toBeLessThanOrEqual(CRASH_ENTRY_CAP);
+    expect(Buffer.byteLength(p.body)).toBeGreaterThan(CRASH_ENTRY_CAP - 100);
+    expect(p.marker).toBe(E + "[truncated]");
+    expect(Buffer.byteLength(entry)).toBeLessThanOrEqual(
+      Buffer.byteLength(HEADER) + CRASH_ENTRY_CAP + Buffer.byteLength(E + "[truncated]\n") + 1,
+    );
+  });
+
+  it("IN-03 cuts on a code-point boundary (no lone surrogate, no replacement char)", () => {
+    const smile = String.fromCodePoint(0x1f600);
+    for (const lead of ["", "x", "xy", "xyz"]) {
+      const entry = crashEntry(lead + smile.repeat(CRASH_ENTRY_CAP), now, 9);
+      const p = parts(entry);
+      expect(Buffer.byteLength(p.body)).toBeLessThanOrEqual(CRASH_ENTRY_CAP);
+      expect(p.body).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/);
+      expect(p.body).not.toContain(String.fromCharCode(0xfffd));
+      expect(p.body.endsWith(smile)).toBe(true);
+    }
+  });
+
+  it("IN-03 leaves an entry under the cap unchanged (no marker)", () => {
+    const noStack = new Error("plain");
+    noStack.stack = undefined;
+    expect(crashEntry(noStack, now, 7)).toBe("[2026-10-19T10:00:00.000Z] pid 7\nplain\n");
+    const exact = "a".repeat(CRASH_ENTRY_CAP);
+    expect(crashEntry(exact, now, 7)).toBe("[2026-10-19T10:00:00.000Z] pid 7\n" + exact + "\n");
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Task 2: crash.log writer, display path, terminal restore.
 // ---------------------------------------------------------------------------
@@ -281,6 +337,29 @@ describe("appendCrashLog", () => {
     expect(() => appendCrashLog("evil\n", dir)).not.toThrow();
     expect(fs.readFileSync(target, "utf8")).toBe(big);
     expect(fs.existsSync(path.join(dir, CRASH_LOG + ".1"))).toBe(false);
+  });
+
+  it("IN-03 forces mode 0600 on a pre-existing 0644 crash.log", () => {
+    const dir = tmpDir();
+    const file = path.join(dir, CRASH_LOG);
+    fs.writeFileSync(file, "old\n");
+    fs.chmodSync(file, 0o644);
+    expect(fs.statSync(file).mode & 0o777).toBe(0o644);
+    appendCrashLog("new\n", dir);
+    expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+    expect(fs.readFileSync(file, "utf8")).toBe("old\nnew\n");
+  });
+
+  it("IN-03 still refuses a symlinked crash.log and leaves the target's mode alone", () => {
+    const dir = tmpDir();
+    const outside = tmpDir();
+    const target = path.join(outside, "victim.txt");
+    fs.writeFileSync(target, "untouched\n");
+    fs.chmodSync(target, 0o644);
+    fs.symlinkSync(target, path.join(dir, CRASH_LOG));
+    expect(() => appendCrashLog("evil\n", dir)).not.toThrow();
+    expect(fs.readFileSync(target, "utf8")).toBe("untouched\n");
+    expect(fs.statSync(target).mode & 0o777).toBe(0o644);
   });
 
   it("creates a missing directory", () => {

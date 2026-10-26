@@ -107,9 +107,17 @@ describe("hint integrity", () => {
 });
 
 describe("Tab", () => {
-  it.each(ALL.filter((c) => c !== "edit"))("Tab / Shift+Tab cycle focus in %s", (c) => {
-    expect(resolve("", TAB, CTX[c])).toEqual({ t: "focusNext" });
-    expect(resolve("", STAB, CTX[c])).toEqual({ t: "focusPrev" });
+  it.each(ALL.filter((c) => c !== "edit" && c !== "confirm" && c !== "confirmKill"))(
+    "IN-01 Tab / Shift+Tab cycle focus in %s (normal contexts and the menu)",
+    (c) => {
+      expect(resolve("", TAB, CTX[c])).toEqual({ t: "focusNext" });
+      expect(resolve("", STAB, CTX[c])).toEqual({ t: "focusPrev" });
+    },
+  );
+
+  it.each<HintContext>(["confirm", "confirmKill"])("IN-01 Tab cannot dismiss a %s overlay (→ null)", (c) => {
+    expect(resolve("", TAB, CTX[c])).toBeNull();
+    expect(resolve("", STAB, CTX[c])).toBeNull();
   });
 
   it("Tab is text in the name field (edit → null)", () => {
@@ -138,8 +146,20 @@ describe("q", () => {
 });
 
 describe("Esc precedence", () => {
-  it.each(OVERLAYS)("closes the overlay in %s", (c) => {
-    expect(resolve("", ESC, CTX[c])).toEqual({ t: "closeOverlay" });
+  it("IN-01 closes the menu", () => {
+    expect(resolve("", ESC, CTX.menu)).toEqual({ t: "closeOverlay" });
+  });
+
+  it.each<HintContext>(["confirm", "confirmKill"])(
+    "IN-01 resolves to confirmNo in %s (the `n / esc` hint's binding; a noop until Phase 11)",
+    (c) => {
+      expect(resolve("", ESC, CTX[c])).toEqual({ t: "noop", binding: "confirmNo" });
+    },
+  );
+
+  it("IN-01 the confirmNo row comes before the close row", () => {
+    const ids = KEYMAP.map((b) => b.id);
+    expect(ids.indexOf("confirmNo")).toBeLessThan(ids.indexOf("close"));
   });
 
   it("cancels the name field (Phase 12 noop)", () => {
