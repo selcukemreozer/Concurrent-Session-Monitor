@@ -23631,7 +23631,7 @@ function useResume(liveRowsRef, visible) {
   };
   const isLive = (row) => row.live || launchHolds.current.has(row.id);
   const enterSeq = import_react43.default.useRef(0);
-  const move = (delta) => {
+  const move2 = (delta) => {
     const rows2 = resumeRowsRef.current;
     if (rows2 === null || rows2.length === 0) return;
     const found = rows2.findIndex((r2) => r2.id === selIdRef.current);
@@ -23698,7 +23698,7 @@ function useResume(liveRowsRef, visible) {
     offset: resumeOffset,
     status: resumeStatus,
     isLive,
-    move,
+    move: move2,
     enter: enter2,
     open: open3,
     clearStatus
@@ -23771,13 +23771,13 @@ function App2() {
     if (rightPaneRef.current !== "fazlar") return;
     setFocusedIndex((i) => cycleIndex(i, focusSet.length, dir));
   };
-  const onScroll = (dir, page) => {
+  const onScroll = (dir, page2) => {
     if (rightPaneRef.current === "fazlar") {
-      const delta = dir * (page ? FAZLAR_VISIBLE_ROWS : 1);
+      const delta = dir * (page2 ? FAZLAR_VISIBLE_ROWS : 1);
       setScrollOffset((o) => clampOffset(o + delta, totalPhases, FAZLAR_VISIBLE_ROWS));
       return;
     }
-    resume.move(dir * (page ? RESUME_VISIBLE_ROWS : 1));
+    resume.move(dir * (page2 ? RESUME_VISIBLE_ROWS : 1));
   };
   const onEnter = () => {
     if (rightPaneRef.current !== "oturumlar") return;
@@ -24092,7 +24092,12 @@ var initialUi = {
   rightTab: "phases",
   filesPaused: false,
   mode: "normal",
-  selectedAgentId: null
+  selectedAgentId: null,
+  phaseCursor: null,
+  projectRoot: null,
+  portCursor: null,
+  flash: null,
+  lastKeyAt: 0
 };
 var FOCUS_ORDER = ["agents", "right", "ports"];
 function step(focus, delta) {
@@ -24107,18 +24112,39 @@ function uiReducer(s, a) {
     case "focusPrev":
       return { ...s, focus: step(s.focus, -1), mode: "normal" };
     case "focusAgents":
+      if (s.focus === "agents") return s;
       return { ...s, focus: "agents" };
     case "clearSelection":
+      if (s.selectedAgentId === null) return s;
       return { ...s, selectedAgentId: null };
     case "select":
+      if (s.selectedAgentId === a.id) return s;
       return { ...s, selectedAgentId: a.id };
     case "closeOverlay":
+      if (s.mode === "normal") return s;
       return { ...s, mode: "normal" };
     case "toggleRight":
       if (s.mode !== "normal") return s;
       return { ...s, rightTab: s.rightTab === "phases" ? "sessions" : "phases" };
     case "toggleFiles":
       return { ...s, filesPaused: !s.filesPaused };
+    case "setPhaseCursor":
+      if (s.phaseCursor === a.n) return s;
+      return { ...s, phaseCursor: a.n };
+    case "setProject":
+      if (s.projectRoot === a.root && s.phaseCursor === null) return s;
+      return { ...s, projectRoot: a.root, phaseCursor: null };
+    case "setPortCursor":
+      if (s.portCursor === a.key) return s;
+      return { ...s, portCursor: a.key };
+    case "flash":
+      if (s.flash !== null && s.flash.text === a.text && s.flash.ok === a.ok && s.flash.at === a.at) {
+        return s;
+      }
+      return { ...s, flash: { text: a.text, ok: a.ok, at: a.at } };
+    case "keyAt":
+      if (s.lastKeyAt === a.at) return s;
+      return { ...s, lastKeyAt: a.at };
     case "quit":
     case "noop":
       return s;
@@ -24126,6 +24152,10 @@ function uiReducer(s, a) {
 }
 
 // src/panel/ui/keymap.ts
+var INTENT_TAGS = /* @__PURE__ */ new Set(["move", "page", "project", "goto", "copy", "open"]);
+function isIntent(a) {
+  return INTENT_TAGS.has(a.t);
+}
 var NORMAL = ["agents", "agentsSelected", "phases", "sessions", "ports"];
 var OVERLAYS = ["menu", "confirm", "confirmKill"];
 var TAB_CONTEXTS = [...NORMAL, "menu"];
@@ -24137,6 +24167,14 @@ var leftRight = (_, k) => !!(k.leftArrow || k.rightArrow);
 var esc = (_, k) => !!k.escape;
 var enter = (_, k) => !!k.return;
 var noop2 = (id) => () => ({ t: "noop", binding: id });
+var page = (_, k) => !!(k.pageUp || k.pageDown);
+function arrowDir(k) {
+  if (k.upArrow) return "up";
+  if (k.downArrow) return "down";
+  if (k.leftArrow) return "left";
+  return "right";
+}
+var move = (_ui, _i, k) => ({ t: "move", dir: arrowDir(k) });
 var KEYMAP = [
   {
     // IN-01: before `close`, so Esc in a confirm is the hinted `n / esc` cancel.
@@ -24246,67 +24284,76 @@ var KEYMAP = [
     action: () => ({ t: "quit" })
   },
   {
+    // D-16: PgUp / PgDn page every scrollable pane. A routed row with NO
+    // footer hint (FOOTER_HINTS never names "page").
+    id: "page",
+    built: 10,
+    contexts: NORMAL,
+    match: page,
+    action: (_ui, _i, k) => ({ t: "page", dir: k.pageUp ? -1 : 1 })
+  },
+  {
     id: "agentsSelect",
     built: 10,
     contexts: ["agents"],
     match: anyArrow,
-    action: noop2("agentsSelect")
+    action: move
   },
   {
     id: "agentsMove",
     built: 10,
     contexts: ["agentsSelected"],
     match: anyArrow,
-    action: noop2("agentsMove")
+    action: move
   },
   {
     id: "agentsGoto",
     built: 10,
     contexts: ["agentsSelected"],
     match: enter,
-    action: noop2("agentsGoto")
+    action: () => ({ t: "goto" })
   },
   {
     id: "phasesBrowse",
     built: 10,
     contexts: ["phases"],
     match: upDown,
-    action: noop2("phasesBrowse")
+    action: move
   },
   {
     id: "phasesProject",
     built: 10,
     contexts: ["phases"],
     match: leftRight,
-    action: noop2("phasesProject")
+    action: (_ui, _i, k) => ({ t: "project", dir: k.leftArrow ? -1 : 1 })
   },
   {
     id: "sessionsBrowse",
     built: 10,
     contexts: ["sessions"],
     match: upDown,
-    action: noop2("sessionsBrowse")
+    action: move
   },
   {
     id: "sessionsCopy",
     built: 10,
     contexts: ["sessions"],
     match: enter,
-    action: noop2("sessionsCopy")
+    action: () => ({ t: "copy" })
   },
   {
     id: "sessionsOpen",
     built: 10,
     contexts: ["sessions"],
     match: char("o"),
-    action: noop2("sessionsOpen")
+    action: () => ({ t: "open" })
   },
   {
     id: "portsBrowse",
     built: 10,
     contexts: ["ports"],
     match: upDown,
-    action: noop2("portsBrowse")
+    action: move
   },
   {
     id: "portsActions",
@@ -24404,7 +24451,7 @@ function hintsFor(ui) {
 function resolve3(input, key, ui) {
   const ctx = contextOf(ui);
   for (const b of KEYMAP) {
-    if (b.contexts.includes(ctx) && b.match(input, key)) return b.action(ui);
+    if (b.contexts.includes(ctx) && b.match(input, key)) return b.action(ui, input, key);
   }
   return null;
 }
@@ -26035,6 +26082,7 @@ function V2Keyboard({
   use_input_default((input, key) => {
     const action = resolve3(input, key, uiRef.current);
     if (action === null) return;
+    if (isIntent(action)) return;
     if (action.t === "quit") {
       exit();
       return;

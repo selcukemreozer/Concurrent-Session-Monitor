@@ -6,7 +6,7 @@ import { useUiTick, UI_TICK_MS } from "./hooks/useUiTick.js";
 import { useResizeRepaint } from "./hooks/useResizeRepaint.js";
 import { headerFromRoster } from "./ui/headerModel.js";
 import { initialUi, uiReducer, type Action, type UiState } from "./ui/uiState.js";
-import { resolve } from "./ui/keymap.js";
+import { isIntent, resolve } from "./ui/keymap.js";
 import { drawShell } from "./ui/draw/shell.js";
 import { tickerRows } from "./ui/draw/files.js";
 import { SAMPLE } from "./ui/sample.js";
@@ -130,6 +130,9 @@ function V2Keyboard({
   useInput((input, key) => {
     const action = resolve(input, key, uiRef.current);
     if (action === null) return;
+    // 10-07: P10 rows emit intents (move/page/project/goto/copy/open); they
+    // are ignored here until 10-08 routes them through the dispatcher.
+    if (isIntent(action)) return;
     if (action.t === "quit") {
       exit();
       return;
