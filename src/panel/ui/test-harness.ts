@@ -113,3 +113,53 @@ export function frameLines(frame: string): string[] {
   if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
   return lines;
 }
+
+export interface RenderTtyOptions {
+  rows?: number;
+  columns?: number;
+  stdin?: NodeJS.ReadStream;
+  /** Defaults to true. False models a piped stdout (no TTY). */
+  isTTY?: boolean;
+}
+
+/**
+ * Render `el` interactively (NOT debug) into a fake TTY stdout (Phase 10,
+ * plan 10-04; RESEARCH Q2, Pitfall 10). Unlike renderCapture this takes Ink's
+ * real interactive path, so `useStdout().write` runs Ink's writeToStdout
+ * (log.clear → data → restoreLastOutput). `setSize` mutates the stream's
+ * `columns` / `rows`; `resize()` emits `"resize"` on it, as a terminal
+ * SIGWINCH does. `writes()` returns every raw chunk written so far.
+ */
+export function renderTty(el: React.ReactElement, opts: RenderTtyOptions = {}) {
+  const chunks: string[] = [];
+  const out = new Writable({
+    write(c, _e, cb) {
+      chunks.push(c.toString());
+      cb();
+    },
+  }) as unknown as NodeJS.WriteStream;
+  const size = out as unknown as { columns: number; rows: number; isTTY: boolean };
+  size.isTTY = opts.isTTY ?? true;
+  size.columns = opts.columns ?? 80;
+  size.rows = opts.rows ?? 24;
+  const inst = render(el, {
+    stdout: out,
+    stdin: opts.stdin ?? fakeTtyStdin(),
+    interactive: true,
+    debug: false,
+    patchConsole: false,
+    exitOnCtrlC: true,
+  });
+  return {
+    inst,
+    out,
+    writes: (): string[] => [...chunks],
+    setSize(cols: number, rows: number): void {
+      size.columns = cols;
+      size.rows = rows;
+    },
+    resize(): void {
+      (out as unknown as { emit: (e: string) => boolean }).emit("resize");
+    },
+  };
+}

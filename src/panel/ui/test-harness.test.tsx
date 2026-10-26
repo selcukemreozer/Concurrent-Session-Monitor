@@ -1,7 +1,15 @@
 import { describe, it, expect, vi } from "vitest";
 import React, { useState } from "react";
 import { Box, Text, useInput, useStdin } from "ink";
-import { renderCapture, fakeTtyStdin, nonTtyStdin, press, KEYS, frameLines } from "./test-harness.js";
+import {
+  renderCapture,
+  renderTty,
+  fakeTtyStdin,
+  nonTtyStdin,
+  press,
+  KEYS,
+  frameLines,
+} from "./test-harness.js";
 
 // Phase 9 plan 09-02 Task 3: prove the shared harness on the installed Ink
 // (works the same on ink 7.1.1 and 8.x): fake TTY raw mode, key presses, the
@@ -79,5 +87,37 @@ describe("test-harness", () => {
     expect(KEYS.up).toBe(ESC + "[A");
     expect(KEYS.ctrlC.codePointAt(0)).toBe(3);
     expect(KEYS.enter).toBe("\r");
+  });
+  it("renderTty: a fake TTY stdout with mutable size, a resize emitter and raw writes", () => {
+    const { inst, out, writes, setSize, resize } = renderTty(<Text>hello</Text>, {
+      columns: 50,
+      rows: 10,
+    });
+    expect(out.isTTY).toBe(true);
+    expect(out.columns).toBe(50);
+    expect(out.rows).toBe(10);
+    expect(writes().join("")).toContain("hello");
+    let fired = 0;
+    out.on("resize", () => {
+      fired += 1;
+    });
+    setSize(30, 7);
+    expect(out.columns).toBe(30);
+    expect(out.rows).toBe(7);
+    resize();
+    expect(fired).toBe(1);
+    // writes() returns a copy, so a caller cannot mutate the record.
+    const snap = writes();
+    snap.length = 0;
+    expect(writes().length).toBeGreaterThan(0);
+    inst.unmount();
+  });
+
+  it("renderTty: isTTY false models a piped stdout", () => {
+    const { inst, out } = renderTty(<Text>x</Text>, { isTTY: false });
+    expect(out.isTTY).toBe(false);
+    expect(out.columns).toBe(80);
+    expect(out.rows).toBe(24);
+    inst.unmount();
   });
 });
