@@ -37,7 +37,9 @@ import { windowSlice } from "../viewport.js";
  *     focused pane always shows phase rows (Phase 10 plan 10-01, WR-09).
  *
  * Every project, dir, number and name goes through `plainText` (T-09-01d) and
- * every piece is clipped to the rect, so nothing paints outside `r`.
+ * every piece is clipped to the rect on all four edges, so nothing paints
+ * outside `r`; below 9 cells the `<- ->` hint is skipped, and `done/total` is
+ * skipped when it would not start after the bar (Phase 10 plan 10-02, WR-06).
  * Returns the rows used, counted from `r.y` (the project-name row). Pure.
  */
 
@@ -56,6 +58,8 @@ const MINI_MAX = 12;
 /** Rows above the timeline: project name, `dir · project i/N`, the progress bar and a blank row. */
 export const PHASES_HEADER_ROWS = 4;
 const HEADER_ROWS = PHASES_HEADER_ROWS;
+/** The `<- ->` hint at x(w-5) needs the name's first cells before it (WR-06). */
+const HINT_MIN_W = 9;
 const SEP = ` ${V2.sep} `;
 
 const DIM: Style = { fg: PALETTE.dim };
@@ -88,7 +92,9 @@ export function drawPhases(scr: Screen, r: Rect, m: PhasesModel): number {
   const end = r.x + r.w;
   const bottom = r.y + r.h;
   const put = (dx: number, y: number, text: string, st: Style): number => {
-    if (y < r.y || y >= bottom) return x + dx + cellWidth(text);
+    // WR-06: clip on every edge, the left one too (a right-anchored piece in a
+    // narrow rect would otherwise start left of r.x, in the neighbouring pane).
+    if (y < r.y || y >= bottom || dx < 0) return x + dx + cellWidth(text);
     return putIn(scr, x + dx, y, text, st, end);
   };
 
@@ -109,8 +115,8 @@ export function drawPhases(scr: Screen, r: Rect, m: PhasesModel): number {
   const tight = !m.focused && total > 1 && r.h === HEADER_ROWS + 1;
   const head = compact ? 1 : tight ? HEADER_ROWS - 1 : HEADER_ROWS;
 
-  // Row +0: the project name and the project hint.
-  const hint = m.focused && m.projects.length > 1;
+  // Row +0: the project name and the project hint (only when it fits, WR-06).
+  const hint = m.focused && m.projects.length > 1 && r.w >= HINT_MIN_W;
   put(1, r.y, plainText(p.name, hint ? r.w - 7 : r.w - 1), HI_BOLD);
   if (hint) put(r.w - 5, r.y, `${V2.left} ${V2.right}`, DIM);
   // Row +1: dir . project i/N.
@@ -131,7 +137,8 @@ export function drawPhases(scr: Screen, r: Rect, m: PhasesModel): number {
     put(1, r.y + 2, V2.heavyH.repeat(f), { fg: PALETTE.running });
     put(1 + f, r.y + 2, V2.heavyH.repeat(bw - f), { fg: PALETTE.edge });
   }
-  if (!compact) put(r.w - 7, r.y + 2, `${done}/${total}`, DIM);
+  // done/total sits at x(w-7), only when it starts after the bar (WR-06).
+  if (!compact && r.w - 7 >= 1 + Math.max(0, bw)) put(r.w - 7, r.y + 2, `${done}/${total}`, DIM);
 
   const curIdx = phases.findIndex((ph) => ph.status === "current");
   const center = curIdx >= 0 ? curIdx : Math.min(done, total - 1);

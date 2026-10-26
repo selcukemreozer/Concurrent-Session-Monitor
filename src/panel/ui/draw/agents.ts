@@ -1,5 +1,5 @@
 import type { Screen, Style } from "../screen.js";
-import { cellWidth, nameText, plainText } from "../text.js";
+import { cellWidth, nameText, pathText, plainText } from "../text.js";
 import { PALETTE, stateColor, type AgentState } from "../palette.js";
 import { V2 } from "../glyphs.js";
 import { CARD_H, CARD_PITCH_X, CARD_PITCH_Y, CARD_W } from "../geometry.js";
@@ -82,10 +82,16 @@ function countText(n: number): string {
   return v > 999 ? "999+" : String(v);
 }
 
-/** `dir . branch . uptime` in 41 cells; the branch truncates first. */
+/**
+ * `dir . branch . uptime` in 41 cells. The uptime is never cut (IN-02, Phase
+ * 10 plan 10-02): the dir is budgeted to what the uptime, both separators and
+ * one branch cell leave and is start-truncated (`pathText`, the folder name
+ * stays); the branch then truncates first into the remaining room.
+ */
 function metaLine(c: AgentCard): string {
-  const dir = plainText(c.dir, TEXT_W);
   const up = plainText(c.uptime, TEXT_W);
+  const dirW = TEXT_W - cellWidth(up) - 2 * cellWidth(SEP) - 1;
+  const dir = pathText(c.dir, Math.max(1, dirW));
   const room = TEXT_W - cellWidth(dir) - cellWidth(up) - 2 * cellWidth(SEP);
   const branch = plainText(c.branch, Math.max(1, room));
   return plainText(`${dir}${SEP}${branch}${SEP}${up}`, TEXT_W);
@@ -204,7 +210,9 @@ function sumItems(slots: readonly Slot[], from: number, to: number): number {
  * not its `down` row (h = 8) the card row is drawn and the `down` row is
  * omitted (`moreBelow` still counts the hidden items); with less than one card
  * row only the `down` row is drawn. The shell places FILES after `rows`, plus
- * one spacer row when `rows < r.h`.
+ * one spacer row when `rows < r.h`. A pane narrower than one card (`r.w <
+ * CARD_W`) draws only its title and `down N more` counting every card and
+ * strip (Phase 10 plan 10-02, WR-06).
  */
 export function drawAgentsPane(
   scr: Screen,
@@ -242,7 +250,17 @@ export function drawAgentsPane(
     return { rows, moreBelow: 0 };
   }
 
-  const fit = Math.max(1, Math.floor((r.w + 2) / CARD_PITCH_X));
+  // WR-06 (Phase 10 plan 10-02): a pane narrower than one card draws no card
+  // (drawCard paints 47 fixed cells): only its title and `↓ N more`.
+  const fit = Math.floor((r.w + 2) / CARD_PITCH_X);
+  if (fit === 0) {
+    const n = nA + nI;
+    if (r.h >= 2 && r.w > 2) {
+      scr.put(r.x + 2, r.y + 1, plainText(`${V2.down} ${n} more`, r.w - 2), dimSt);
+      return { rows: 2, moreBelow: n };
+    }
+    return { rows: 1, moreBelow: n };
+  }
   const want = Number.isFinite(m.cardCols) ? Math.trunc(m.cardCols) : 1;
   const cols = Math.min(fit, Math.max(1, want));
 
