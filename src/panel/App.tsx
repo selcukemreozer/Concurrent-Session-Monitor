@@ -34,22 +34,13 @@ import {
   type LaunchHolds,
 } from "./launch-hold.js";
 import { liveBranch } from "../branch.js";
-import {
-  scanProgress,
-  phaseScanMs,
-  resolveGsdTools,
-  resolvePlanningRoots,
-  buildFocusSet,
-  clampOffset,
-  cycleIndex,
-  FAZLAR_VISIBLE_ROWS,
-  type Progress,
-} from "../phases.js";
+import { clampOffset, cycleIndex, FAZLAR_VISIBLE_ROWS } from "../phases.js";
 import { updateLabel, updateLabelFits } from "../update.js";
 import { useRoster } from "./hooks/useRoster.js";
 import { usePorts } from "./hooks/usePorts.js";
 import { useBranches } from "./hooks/useBranches.js";
 import { useUpdateCheck } from "./hooks/useUpdateCheck.js";
+import { usePhases } from "./hooks/usePhases.js";
 
 /** The title-row brand; also the width budget input for the update label. */
 const BRAND = "◆ Concurrent Session Monitor";
@@ -222,21 +213,18 @@ export function App() {
   const compact = state.display.length * CARD_LINES > capacity;
 
   // ── FAZLAR (RIGHT pane) state ──────────────────────────────────────────────
-  // Cached per-root Progress + the async-resolved planningRoots set (the ONLY
-  // place `.planning/` existence is probed, off the render tick), plus the Tab
-  // focus index and the FAZLAR scroll offset. `scanningPhases` is the overlap
-  // guard; `shimRef` caches the resolved gsd-tools shim (resolved once).
-  const [progress, setProgress] = React.useState<Map<string, Progress>>(() => new Map());
-  const [planningRoots, setPlanningRoots] = React.useState<Set<string>>(() => new Set());
+  // The phase-progress scan (cached per-root Progress, the async-resolved
+  // planningRoots set, the overlap guard and the gsd-tools shim) lives in the
+  // shared usePhases hook (Phase 10 plan 10-05, D-23). App keeps the Tab focus
+  // index and the FAZLAR scroll offset; the hook resolves the focus by index.
   const [focusedIndex, setFocusedIndex] = React.useState(0);
   const [scrollOffset, setScrollOffset] = React.useState(0);
-  const scanningPhases = React.useRef(false);
-  const shimRef = React.useRef<string | null | undefined>(undefined);
-  if (shimRef.current === undefined) shimRef.current = resolveGsdTools();
+  const ph = usePhases(liveRowsRef, focusedIndex);
+  const { focusSet, idx, focusProgress, totalPhases } = ph;
 
   // Component-lifetime "mounted" flag so a late scan resolve is dropped only on a
-  // REAL unmount — NOT when the reconciler re-runs the (focus-keyed) scan effect
-  // or dev-double-invokes passive effects. A per-effect `let alive` closure would
+  // REAL unmount — NOT when the reconciler re-runs a keyed scan effect or
+  // dev-double-invokes passive effects. A per-effect `let alive` closure would
   // be flipped false by that teardown and silently swallow the first scan; this
   // `[]`-scoped ref settles back true after any remount, so the async result
   // reaches the live component's stable state setters.
@@ -247,63 +235,6 @@ export function App() {
       mounted.current = false;
     };
   }, []);
-
-  // PURE, fs-free render-path derivation (D-01): the switchable focus set is just
-  // buildFocusSet over the pre-resolved planningRoots — NO existsSync/statSync on
-  // the Ink render tick. idx is the clamped focus; focusRoot the current root.
-  const focusSet = buildFocusSet(liveRows, planningRoots);
-  const idx = focusSet.length ? focusedIndex % focusSet.length : 0;
-  const focusRoot = focusSet.length ? focusSet[idx].root : null;
-  const focusProgress = focusRoot ? progress.get(focusRoot) ?? null : null;
-  const totalPhases = focusProgress ? focusProgress.phases.length : 0;
-
-  // Ref so the slow phase-scan interval reads the freshest focus index
-  // without re-arming every 750ms render (avoids stale closures, Pattern 1).
-  const focusedIndexRef = React.useRef(focusedIndex);
-  focusedIndexRef.current = focusedIndex;
-
-  // SECOND, slower scan timer (PANEL-08) — a sibling of the port-scan effect,
-  // NEVER inside the 750ms poll. Each non-overlapping tick FIRST resolves the
-  // `.planning/` roots off the render tick (setPlanningRoots), THEN — using the
-  // just-resolved roots so a fresh focus is scanned immediately — spawns
-  // scanProgress for the focused project and caches it under its root. Always
-  // non-fatal; re-runs on a focus change (dep on focusedIndex) so Tab surfaces
-  // the newly-focused project's progress promptly. Cleared on unmount.
-  React.useEffect(() => {
-    const tick = () => {
-      if (scanningPhases.current) return; // prior scan still running — no overlap
-      scanningPhases.current = true;
-      resolvePlanningRoots(liveRowsRef.current)
-        .then((roots) => {
-          if (!mounted.current) return undefined;
-          setPlanningRoots(roots);
-          const fs = buildFocusSet(liveRowsRef.current, roots);
-          const i = fs.length ? focusedIndexRef.current % fs.length : 0;
-          const root = fs.length ? fs[i].root : null;
-          const shim = shimRef.current;
-          if (shim && root) {
-            return scanProgress(root, shim).then((p) => {
-              if (mounted.current && p) setProgress((prev) => new Map(prev).set(root, p));
-            });
-          }
-          return undefined;
-        })
-        .catch(() => {
-          /* non-fatal: a scan/probe failure just leaves the last-good cache */
-        })
-        .finally(() => {
-          scanningPhases.current = false;
-        });
-    };
-    tick(); // run once on mount so planningRoots populates near-immediately
-    const t = setInterval(tick, phaseScanMs());
-    return () => {
-      // Release the overlap guard on teardown so a re-armed effect (focus change
-      // or dev re-invoke) is never dead-locked by an in-flight scan's stale flag.
-      scanningPhases.current = false;
-      clearInterval(t);
-    };
-  }, [focusedIndex]);
 
   // Reset the FAZLAR scroll window to the top whenever the focused project
   // changes (D-04) — a fresh project always starts at its first phase.
