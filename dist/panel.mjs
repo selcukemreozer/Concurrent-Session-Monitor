@@ -9309,11 +9309,11 @@ var require_react_reconciler_production = __commonJS({
       }
       var exports2 = {};
       "use strict";
-      var React22 = require_react(), Scheduler = require_scheduler(), assign = Object.assign, REACT_LEGACY_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.element"), REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = /* @__PURE__ */ Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = /* @__PURE__ */ Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = /* @__PURE__ */ Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = /* @__PURE__ */ Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = /* @__PURE__ */ Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = /* @__PURE__ */ Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = /* @__PURE__ */ Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = /* @__PURE__ */ Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = /* @__PURE__ */ Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = /* @__PURE__ */ Symbol.for("react.memo"), REACT_LAZY_TYPE = /* @__PURE__ */ Symbol.for("react.lazy");
+      var React24 = require_react(), Scheduler = require_scheduler(), assign = Object.assign, REACT_LEGACY_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.element"), REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = /* @__PURE__ */ Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = /* @__PURE__ */ Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = /* @__PURE__ */ Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = /* @__PURE__ */ Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = /* @__PURE__ */ Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = /* @__PURE__ */ Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = /* @__PURE__ */ Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = /* @__PURE__ */ Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = /* @__PURE__ */ Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = /* @__PURE__ */ Symbol.for("react.memo"), REACT_LAZY_TYPE = /* @__PURE__ */ Symbol.for("react.lazy");
       /* @__PURE__ */ Symbol.for("react.scope");
       var REACT_ACTIVITY_TYPE = /* @__PURE__ */ Symbol.for("react.activity"), REACT_LEGACY_HIDDEN_TYPE = /* @__PURE__ */ Symbol.for("react.legacy_hidden");
       /* @__PURE__ */ Symbol.for("react.tracing_marker");
-      var REACT_MEMO_CACHE_SENTINEL = /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel"), REACT_VIEW_TRANSITION_TYPE = /* @__PURE__ */ Symbol.for("react.view_transition"), REACT_RECOVERABLE_TYPE = /* @__PURE__ */ Symbol.for("react.recoverable"), MAYBE_ITERATOR_SYMBOL = Symbol.iterator, REACT_OPTIMISTIC_KEY = /* @__PURE__ */ Symbol.for("react.optimistic_key"), REACT_CLIENT_REFERENCE = /* @__PURE__ */ Symbol.for("react.client.reference"), isArrayImpl = Array.isArray, ReactSharedInternals = React22.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, rendererVersion = $$$config.rendererVersion, rendererPackageName = $$$config.rendererPackageName, extraDevToolsConfig = $$$config.extraDevToolsConfig, getPublicInstance = $$$config.getPublicInstance, getRootHostContext = $$$config.getRootHostContext, getChildHostContext = $$$config.getChildHostContext, prepareForCommit = $$$config.prepareForCommit, resetAfterCommit = $$$config.resetAfterCommit, createInstance = $$$config.createInstance;
+      var REACT_MEMO_CACHE_SENTINEL = /* @__PURE__ */ Symbol.for("react.memo_cache_sentinel"), REACT_VIEW_TRANSITION_TYPE = /* @__PURE__ */ Symbol.for("react.view_transition"), REACT_RECOVERABLE_TYPE = /* @__PURE__ */ Symbol.for("react.recoverable"), MAYBE_ITERATOR_SYMBOL = Symbol.iterator, REACT_OPTIMISTIC_KEY = /* @__PURE__ */ Symbol.for("react.optimistic_key"), REACT_CLIENT_REFERENCE = /* @__PURE__ */ Symbol.for("react.client.reference"), isArrayImpl = Array.isArray, ReactSharedInternals = React24.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, rendererVersion = $$$config.rendererVersion, rendererPackageName = $$$config.rendererPackageName, extraDevToolsConfig = $$$config.extraDevToolsConfig, getPublicInstance = $$$config.getPublicInstance, getRootHostContext = $$$config.getRootHostContext, getChildHostContext = $$$config.getChildHostContext, prepareForCommit = $$$config.prepareForCommit, resetAfterCommit = $$$config.resetAfterCommit, createInstance = $$$config.createInstance;
       $$$config.cloneMutableInstance;
       var appendInitialChild = $$$config.appendInitialChild, finalizeInitialChildren = $$$config.finalizeInitialChildren, shouldSetTextContent = $$$config.shouldSetTextContent, createTextInstance = $$$config.createTextInstance;
       $$$config.cloneMutableTextInstance;
@@ -10581,7 +10581,7 @@ var require_jsx_runtime = __commonJS({
 import * as fs11 from "node:fs";
 
 // src/panel/main.tsx
-var import_react47 = __toESM(require_react(), 1);
+var import_react49 = __toESM(require_react(), 1);
 
 // node_modules/ink/build/render.js
 import { Stream } from "node:stream";
@@ -20490,10 +20490,10 @@ var use_window_size_default = useWindowSize;
 var import_react35 = __toESM(require_react(), 1);
 
 // src/panel/Root.tsx
-var import_react46 = __toESM(require_react(), 1);
+var import_react48 = __toESM(require_react(), 1);
 
 // src/panel/App.tsx
-var import_react42 = __toESM(require_react(), 1);
+var import_react44 = __toESM(require_react(), 1);
 
 // src/sanitize.ts
 function sanitize(s) {
@@ -22217,461 +22217,6 @@ function SessionsPane({
   ] });
 }
 
-// src/panel/launch.ts
-import { spawn } from "node:child_process";
-import { randomBytes } from "node:crypto";
-import fs5 from "node:fs";
-import os6 from "node:os";
-import path5 from "node:path";
-var RESUME_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-var PBCOPY_BIN = "/usr/bin/pbcopy";
-var OSASCRIPT_BIN = "/usr/bin/osascript";
-var OPEN_BIN = "/usr/bin/open";
-var PBCOPY_TIMEOUT_MS = 1500;
-var OSASCRIPT_TIMEOUT_MS = 2e4;
-var OPEN_TIMEOUT_MS = 5e3;
-var MAX_CWD_LEN = 4096;
-var REMOVE_READ_BYTES = 4096;
-var WARP_TAB_CONFIG_NAME = "csm-resume";
-var WARP_TAB_CONFIG_MARKER_PREFIX = "# csm-resume: written by the CSM panel";
-var WARP_TAB_CONFIG_TTL_MS = 3e4;
-var WARP_STEM_PATTERN = /^csm-resume-[0-9a-f]{8}-[1-9][0-9]{0,9}-[0-9a-f]{8}$/;
-var WARP_SWEEP_MAX_ENTRIES = 256;
-var WARP_UNSAFE_CWD = /[`$;|&<>"'\\]/;
-var MSG_COPIED = "copied \u2713";
-var MSG_COPIED_LIVE = "copied \u2713 \xB7 session still open";
-var MSG_INVALID_ID = "refused: not a resumable session id";
-var MSG_COPY_FAILED_PREFIX = "copy failed \xB7 run: ";
-var RESUME_BYPASS_FLAG = "--dangerously-skip-permissions";
-var MSG_BYPASS_WARNING = "\u26A0 bypasses permission checks";
-var MSG_COPIED_BYPASS = MSG_COPIED + " \xB7 " + MSG_BYPASS_WARNING;
-var MSG_COPIED_LIVE_BYPASS = MSG_COPIED_LIVE + " \xB7 " + MSG_BYPASS_WARNING;
-var OUT_LIVE = "session still open, no new tab opened";
-var OUT_TERMINAL = "opened a new Terminal window";
-var OUT_ITERM = "opened a new iTerm2 window";
-var OUT_WARP = "opening in Warp\u2026";
-var OUT_WARP_FOLDER = "opened a Warp tab in the folder, paste the command";
-var OUT_UNSUPPORTED = "no new tab for this terminal, paste the command";
-var OUT_NO_FOLDER = "session folder not found, paste the command";
-var OUT_UNSAFE_FOLDER = "folder name not safe to open, paste the command";
-var OUT_LAUNCH_FAILED = "could not open a new tab, paste the command";
-var TERMINAL_SCRIPT = [
-  "on run argv",
-  'set cmd to "cd " & quoted form of (item 1 of argv) & " && claude --resume " & quoted form of (item 2 of argv)',
-  'tell application "Terminal"',
-  "activate",
-  "do script cmd",
-  "end tell",
-  "end run"
-];
-var ITERM_SCRIPT = [
-  "on run argv",
-  'set cmd to "cd " & quoted form of (item 1 of argv) & " && claude --resume " & quoted form of (item 2 of argv)',
-  'tell application "iTerm2"',
-  "activate",
-  "set w to (create window with default profile)",
-  "tell current session of w to write text cmd",
-  "end tell",
-  "end run"
-];
-var ROUTE_ENTRIES = [
-  ["Apple_Terminal", "terminal"],
-  ["iTerm.app", "iterm"],
-  ["WarpTerminal", "warp"]
-];
-var LAUNCH_ROUTE_BY_TERM = new Map(ROUTE_ENTRIES);
-function isResumableId(id) {
-  return typeof id === "string" && RESUME_ID_PATTERN.test(id);
-}
-var FORMAT_CP = new RegExp("\\p{Cf}", "u");
-var COMMAND_CWD_FORBIDDEN = /[\\`]/;
-function commandCwd(cwd2) {
-  try {
-    if (typeof cwd2 !== "string" || cwd2.length < 1 || cwd2.length > MAX_CWD_LEN) return void 0;
-    if (!path5.isAbsolute(cwd2) || path5.normalize(cwd2) !== cwd2) return void 0;
-    if (cwd2.length > 1 && cwd2.endsWith(path5.sep)) return void 0;
-    for (const ch of cwd2) {
-      const cp = ch.codePointAt(0) ?? 0;
-      if (cp <= 31 || cp === 127) return void 0;
-      if (cp >= 128 && cp <= 159) return void 0;
-      if (cp >= 55296 && cp <= 57343) return void 0;
-      if (FORMAT_CP.test(ch)) return void 0;
-    }
-    if (COMMAND_CWD_FORBIDDEN.test(cwd2)) return void 0;
-    return cwd2;
-  } catch {
-    return void 0;
-  }
-}
-function shellSingleQuote(s) {
-  return "'" + s.replace(/'/g, "'\\''") + "'";
-}
-function resumeCommand(id, cwd2, opts) {
-  const c = commandCwd(cwd2);
-  const suffix = opts?.bypass === true ? " " + RESUME_BYPASS_FLAG : "";
-  if (c === void 0) return "claude --resume " + id + suffix;
-  const name = opts?.name;
-  const target = isSafeResumeName(name) ? shellSingleQuote(name) : id;
-  return "cd " + shellSingleQuote(c) + " && claude --resume " + target + suffix;
-}
-function validLaunchCwd(cwd2, isDir) {
-  try {
-    const c = commandCwd(cwd2);
-    return c !== void 0 && isDir(c) ? c : void 0;
-  } catch {
-    return void 0;
-  }
-}
-function isRefusedFolderName(cwd2) {
-  try {
-    return typeof cwd2 === "string" && cwd2.length > 0 && commandCwd(cwd2) === void 0;
-  } catch {
-    return false;
-  }
-}
-function osascriptArgs(lines, cwd2, id) {
-  return [...lines.flatMap((l) => ["-e", l]), "--", cwd2, id];
-}
-function tomlBasicString(s) {
-  return '"' + s.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
-}
-function warpTabConfigMarker(pid, nonce) {
-  return `${WARP_TAB_CONFIG_MARKER_PREFIX} pid=${pid} nonce=${nonce} (deleted shortly after use and when the panel exits)`;
-}
-function warpTabConfigStem(id, pid, nonce) {
-  return `${WARP_TAB_CONFIG_NAME}-${id.slice(0, 8)}-${pid}-${nonce}`;
-}
-function warpTabConfigToml(cwd2, id, marker) {
-  return [
-    marker,
-    "name = " + tomlBasicString("CSM resume " + id.slice(0, 8)),
-    "",
-    "[[panes]]",
-    'id = "main"',
-    'type = "terminal"',
-    "directory = " + tomlBasicString(cwd2),
-    "commands = [" + tomlBasicString(resumeCommand(id)) + "]"
-  ].join("\n") + "\n";
-}
-function statIsDir(p) {
-  try {
-    return fs5.statSync(p).isDirectory();
-  } catch {
-    return false;
-  }
-}
-function warpTabConfigDir(home) {
-  return path5.join(home, ".warp", "tab_configs");
-}
-var writtenWarpConfigs = /* @__PURE__ */ new Map();
-function writeWarpTabConfig(home, cwd2, id) {
-  let tmp;
-  try {
-    if (!isResumableId(id)) return void 0;
-    if (typeof cwd2 !== "string" || WARP_UNSAFE_CWD.test(cwd2)) return void 0;
-    if (validLaunchCwd(cwd2, statIsDir) === void 0) return void 0;
-    const dir = warpTabConfigDir(home);
-    fs5.mkdirSync(dir, { recursive: true, mode: 448 });
-    const nonce = randomBytes(4).toString("hex");
-    const stem = warpTabConfigStem(id, process.pid, nonce);
-    const marker = warpTabConfigMarker(process.pid, nonce);
-    const file = path5.join(dir, stem + ".toml");
-    tmp = path5.join(dir, `.${stem}.tmp`);
-    fs5.writeFileSync(tmp, warpTabConfigToml(cwd2, id, marker), { flag: "wx", mode: 384 });
-    fs5.renameSync(tmp, file);
-    tmp = void 0;
-    writtenWarpConfigs.set(file, marker);
-    return { stem, file, marker };
-  } catch {
-    if (tmp !== void 0) {
-      try {
-        fs5.unlinkSync(tmp);
-      } catch {
-      }
-    }
-    return void 0;
-  }
-}
-function removeWarpTabConfig(file, marker) {
-  try {
-    let head;
-    const fd = fs5.openSync(file, fs5.constants.O_RDONLY | fs5.constants.O_NOFOLLOW | fs5.constants.O_NONBLOCK);
-    try {
-      if (!fs5.fstatSync(fd).isFile()) return false;
-      const buf = Buffer.alloc(REMOVE_READ_BYTES);
-      const n = fs5.readSync(fd, buf, 0, REMOVE_READ_BYTES, 0);
-      head = buf.subarray(0, n).toString("utf8");
-    } finally {
-      fs5.closeSync(fd);
-    }
-    if (head.split("\n")[0] !== marker) return false;
-    fs5.unlinkSync(file);
-    return true;
-  } catch {
-    return false;
-  }
-}
-function releaseWarpTabConfig(file) {
-  try {
-    const marker = writtenWarpConfigs.get(file);
-    if (marker === void 0) return false;
-    try {
-      return removeWarpTabConfig(file, marker);
-    } finally {
-      writtenWarpConfigs.delete(file);
-    }
-  } catch {
-    return false;
-  }
-}
-function cleanupWarpTabConfig() {
-  let removed = false;
-  try {
-    for (const file of [...writtenWarpConfigs.keys()]) {
-      if (releaseWarpTabConfig(file)) removed = true;
-    }
-  } catch {
-  }
-  return removed;
-}
-function parseWarpStem(stem) {
-  try {
-    if (typeof stem !== "string" || !WARP_STEM_PATTERN.test(stem)) return void 0;
-    const parts = stem.split("-");
-    if (parts.length !== 5) return void 0;
-    const pid = Number(parts[3]);
-    const nonce = parts[4];
-    if (!Number.isSafeInteger(pid) || pid <= 0) return void 0;
-    return { pid, nonce };
-  } catch {
-    return void 0;
-  }
-}
-function pidIsAlive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (e) {
-    return e?.code !== "ESRCH";
-  }
-}
-function defaultWarpSweepDeps() {
-  return { homedir: () => os6.homedir(), alive: pidIsAlive };
-}
-function sweepStaleWarpTabConfigs(deps = defaultWarpSweepDeps()) {
-  let removed = 0;
-  try {
-    const dir = warpTabConfigDir(deps.homedir());
-    const names = [];
-    const handle = fs5.opendirSync(dir);
-    try {
-      for (let i = 0; i < WARP_SWEEP_MAX_ENTRIES; i++) {
-        const ent = handle.readSync();
-        if (ent === null) break;
-        names.push(ent.name);
-      }
-    } finally {
-      handle.closeSync();
-    }
-    for (const name of names) {
-      try {
-        let stem;
-        if (name.endsWith(".toml")) stem = name.slice(0, -".toml".length);
-        else if (name.startsWith(".") && name.endsWith(".tmp")) stem = name.slice(1, -".tmp".length);
-        else continue;
-        const parsed = parseWarpStem(stem);
-        if (parsed === void 0 || parsed.pid === process.pid) continue;
-        let alive;
-        try {
-          alive = deps.alive(parsed.pid) !== false;
-        } catch {
-          alive = true;
-        }
-        if (alive) continue;
-        if (removeWarpTabConfig(path5.join(dir, name), warpTabConfigMarker(parsed.pid, parsed.nonce))) removed++;
-      } catch {
-      }
-    }
-  } catch {
-  }
-  return removed;
-}
-function defaultLater(fn, ms) {
-  try {
-    const t = setTimeout(() => {
-      try {
-        fn();
-      } catch {
-      }
-    }, ms);
-    t.unref();
-  } catch {
-  }
-}
-function defaultRun(cmd, args, opts) {
-  return new Promise((resolve4) => {
-    let done = false;
-    let timer;
-    const finish = (ok) => {
-      if (done) return;
-      done = true;
-      if (timer !== void 0) clearTimeout(timer);
-      resolve4({ ok });
-    };
-    try {
-      const child = spawn(cmd, [...args], {
-        stdio: [opts.input !== void 0 ? "pipe" : "ignore", "ignore", "ignore"]
-      });
-      timer = setTimeout(() => {
-        try {
-          child.kill("SIGKILL");
-        } catch {
-        }
-        finish(false);
-      }, opts.timeoutMs);
-      child.on("error", () => finish(false));
-      child.on("close", (code) => finish(code === 0));
-      if (opts.input !== void 0 && child.stdin) {
-        child.stdin.on("error", () => {
-        });
-        child.stdin.end(opts.input);
-      }
-    } catch {
-      finish(false);
-    }
-  });
-}
-function defaultLaunchDeps() {
-  return {
-    run: defaultRun,
-    isDir: statIsDir,
-    homedir: () => os6.homedir(),
-    platform: process.platform,
-    termProgram: process.env.TERM_PROGRAM,
-    later: defaultLater
-  };
-}
-async function copyCommand(line, deps) {
-  try {
-    const r2 = await deps.run(PBCOPY_BIN, [], { input: line, timeoutMs: PBCOPY_TIMEOUT_MS });
-    return r2?.ok === true;
-  } catch {
-    return false;
-  }
-}
-async function runOk(deps, cmd, args, timeoutMs) {
-  try {
-    const r2 = await deps.run(cmd, args, { timeoutMs });
-    return r2?.ok === true;
-  } catch {
-    return false;
-  }
-}
-async function copyResume(target, deps = defaultLaunchDeps()) {
-  let line;
-  try {
-    const id = target?.id;
-    if (!isResumableId(id)) return { ok: false, copied: false, message: MSG_INVALID_ID };
-    const bypass = target.bypass === true;
-    line = resumeCommand(id, target.cwd, { name: target.name, bypass });
-    const live = target.live === true;
-    const copied = await copyCommand(line, deps);
-    if (copied) {
-      if (bypass) return { ok: true, copied: true, message: live ? MSG_COPIED_LIVE_BYPASS : MSG_COPIED_BYPASS };
-      return { ok: true, copied: true, message: live ? MSG_COPIED_LIVE : MSG_COPIED };
-    }
-    const msg = MSG_COPY_FAILED_PREFIX + line + (live ? " \xB7 session still open" : "");
-    return { ok: false, copied: false, message: msg };
-  } catch {
-    if (line !== void 0) return { ok: false, copied: false, message: MSG_COPY_FAILED_PREFIX + line };
-    return { ok: false, copied: false, message: MSG_INVALID_ID };
-  }
-}
-async function openResume(target, deps = defaultLaunchDeps()) {
-  let copied = false;
-  let suffix = "";
-  try {
-    const id = target?.id;
-    if (!isResumableId(id)) return { ok: false, copied: false, message: MSG_INVALID_ID };
-    copied = await copyCommand(resumeCommand(id, target.cwd), deps);
-    suffix = copied ? " \xB7 command copied" : " \xB7 copy failed, run: " + resumeCommand(id, target.cwd);
-    const done = (ok, outcome) => ({ ok, copied, message: outcome + suffix });
-    if (target.live === true) return done(false, OUT_LIVE);
-    const cwd2 = validLaunchCwd(target.cwd, (p) => deps.isDir(p));
-    if (cwd2 === void 0) return done(false, isRefusedFolderName(target.cwd) ? OUT_UNSAFE_FOLDER : OUT_NO_FOLDER);
-    if (deps.platform !== "darwin") return done(false, OUT_UNSUPPORTED);
-    const term = deps.termProgram;
-    const route = typeof term === "string" ? LAUNCH_ROUTE_BY_TERM.get(term) : void 0;
-    if (route === "terminal" || route === "iterm") {
-      const script = route === "terminal" ? TERMINAL_SCRIPT : ITERM_SCRIPT;
-      const ok = await runOk(deps, OSASCRIPT_BIN, osascriptArgs(script, cwd2, id), OSASCRIPT_TIMEOUT_MS);
-      if (!ok) return done(false, OUT_LAUNCH_FAILED);
-      return done(true, route === "terminal" ? OUT_TERMINAL : OUT_ITERM);
-    }
-    if (route === "warp") {
-      if (WARP_UNSAFE_CWD.test(cwd2)) return done(false, OUT_UNSAFE_FOLDER);
-      const cfg = writeWarpTabConfig(deps.homedir(), cwd2, id);
-      if (cfg !== void 0) {
-        const ok2 = await runOk(deps, OPEN_BIN, [`warp://tab_config/${cfg.stem}?new_window=true`], OPEN_TIMEOUT_MS);
-        if (!ok2) {
-          releaseWarpTabConfig(cfg.file);
-          return done(false, OUT_LAUNCH_FAILED);
-        }
-        (deps.later ?? defaultLater)(() => releaseWarpTabConfig(cfg.file), WARP_TAB_CONFIG_TTL_MS);
-        return done(true, OUT_WARP);
-      }
-      const ok = await runOk(deps, OPEN_BIN, ["warp://action/new_tab?path=" + encodeURIComponent(cwd2)], OPEN_TIMEOUT_MS);
-      return ok ? done(true, OUT_WARP_FOLDER) : done(false, OUT_LAUNCH_FAILED);
-    }
-    return done(false, OUT_UNSUPPORTED);
-  } catch {
-    return { ok: false, copied, message: OUT_LAUNCH_FAILED + suffix };
-  }
-}
-
-// src/panel/launch-hold.ts
-var LAUNCH_HOLD_MS = 6e4;
-function claimLaunch(holds, id, now, token) {
-  if (holds.has(id)) return false;
-  holds.set(id, { at: now, token, inFlight: true });
-  return true;
-}
-function settleLaunch(holds, id, token, ok) {
-  const hold = holds.get(id);
-  if (hold === void 0 || hold.token !== token) return false;
-  if (ok) holds.set(id, { ...hold, inFlight: false });
-  else holds.delete(id);
-  return true;
-}
-function settleHolds(holds, rows, scanStartedAt) {
-  if (holds.size === 0) return false;
-  const liveById = /* @__PURE__ */ new Map();
-  for (const r2 of rows) liveById.set(r2.id, r2.live);
-  let dropped = false;
-  for (const [id, hold] of holds) {
-    if (hold.inFlight) continue;
-    const confirmed = liveById.get(id) === true;
-    const expired = scanStartedAt - hold.at >= LAUNCH_HOLD_MS;
-    if (confirmed || expired) {
-      holds.delete(id);
-      dropped = true;
-    }
-  }
-  return dropped;
-}
-function applyHolds(rows, holds) {
-  if (rows === null) return null;
-  if (holds.size === 0) return rows;
-  let out = null;
-  for (let i = 0; i < rows.length; i++) {
-    const r2 = rows[i];
-    if (r2.live || !holds.has(r2.id)) continue;
-    if (out === null) out = rows.slice();
-    out[i] = { ...r2, live: true };
-  }
-  return out ?? rows;
-}
-
 // src/branch.ts
 import { execFile as execFile3 } from "node:child_process";
 import { promisify as promisify3 } from "node:util";
@@ -22825,12 +22370,12 @@ function startUpdateCheck(opts) {
 var import_react38 = __toESM(require_react(), 1);
 
 // src/aggregate.ts
-import * as fs6 from "node:fs";
-import * as path7 from "node:path";
+import * as fs5 from "node:fs";
+import * as path6 from "node:path";
 
 // src/paths.ts
-import * as os7 from "node:os";
-import * as path6 from "node:path";
+import * as os6 from "node:os";
+import * as path5 from "node:path";
 var SAFE_ID_PATTERN2 = /^[A-Za-z0-9._-]{1,128}$/;
 function safeId(id) {
   if (typeof id !== "string") {
@@ -22848,13 +22393,13 @@ function safeId(id) {
 function storeRoot() {
   const override = process.env.CSM_STORE_DIR;
   if (override) return override;
-  return path6.join(os7.homedir(), ".claude", "csm");
+  return path5.join(os6.homedir(), ".claude", "csm");
 }
 function sessionsDir() {
-  return path6.join(storeRoot(), "sessions");
+  return path5.join(storeRoot(), "sessions");
 }
 function sessionDir(sessionId) {
-  return path6.join(sessionsDir(), safeId(sessionId));
+  return path5.join(sessionsDir(), safeId(sessionId));
 }
 
 // src/aggregate.ts
@@ -22879,7 +22424,7 @@ function idleWaitMs() {
 function activeFiles(dir, now) {
   let raw;
   try {
-    raw = fs6.readFileSync(path7.join(dir, "files.jsonl"), "utf8");
+    raw = fs5.readFileSync(path6.join(dir, "files.jsonl"), "utf8");
   } catch {
     return { files: [] };
   }
@@ -22919,7 +22464,7 @@ function activeFiles(dir, now) {
 function activeReads(dir, now) {
   let raw;
   try {
-    raw = fs6.readFileSync(path7.join(dir, "reads.jsonl"), "utf8");
+    raw = fs5.readFileSync(path6.join(dir, "reads.jsonl"), "utf8");
   } catch {
     return [];
   }
@@ -22953,7 +22498,7 @@ function activeReads(dir, now) {
 }
 function readIntent(dir) {
   try {
-    const parsed = JSON.parse(fs6.readFileSync(path7.join(dir, "intent.txt"), "utf8"));
+    const parsed = JSON.parse(fs5.readFileSync(path6.join(dir, "intent.txt"), "utf8"));
     if (typeof parsed?.intent === "string" && parsed.intent.length > 0) {
       return {
         intent: parsed.intent,
@@ -22967,7 +22512,7 @@ function readIntent(dir) {
 }
 function readTargetBranch(dir) {
   try {
-    const parsed = JSON.parse(fs6.readFileSync(path7.join(dir, "target-branch.txt"), "utf8"));
+    const parsed = JSON.parse(fs5.readFileSync(path6.join(dir, "target-branch.txt"), "utf8"));
     if (typeof parsed?.target_branch === "string" && parsed.target_branch.length > 0) {
       return {
         target_branch: parsed.target_branch,
@@ -22982,7 +22527,7 @@ function readTargetBranch(dir) {
 function readSkill(dir, now) {
   let raw;
   try {
-    raw = fs6.readFileSync(path7.join(dir, "skill.jsonl"), "utf8");
+    raw = fs5.readFileSync(path6.join(dir, "skill.jsonl"), "utf8");
   } catch {
     return {};
   }
@@ -23015,7 +22560,7 @@ function readSkill(dir, now) {
 function readAttention(dir) {
   try {
     const parsed = JSON.parse(
-      fs6.readFileSync(path7.join(dir, "attention.json"), "utf8")
+      fs5.readFileSync(path6.join(dir, "attention.json"), "utf8")
     );
     if (typeof parsed?.type === "string" && parsed.type.length > 0 && typeof parsed.ts === "string") {
       return { attention_type: parsed.type, attention_ts: parsed.ts };
@@ -23028,7 +22573,7 @@ function readAttention(dir) {
 function readAsking(dir) {
   try {
     const parsed = JSON.parse(
-      fs6.readFileSync(path7.join(dir, "asking.json"), "utf8")
+      fs5.readFileSync(path6.join(dir, "asking.json"), "utf8")
     );
     if (typeof parsed?.ts === "string" && parsed.ts.length > 0) {
       return { asking_ts: parsed.ts };
@@ -23040,7 +22585,7 @@ function readAsking(dir) {
 }
 function readTurn(dir) {
   try {
-    const parsed = JSON.parse(fs6.readFileSync(path7.join(dir, "turn.json"), "utf8"));
+    const parsed = JSON.parse(fs5.readFileSync(path6.join(dir, "turn.json"), "utf8"));
     const state = parsed?.state;
     if ((state === "running" || state === "idle") && typeof parsed.ts === "string" && parsed.ts.length > 0) {
       const agents2 = parsed.agents;
@@ -23054,7 +22599,7 @@ function readTurn(dir) {
 function readTitleShard(dir) {
   try {
     const parsed = JSON.parse(
-      fs6.readFileSync(path7.join(dir, "title.json"), "utf8")
+      fs5.readFileSync(path6.join(dir, "title.json"), "utf8")
     );
     if (parsed === null || typeof parsed !== "object") return {};
     const out = {};
@@ -23077,16 +22622,16 @@ function readAll(now = Date.now(), probe = defaultProbe, startedProbe = defaultS
   const root = sessionsDir();
   let ids;
   try {
-    ids = fs6.readdirSync(root);
+    ids = fs5.readdirSync(root);
   } catch {
     return [];
   }
   const rows = [];
   for (const id of ids) {
-    const dir = path7.join(root, id);
+    const dir = path6.join(root, id);
     let state;
     try {
-      state = JSON.parse(fs6.readFileSync(path7.join(dir, "session.json"), "utf8"));
+      state = JSON.parse(fs5.readFileSync(path6.join(dir, "session.json"), "utf8"));
     } catch {
       continue;
     }
@@ -23187,16 +22732,16 @@ function pruneSession(id) {
 }
 
 // src/conflicts.ts
-import * as fs7 from "node:fs";
-import * as path8 from "node:path";
+import * as fs6 from "node:fs";
+import * as path7 from "node:path";
 function resolveRealpath(file_path, cwd2, cache4) {
   const key = `${cwd2 ?? ""} ${file_path}`;
   const memo = cache4?.get(key);
   if (memo !== void 0) return memo;
-  const lexical = path8.isAbsolute(file_path) ? file_path : path8.resolve(cwd2 ?? process.cwd(), file_path);
+  const lexical = path7.isAbsolute(file_path) ? file_path : path7.resolve(cwd2 ?? process.cwd(), file_path);
   let resolved;
   try {
-    resolved = fs7.realpathSync(lexical);
+    resolved = fs6.realpathSync(lexical);
   } catch {
     resolved = lexical;
   }
@@ -23385,10 +22930,710 @@ function useUpdateCheck() {
   return updateTo;
 }
 
+// src/panel/hooks/usePhases.ts
+var import_react42 = __toESM(require_react(), 1);
+function focusIndex(fs12, focus) {
+  if (!fs12.length) return 0;
+  if (typeof focus === "number") return focus % fs12.length;
+  const i = fs12.findIndex((e) => e.root === focus);
+  return i >= 0 ? i : 0;
+}
+function usePhases(liveRowsRef, focus) {
+  const [progress, setProgress] = import_react42.default.useState(() => /* @__PURE__ */ new Map());
+  const [planningRoots, setPlanningRoots] = import_react42.default.useState(() => /* @__PURE__ */ new Set());
+  const scanningPhases = import_react42.default.useRef(false);
+  const shimRef = import_react42.default.useRef(void 0);
+  if (shimRef.current === void 0) shimRef.current = resolveGsdTools();
+  const mounted = import_react42.default.useRef(false);
+  import_react42.default.useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const focusSet = buildFocusSet(liveRowsRef.current ?? [], planningRoots);
+  const idx = focusIndex(focusSet, focus);
+  const focusRoot = focusSet.length ? focusSet[idx].root : null;
+  const focusProgress = focusRoot ? progress.get(focusRoot) ?? null : null;
+  const totalPhases = focusProgress ? focusProgress.phases.length : 0;
+  const focusRef = import_react42.default.useRef(focus);
+  focusRef.current = focus;
+  import_react42.default.useEffect(() => {
+    const tick = () => {
+      if (scanningPhases.current) return;
+      scanningPhases.current = true;
+      resolvePlanningRoots(liveRowsRef.current ?? []).then((roots) => {
+        if (!mounted.current) return void 0;
+        setPlanningRoots(roots);
+        const fs12 = buildFocusSet(liveRowsRef.current ?? [], roots);
+        const i = focusIndex(fs12, focusRef.current);
+        const root = fs12.length ? fs12[i].root : null;
+        const shim = shimRef.current;
+        if (shim && root) {
+          return scanProgress(root, shim).then((p) => {
+            if (mounted.current && p) setProgress((prev) => new Map(prev).set(root, p));
+          });
+        }
+        return void 0;
+      }).catch(() => {
+      }).finally(() => {
+        scanningPhases.current = false;
+      });
+    };
+    tick();
+    const t = setInterval(tick, phaseScanMs());
+    return () => {
+      scanningPhases.current = false;
+      clearInterval(t);
+    };
+  }, [focus]);
+  return { focusSet, idx, focusRoot, focusProgress, totalPhases, progress };
+}
+
+// src/panel/hooks/useResume.ts
+var import_react43 = __toESM(require_react(), 1);
+
+// src/panel/launch.ts
+import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
+import fs7 from "node:fs";
+import os7 from "node:os";
+import path8 from "node:path";
+var RESUME_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+var PBCOPY_BIN = "/usr/bin/pbcopy";
+var OSASCRIPT_BIN = "/usr/bin/osascript";
+var OPEN_BIN = "/usr/bin/open";
+var PBCOPY_TIMEOUT_MS = 1500;
+var OSASCRIPT_TIMEOUT_MS = 2e4;
+var OPEN_TIMEOUT_MS = 5e3;
+var MAX_CWD_LEN = 4096;
+var REMOVE_READ_BYTES = 4096;
+var WARP_TAB_CONFIG_NAME = "csm-resume";
+var WARP_TAB_CONFIG_MARKER_PREFIX = "# csm-resume: written by the CSM panel";
+var WARP_TAB_CONFIG_TTL_MS = 3e4;
+var WARP_STEM_PATTERN = /^csm-resume-[0-9a-f]{8}-[1-9][0-9]{0,9}-[0-9a-f]{8}$/;
+var WARP_SWEEP_MAX_ENTRIES = 256;
+var WARP_UNSAFE_CWD = /[`$;|&<>"'\\]/;
+var MSG_COPIED = "copied \u2713";
+var MSG_COPIED_LIVE = "copied \u2713 \xB7 session still open";
+var MSG_INVALID_ID = "refused: not a resumable session id";
+var MSG_COPY_FAILED_PREFIX = "copy failed \xB7 run: ";
+var RESUME_BYPASS_FLAG = "--dangerously-skip-permissions";
+var MSG_BYPASS_WARNING = "\u26A0 bypasses permission checks";
+var MSG_COPIED_BYPASS = MSG_COPIED + " \xB7 " + MSG_BYPASS_WARNING;
+var MSG_COPIED_LIVE_BYPASS = MSG_COPIED_LIVE + " \xB7 " + MSG_BYPASS_WARNING;
+var OUT_LIVE = "session still open, no new tab opened";
+var OUT_TERMINAL = "opened a new Terminal window";
+var OUT_ITERM = "opened a new iTerm2 window";
+var OUT_WARP = "opening in Warp\u2026";
+var OUT_WARP_FOLDER = "opened a Warp tab in the folder, paste the command";
+var OUT_UNSUPPORTED = "no new tab for this terminal, paste the command";
+var OUT_NO_FOLDER = "session folder not found, paste the command";
+var OUT_UNSAFE_FOLDER = "folder name not safe to open, paste the command";
+var OUT_LAUNCH_FAILED = "could not open a new tab, paste the command";
+var TERMINAL_SCRIPT = [
+  "on run argv",
+  'set cmd to "cd " & quoted form of (item 1 of argv) & " && claude --resume " & quoted form of (item 2 of argv)',
+  'tell application "Terminal"',
+  "activate",
+  "do script cmd",
+  "end tell",
+  "end run"
+];
+var ITERM_SCRIPT = [
+  "on run argv",
+  'set cmd to "cd " & quoted form of (item 1 of argv) & " && claude --resume " & quoted form of (item 2 of argv)',
+  'tell application "iTerm2"',
+  "activate",
+  "set w to (create window with default profile)",
+  "tell current session of w to write text cmd",
+  "end tell",
+  "end run"
+];
+var ROUTE_ENTRIES = [
+  ["Apple_Terminal", "terminal"],
+  ["iTerm.app", "iterm"],
+  ["WarpTerminal", "warp"]
+];
+var LAUNCH_ROUTE_BY_TERM = new Map(ROUTE_ENTRIES);
+function isResumableId(id) {
+  return typeof id === "string" && RESUME_ID_PATTERN.test(id);
+}
+var FORMAT_CP = new RegExp("\\p{Cf}", "u");
+var COMMAND_CWD_FORBIDDEN = /[\\`]/;
+function commandCwd(cwd2) {
+  try {
+    if (typeof cwd2 !== "string" || cwd2.length < 1 || cwd2.length > MAX_CWD_LEN) return void 0;
+    if (!path8.isAbsolute(cwd2) || path8.normalize(cwd2) !== cwd2) return void 0;
+    if (cwd2.length > 1 && cwd2.endsWith(path8.sep)) return void 0;
+    for (const ch of cwd2) {
+      const cp = ch.codePointAt(0) ?? 0;
+      if (cp <= 31 || cp === 127) return void 0;
+      if (cp >= 128 && cp <= 159) return void 0;
+      if (cp >= 55296 && cp <= 57343) return void 0;
+      if (FORMAT_CP.test(ch)) return void 0;
+    }
+    if (COMMAND_CWD_FORBIDDEN.test(cwd2)) return void 0;
+    return cwd2;
+  } catch {
+    return void 0;
+  }
+}
+function shellSingleQuote(s) {
+  return "'" + s.replace(/'/g, "'\\''") + "'";
+}
+function resumeCommand(id, cwd2, opts) {
+  const c = commandCwd(cwd2);
+  const suffix = opts?.bypass === true ? " " + RESUME_BYPASS_FLAG : "";
+  if (c === void 0) return "claude --resume " + id + suffix;
+  const name = opts?.name;
+  const target = isSafeResumeName(name) ? shellSingleQuote(name) : id;
+  return "cd " + shellSingleQuote(c) + " && claude --resume " + target + suffix;
+}
+function validLaunchCwd(cwd2, isDir) {
+  try {
+    const c = commandCwd(cwd2);
+    return c !== void 0 && isDir(c) ? c : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function isRefusedFolderName(cwd2) {
+  try {
+    return typeof cwd2 === "string" && cwd2.length > 0 && commandCwd(cwd2) === void 0;
+  } catch {
+    return false;
+  }
+}
+function osascriptArgs(lines, cwd2, id) {
+  return [...lines.flatMap((l) => ["-e", l]), "--", cwd2, id];
+}
+function tomlBasicString(s) {
+  return '"' + s.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
+}
+function warpTabConfigMarker(pid, nonce) {
+  return `${WARP_TAB_CONFIG_MARKER_PREFIX} pid=${pid} nonce=${nonce} (deleted shortly after use and when the panel exits)`;
+}
+function warpTabConfigStem(id, pid, nonce) {
+  return `${WARP_TAB_CONFIG_NAME}-${id.slice(0, 8)}-${pid}-${nonce}`;
+}
+function warpTabConfigToml(cwd2, id, marker) {
+  return [
+    marker,
+    "name = " + tomlBasicString("CSM resume " + id.slice(0, 8)),
+    "",
+    "[[panes]]",
+    'id = "main"',
+    'type = "terminal"',
+    "directory = " + tomlBasicString(cwd2),
+    "commands = [" + tomlBasicString(resumeCommand(id)) + "]"
+  ].join("\n") + "\n";
+}
+function statIsDir(p) {
+  try {
+    return fs7.statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+}
+function warpTabConfigDir(home) {
+  return path8.join(home, ".warp", "tab_configs");
+}
+var writtenWarpConfigs = /* @__PURE__ */ new Map();
+function writeWarpTabConfig(home, cwd2, id) {
+  let tmp;
+  try {
+    if (!isResumableId(id)) return void 0;
+    if (typeof cwd2 !== "string" || WARP_UNSAFE_CWD.test(cwd2)) return void 0;
+    if (validLaunchCwd(cwd2, statIsDir) === void 0) return void 0;
+    const dir = warpTabConfigDir(home);
+    fs7.mkdirSync(dir, { recursive: true, mode: 448 });
+    const nonce = randomBytes(4).toString("hex");
+    const stem = warpTabConfigStem(id, process.pid, nonce);
+    const marker = warpTabConfigMarker(process.pid, nonce);
+    const file = path8.join(dir, stem + ".toml");
+    tmp = path8.join(dir, `.${stem}.tmp`);
+    fs7.writeFileSync(tmp, warpTabConfigToml(cwd2, id, marker), { flag: "wx", mode: 384 });
+    fs7.renameSync(tmp, file);
+    tmp = void 0;
+    writtenWarpConfigs.set(file, marker);
+    return { stem, file, marker };
+  } catch {
+    if (tmp !== void 0) {
+      try {
+        fs7.unlinkSync(tmp);
+      } catch {
+      }
+    }
+    return void 0;
+  }
+}
+function removeWarpTabConfig(file, marker) {
+  try {
+    let head;
+    const fd = fs7.openSync(file, fs7.constants.O_RDONLY | fs7.constants.O_NOFOLLOW | fs7.constants.O_NONBLOCK);
+    try {
+      if (!fs7.fstatSync(fd).isFile()) return false;
+      const buf = Buffer.alloc(REMOVE_READ_BYTES);
+      const n = fs7.readSync(fd, buf, 0, REMOVE_READ_BYTES, 0);
+      head = buf.subarray(0, n).toString("utf8");
+    } finally {
+      fs7.closeSync(fd);
+    }
+    if (head.split("\n")[0] !== marker) return false;
+    fs7.unlinkSync(file);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function releaseWarpTabConfig(file) {
+  try {
+    const marker = writtenWarpConfigs.get(file);
+    if (marker === void 0) return false;
+    try {
+      return removeWarpTabConfig(file, marker);
+    } finally {
+      writtenWarpConfigs.delete(file);
+    }
+  } catch {
+    return false;
+  }
+}
+function cleanupWarpTabConfig() {
+  let removed = false;
+  try {
+    for (const file of [...writtenWarpConfigs.keys()]) {
+      if (releaseWarpTabConfig(file)) removed = true;
+    }
+  } catch {
+  }
+  return removed;
+}
+function parseWarpStem(stem) {
+  try {
+    if (typeof stem !== "string" || !WARP_STEM_PATTERN.test(stem)) return void 0;
+    const parts = stem.split("-");
+    if (parts.length !== 5) return void 0;
+    const pid = Number(parts[3]);
+    const nonce = parts[4];
+    if (!Number.isSafeInteger(pid) || pid <= 0) return void 0;
+    return { pid, nonce };
+  } catch {
+    return void 0;
+  }
+}
+function pidIsAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e?.code !== "ESRCH";
+  }
+}
+function defaultWarpSweepDeps() {
+  return { homedir: () => os7.homedir(), alive: pidIsAlive };
+}
+function sweepStaleWarpTabConfigs(deps = defaultWarpSweepDeps()) {
+  let removed = 0;
+  try {
+    const dir = warpTabConfigDir(deps.homedir());
+    const names = [];
+    const handle = fs7.opendirSync(dir);
+    try {
+      for (let i = 0; i < WARP_SWEEP_MAX_ENTRIES; i++) {
+        const ent = handle.readSync();
+        if (ent === null) break;
+        names.push(ent.name);
+      }
+    } finally {
+      handle.closeSync();
+    }
+    for (const name of names) {
+      try {
+        let stem;
+        if (name.endsWith(".toml")) stem = name.slice(0, -".toml".length);
+        else if (name.startsWith(".") && name.endsWith(".tmp")) stem = name.slice(1, -".tmp".length);
+        else continue;
+        const parsed = parseWarpStem(stem);
+        if (parsed === void 0 || parsed.pid === process.pid) continue;
+        let alive;
+        try {
+          alive = deps.alive(parsed.pid) !== false;
+        } catch {
+          alive = true;
+        }
+        if (alive) continue;
+        if (removeWarpTabConfig(path8.join(dir, name), warpTabConfigMarker(parsed.pid, parsed.nonce))) removed++;
+      } catch {
+      }
+    }
+  } catch {
+  }
+  return removed;
+}
+function defaultLater(fn, ms) {
+  try {
+    const t = setTimeout(() => {
+      try {
+        fn();
+      } catch {
+      }
+    }, ms);
+    t.unref();
+  } catch {
+  }
+}
+function defaultRun(cmd, args, opts) {
+  return new Promise((resolve4) => {
+    let done = false;
+    let timer;
+    const finish = (ok) => {
+      if (done) return;
+      done = true;
+      if (timer !== void 0) clearTimeout(timer);
+      resolve4({ ok });
+    };
+    try {
+      const child = spawn(cmd, [...args], {
+        stdio: [opts.input !== void 0 ? "pipe" : "ignore", "ignore", "ignore"]
+      });
+      timer = setTimeout(() => {
+        try {
+          child.kill("SIGKILL");
+        } catch {
+        }
+        finish(false);
+      }, opts.timeoutMs);
+      child.on("error", () => finish(false));
+      child.on("close", (code) => finish(code === 0));
+      if (opts.input !== void 0 && child.stdin) {
+        child.stdin.on("error", () => {
+        });
+        child.stdin.end(opts.input);
+      }
+    } catch {
+      finish(false);
+    }
+  });
+}
+function defaultLaunchDeps() {
+  return {
+    run: defaultRun,
+    isDir: statIsDir,
+    homedir: () => os7.homedir(),
+    platform: process.platform,
+    termProgram: process.env.TERM_PROGRAM,
+    later: defaultLater
+  };
+}
+async function copyCommand(line, deps) {
+  try {
+    const r2 = await deps.run(PBCOPY_BIN, [], { input: line, timeoutMs: PBCOPY_TIMEOUT_MS });
+    return r2?.ok === true;
+  } catch {
+    return false;
+  }
+}
+async function runOk(deps, cmd, args, timeoutMs) {
+  try {
+    const r2 = await deps.run(cmd, args, { timeoutMs });
+    return r2?.ok === true;
+  } catch {
+    return false;
+  }
+}
+async function copyResume(target, deps = defaultLaunchDeps()) {
+  let line;
+  try {
+    const id = target?.id;
+    if (!isResumableId(id)) return { ok: false, copied: false, message: MSG_INVALID_ID };
+    const bypass = target.bypass === true;
+    line = resumeCommand(id, target.cwd, { name: target.name, bypass });
+    const live = target.live === true;
+    const copied = await copyCommand(line, deps);
+    if (copied) {
+      if (bypass) return { ok: true, copied: true, message: live ? MSG_COPIED_LIVE_BYPASS : MSG_COPIED_BYPASS };
+      return { ok: true, copied: true, message: live ? MSG_COPIED_LIVE : MSG_COPIED };
+    }
+    const msg = MSG_COPY_FAILED_PREFIX + line + (live ? " \xB7 session still open" : "");
+    return { ok: false, copied: false, message: msg };
+  } catch {
+    if (line !== void 0) return { ok: false, copied: false, message: MSG_COPY_FAILED_PREFIX + line };
+    return { ok: false, copied: false, message: MSG_INVALID_ID };
+  }
+}
+async function openResume(target, deps = defaultLaunchDeps()) {
+  let copied = false;
+  let suffix = "";
+  try {
+    const id = target?.id;
+    if (!isResumableId(id)) return { ok: false, copied: false, message: MSG_INVALID_ID };
+    copied = await copyCommand(resumeCommand(id, target.cwd), deps);
+    suffix = copied ? " \xB7 command copied" : " \xB7 copy failed, run: " + resumeCommand(id, target.cwd);
+    const done = (ok, outcome) => ({ ok, copied, message: outcome + suffix });
+    if (target.live === true) return done(false, OUT_LIVE);
+    const cwd2 = validLaunchCwd(target.cwd, (p) => deps.isDir(p));
+    if (cwd2 === void 0) return done(false, isRefusedFolderName(target.cwd) ? OUT_UNSAFE_FOLDER : OUT_NO_FOLDER);
+    if (deps.platform !== "darwin") return done(false, OUT_UNSUPPORTED);
+    const term = deps.termProgram;
+    const route = typeof term === "string" ? LAUNCH_ROUTE_BY_TERM.get(term) : void 0;
+    if (route === "terminal" || route === "iterm") {
+      const script = route === "terminal" ? TERMINAL_SCRIPT : ITERM_SCRIPT;
+      const ok = await runOk(deps, OSASCRIPT_BIN, osascriptArgs(script, cwd2, id), OSASCRIPT_TIMEOUT_MS);
+      if (!ok) return done(false, OUT_LAUNCH_FAILED);
+      return done(true, route === "terminal" ? OUT_TERMINAL : OUT_ITERM);
+    }
+    if (route === "warp") {
+      if (WARP_UNSAFE_CWD.test(cwd2)) return done(false, OUT_UNSAFE_FOLDER);
+      const cfg = writeWarpTabConfig(deps.homedir(), cwd2, id);
+      if (cfg !== void 0) {
+        const ok2 = await runOk(deps, OPEN_BIN, [`warp://tab_config/${cfg.stem}?new_window=true`], OPEN_TIMEOUT_MS);
+        if (!ok2) {
+          releaseWarpTabConfig(cfg.file);
+          return done(false, OUT_LAUNCH_FAILED);
+        }
+        (deps.later ?? defaultLater)(() => releaseWarpTabConfig(cfg.file), WARP_TAB_CONFIG_TTL_MS);
+        return done(true, OUT_WARP);
+      }
+      const ok = await runOk(deps, OPEN_BIN, ["warp://action/new_tab?path=" + encodeURIComponent(cwd2)], OPEN_TIMEOUT_MS);
+      return ok ? done(true, OUT_WARP_FOLDER) : done(false, OUT_LAUNCH_FAILED);
+    }
+    return done(false, OUT_UNSUPPORTED);
+  } catch {
+    return { ok: false, copied, message: OUT_LAUNCH_FAILED + suffix };
+  }
+}
+
+// src/panel/launch-hold.ts
+var LAUNCH_HOLD_MS = 6e4;
+function claimLaunch(holds, id, now, token) {
+  if (holds.has(id)) return false;
+  holds.set(id, { at: now, token, inFlight: true });
+  return true;
+}
+function settleLaunch(holds, id, token, ok) {
+  const hold = holds.get(id);
+  if (hold === void 0 || hold.token !== token) return false;
+  if (ok) holds.set(id, { ...hold, inFlight: false });
+  else holds.delete(id);
+  return true;
+}
+function settleHolds(holds, rows, scanStartedAt) {
+  if (holds.size === 0) return false;
+  const liveById = /* @__PURE__ */ new Map();
+  for (const r2 of rows) liveById.set(r2.id, r2.live);
+  let dropped = false;
+  for (const [id, hold] of holds) {
+    if (hold.inFlight) continue;
+    const confirmed = liveById.get(id) === true;
+    const expired = scanStartedAt - hold.at >= LAUNCH_HOLD_MS;
+    if (confirmed || expired) {
+      holds.delete(id);
+      dropped = true;
+    }
+  }
+  return dropped;
+}
+function applyHolds(rows, holds) {
+  if (rows === null) return null;
+  if (holds.size === 0) return rows;
+  let out = null;
+  for (let i = 0; i < rows.length; i++) {
+    const r2 = rows[i];
+    if (r2.live || !holds.has(r2.id)) continue;
+    if (out === null) out = rows.slice();
+    out[i] = { ...r2, live: true };
+  }
+  return out ?? rows;
+}
+
+// src/panel/hooks/useResume.ts
+var RESUME_FLASH_MS = 3e3;
+function useResume(liveRowsRef, visible) {
+  const [resumeRows, setResumeRows] = import_react43.default.useState(null);
+  const [selId, setSelId] = import_react43.default.useState(null);
+  const [resumeOffset, setResumeOffset] = import_react43.default.useState(0);
+  const [resumeStatus, setResumeStatus] = import_react43.default.useState(null);
+  const mounted = import_react43.default.useRef(false);
+  import_react43.default.useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const scanningResume = import_react43.default.useRef(false);
+  const resumeScanGen = import_react43.default.useRef(0);
+  const resumeTickRef = import_react43.default.useRef(null);
+  const visibleRef = import_react43.default.useRef(visible);
+  visibleRef.current = visible;
+  const resumeRowsRef = import_react43.default.useRef(resumeRows);
+  resumeRowsRef.current = resumeRows;
+  const selIdRef = import_react43.default.useRef(selId);
+  selIdRef.current = selId;
+  const selIdxRef = import_react43.default.useRef(0);
+  if (resumeRows !== null && selId !== null) {
+    const i = resumeRows.findIndex((r2) => r2.id === selId);
+    if (i >= 0) selIdxRef.current = i;
+  }
+  const resumeOffsetRef = import_react43.default.useRef(resumeOffset);
+  resumeOffsetRef.current = resumeOffset;
+  const launchHolds = import_react43.default.useRef(/* @__PURE__ */ new Map());
+  const holdToken = import_react43.default.useRef(0);
+  const [, setHoldVersion] = import_react43.default.useState(0);
+  const bumpHolds = () => {
+    if (mounted.current) setHoldVersion((v) => v + 1);
+  };
+  const flashTimer = import_react43.default.useRef(null);
+  import_react43.default.useEffect(
+    () => () => {
+      if (flashTimer.current) clearTimeout(flashTimer.current);
+      flashTimer.current = null;
+    },
+    []
+  );
+  import_react43.default.useEffect(() => {
+    if (!visible) return void 0;
+    const gen = ++resumeScanGen.current;
+    const tick = () => {
+      if (scanningResume.current) return;
+      scanningResume.current = true;
+      const startedAt = Date.now();
+      discoverSessions({
+        n: RESUME_LIST_N,
+        liveIds: new Set((liveRowsRef.current ?? []).map((r2) => r2.session_id))
+      }).then((rows2) => {
+        if (!mounted.current || gen !== resumeScanGen.current) return;
+        if (settleHolds(launchHolds.current, rows2, startedAt)) bumpHolds();
+        setResumeRows(rows2);
+      }).catch(() => {
+      }).finally(() => {
+        scanningResume.current = false;
+        if (gen !== resumeScanGen.current && mounted.current) resumeTickRef.current?.();
+      });
+    };
+    resumeTickRef.current = tick;
+    tick();
+    const t = setInterval(tick, resumeScanMs());
+    return () => {
+      clearInterval(t);
+      resumeScanGen.current += 1;
+      if (resumeTickRef.current === tick) resumeTickRef.current = null;
+    };
+  }, [visible]);
+  import_react43.default.useEffect(() => {
+    if (resumeRows === null) return;
+    const r2 = reconcileSelection(resumeRows, selIdRef.current, selIdxRef.current);
+    selIdRef.current = r2.selId;
+    if (r2.idx >= 0) selIdxRef.current = r2.idx;
+    const off = followOffset(Math.max(0, r2.idx), resumeOffsetRef.current, resumeRows.length, RESUME_VISIBLE_ROWS);
+    resumeOffsetRef.current = off;
+    setSelId(r2.selId);
+    setResumeOffset(off);
+  }, [resumeRows]);
+  const clearStatus = () => {
+    if (flashTimer.current) clearTimeout(flashTimer.current);
+    flashTimer.current = null;
+    setResumeStatus(null);
+  };
+  const showResult = (r2) => {
+    if (!mounted.current) return;
+    if (flashTimer.current) clearTimeout(flashTimer.current);
+    flashTimer.current = null;
+    setResumeStatus({ text: r2.message, ok: r2.ok });
+    if (r2.ok) {
+      flashTimer.current = setTimeout(() => {
+        flashTimer.current = null;
+        if (mounted.current) setResumeStatus(null);
+      }, RESUME_FLASH_MS);
+    }
+  };
+  const selectedRow = () => {
+    if (!visibleRef.current) return null;
+    const rows2 = resumeRowsRef.current;
+    const id = selIdRef.current;
+    if (rows2 === null || id === null) return null;
+    return rows2.find((r2) => r2.id === id) ?? null;
+  };
+  const isLive = (row) => row.live || launchHolds.current.has(row.id);
+  const enterSeq = import_react43.default.useRef(0);
+  const move = (delta) => {
+    const rows2 = resumeRowsRef.current;
+    if (rows2 === null || rows2.length === 0) return;
+    const found = rows2.findIndex((r2) => r2.id === selIdRef.current);
+    const cur = found >= 0 ? found : Math.min(rows2.length - 1, Math.max(0, selIdxRef.current));
+    const next = Math.min(rows2.length - 1, Math.max(0, cur + delta));
+    const id = rows2[next].id;
+    const off = followOffset(next, resumeOffsetRef.current, rows2.length, RESUME_VISIBLE_ROWS);
+    selIdRef.current = id;
+    selIdxRef.current = next;
+    resumeOffsetRef.current = off;
+    setSelId(id);
+    setResumeOffset(off);
+    clearStatus();
+  };
+  const enter2 = () => {
+    const row = selectedRow();
+    if (row === null) return;
+    const live = isLive(row);
+    const seq = ++enterSeq.current;
+    resumeExtras({ id: row.id, slug: row.slug, cwd: row.cwd }).catch(() => ({ bypass: false })).then((extras) => {
+      if (seq !== enterSeq.current) return void 0;
+      return copyResume({ id: row.id, cwd: row.cwd, live, name: extras.name, bypass: extras.bypass === true }).then(
+        showResult
+      );
+    }).catch(() => {
+    });
+  };
+  const open3 = () => {
+    const row = selectedRow();
+    if (row === null) return;
+    enterSeq.current++;
+    const id = row.id;
+    if (flashTimer.current) clearTimeout(flashTimer.current);
+    flashTimer.current = null;
+    setResumeStatus({ text: "opening\u2026", ok: false });
+    if (isLive(row)) {
+      openResume({ id, cwd: row.cwd, live: true }).then(showResult, () => {
+      });
+      return;
+    }
+    const token = ++holdToken.current;
+    claimLaunch(launchHolds.current, id, Date.now(), token);
+    bumpHolds();
+    readLiveRegistry(registryDirs()).catch(() => /* @__PURE__ */ new Set()).then((registry) => {
+      const fresh = new Set(registry);
+      for (const r2 of liveRowsRef.current ?? []) fresh.add(r2.session_id);
+      return openResume({ id, cwd: row.cwd, live: fresh.has(id) });
+    }).then(
+      (r2) => {
+        settleLaunch(launchHolds.current, id, token, r2.ok);
+        bumpHolds();
+        showResult(r2);
+      },
+      () => {
+        settleLaunch(launchHolds.current, id, token, false);
+        bumpHolds();
+      }
+    );
+  };
+  const rows = applyHolds(resumeRows, launchHolds.current);
+  return {
+    rows,
+    selId,
+    offset: resumeOffset,
+    status: resumeStatus,
+    isLive,
+    move,
+    enter: enter2,
+    open: open3,
+    clearStatus
+  };
+}
+
 // src/panel/App.tsx
 var import_jsx_runtime2 = __toESM(require_jsx_runtime(), 1);
 var BRAND = "\u25C6 Concurrent Session Monitor";
-var RESUME_FLASH_MS = 3e3;
 var CARD_LINES = 4;
 var HEADER_LINES = 3;
 var PORTS_LINES = 10;
@@ -23422,7 +23667,7 @@ function PanelKeyboard({
 function App2() {
   const state = useRoster();
   const liveRows = state.display.filter((d) => !d.ended).map((d) => d.row);
-  const liveRowsRef = import_react42.default.useRef(liveRows);
+  const liveRowsRef = import_react44.default.useRef(liveRows);
   liveRowsRef.current = liveRows;
   const ports = usePorts();
   const branches = useBranches(liveRowsRef);
@@ -23430,165 +23675,23 @@ function App2() {
   const { rows: termRows, columns: termCols } = use_window_size_default();
   const capacity = Math.max(1, termRows - HEADER_LINES - PORTS_LINES);
   const compact = state.display.length * CARD_LINES > capacity;
-  const [progress, setProgress] = import_react42.default.useState(() => /* @__PURE__ */ new Map());
-  const [planningRoots, setPlanningRoots] = import_react42.default.useState(() => /* @__PURE__ */ new Set());
-  const [focusedIndex, setFocusedIndex] = import_react42.default.useState(0);
-  const [scrollOffset, setScrollOffset] = import_react42.default.useState(0);
-  const scanningPhases = import_react42.default.useRef(false);
-  const shimRef = import_react42.default.useRef(void 0);
-  if (shimRef.current === void 0) shimRef.current = resolveGsdTools();
-  const mounted = import_react42.default.useRef(false);
-  import_react42.default.useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-  const focusSet = buildFocusSet(liveRows, planningRoots);
-  const idx = focusSet.length ? focusedIndex % focusSet.length : 0;
-  const focusRoot = focusSet.length ? focusSet[idx].root : null;
-  const focusProgress = focusRoot ? progress.get(focusRoot) ?? null : null;
-  const totalPhases = focusProgress ? focusProgress.phases.length : 0;
-  const focusedIndexRef = import_react42.default.useRef(focusedIndex);
-  focusedIndexRef.current = focusedIndex;
-  import_react42.default.useEffect(() => {
-    const tick = () => {
-      if (scanningPhases.current) return;
-      scanningPhases.current = true;
-      resolvePlanningRoots(liveRowsRef.current).then((roots) => {
-        if (!mounted.current) return void 0;
-        setPlanningRoots(roots);
-        const fs12 = buildFocusSet(liveRowsRef.current, roots);
-        const i = fs12.length ? focusedIndexRef.current % fs12.length : 0;
-        const root = fs12.length ? fs12[i].root : null;
-        const shim = shimRef.current;
-        if (shim && root) {
-          return scanProgress(root, shim).then((p) => {
-            if (mounted.current && p) setProgress((prev) => new Map(prev).set(root, p));
-          });
-        }
-        return void 0;
-      }).catch(() => {
-      }).finally(() => {
-        scanningPhases.current = false;
-      });
-    };
-    tick();
-    const t = setInterval(tick, phaseScanMs());
-    return () => {
-      scanningPhases.current = false;
-      clearInterval(t);
-    };
-  }, [focusedIndex]);
-  import_react42.default.useEffect(() => {
+  const [focusedIndex, setFocusedIndex] = import_react44.default.useState(0);
+  const [scrollOffset, setScrollOffset] = import_react44.default.useState(0);
+  const ph = usePhases(liveRowsRef, focusedIndex);
+  const { focusSet, idx, focusProgress, totalPhases } = ph;
+  import_react44.default.useEffect(() => {
     setScrollOffset(0);
   }, [idx]);
-  const [rightPane, setRightPane] = import_react42.default.useState("fazlar");
-  const [resumeRows, setResumeRows] = import_react42.default.useState(null);
-  const [selId, setSelId] = import_react42.default.useState(null);
-  const [resumeOffset, setResumeOffset] = import_react42.default.useState(0);
-  const [resumeStatus, setResumeStatus] = import_react42.default.useState(null);
-  const scanningResume = import_react42.default.useRef(false);
-  const resumeScanGen = import_react42.default.useRef(0);
-  const resumeTickRef = import_react42.default.useRef(null);
-  const rightPaneRef = import_react42.default.useRef(rightPane);
+  const [rightPane, setRightPane] = import_react44.default.useState("fazlar");
+  const rightPaneRef = import_react44.default.useRef(rightPane);
   rightPaneRef.current = rightPane;
-  const resumeRowsRef = import_react42.default.useRef(resumeRows);
-  resumeRowsRef.current = resumeRows;
-  const selIdRef = import_react42.default.useRef(selId);
-  selIdRef.current = selId;
-  const selIdxRef = import_react42.default.useRef(0);
-  if (resumeRows !== null && selId !== null) {
-    const i = resumeRows.findIndex((r2) => r2.id === selId);
-    if (i >= 0) selIdxRef.current = i;
-  }
-  const resumeOffsetRef = import_react42.default.useRef(resumeOffset);
-  resumeOffsetRef.current = resumeOffset;
-  const launchHolds = import_react42.default.useRef(/* @__PURE__ */ new Map());
-  const holdToken = import_react42.default.useRef(0);
-  const [, setHoldVersion] = import_react42.default.useState(0);
-  const bumpHolds = () => {
-    if (mounted.current) setHoldVersion((v) => v + 1);
-  };
-  const flashTimer = import_react42.default.useRef(null);
-  import_react42.default.useEffect(
-    () => () => {
-      if (flashTimer.current) clearTimeout(flashTimer.current);
-      flashTimer.current = null;
-    },
-    []
-  );
-  import_react42.default.useEffect(() => {
-    if (rightPane !== "oturumlar") return void 0;
-    const gen = ++resumeScanGen.current;
-    const tick = () => {
-      if (scanningResume.current) return;
-      scanningResume.current = true;
-      const startedAt = Date.now();
-      discoverSessions({
-        n: RESUME_LIST_N,
-        liveIds: new Set(liveRowsRef.current.map((r2) => r2.session_id))
-      }).then((rows) => {
-        if (!mounted.current || gen !== resumeScanGen.current) return;
-        if (settleHolds(launchHolds.current, rows, startedAt)) bumpHolds();
-        setResumeRows(rows);
-      }).catch(() => {
-      }).finally(() => {
-        scanningResume.current = false;
-        if (gen !== resumeScanGen.current && mounted.current) resumeTickRef.current?.();
-      });
-    };
-    resumeTickRef.current = tick;
-    tick();
-    const t = setInterval(tick, resumeScanMs());
-    return () => {
-      clearInterval(t);
-      resumeScanGen.current += 1;
-      if (resumeTickRef.current === tick) resumeTickRef.current = null;
-    };
-  }, [rightPane]);
-  import_react42.default.useEffect(() => {
-    if (resumeRows === null) return;
-    const r2 = reconcileSelection(resumeRows, selIdRef.current, selIdxRef.current);
-    selIdRef.current = r2.selId;
-    if (r2.idx >= 0) selIdxRef.current = r2.idx;
-    const off = followOffset(Math.max(0, r2.idx), resumeOffsetRef.current, resumeRows.length, RESUME_VISIBLE_ROWS);
-    resumeOffsetRef.current = off;
-    setSelId(r2.selId);
-    setResumeOffset(off);
-  }, [resumeRows]);
+  const resume = useResume(liveRowsRef, rightPane === "oturumlar");
   const { isRawModeSupported } = use_stdin_default();
-  const clearResumeStatus = () => {
-    if (flashTimer.current) clearTimeout(flashTimer.current);
-    flashTimer.current = null;
-    setResumeStatus(null);
-  };
-  const showResult = (r2) => {
-    if (!mounted.current) return;
-    if (flashTimer.current) clearTimeout(flashTimer.current);
-    flashTimer.current = null;
-    setResumeStatus(r2.message);
-    if (r2.ok) {
-      flashTimer.current = setTimeout(() => {
-        flashTimer.current = null;
-        if (mounted.current) setResumeStatus(null);
-      }, RESUME_FLASH_MS);
-    }
-  };
-  const selectedRow = () => {
-    if (rightPaneRef.current !== "oturumlar") return null;
-    const rows = resumeRowsRef.current;
-    const id = selIdRef.current;
-    if (rows === null || id === null) return null;
-    return rows.find((r2) => r2.id === id) ?? null;
-  };
-  const isLive = (row) => row.live || launchHolds.current.has(row.id);
-  const enterSeq = import_react42.default.useRef(0);
   const onToggle = () => {
     const next = rightPaneRef.current === "fazlar" ? "oturumlar" : "fazlar";
     rightPaneRef.current = next;
     setRightPane(next);
-    clearResumeStatus();
+    resume.clearStatus();
   };
   const onCycle = (dir) => {
     if (rightPaneRef.current !== "fazlar") return;
@@ -23600,65 +23703,15 @@ function App2() {
       setScrollOffset((o) => clampOffset(o + delta, totalPhases, FAZLAR_VISIBLE_ROWS));
       return;
     }
-    const rows = resumeRowsRef.current;
-    if (rows === null || rows.length === 0) return;
-    const found = rows.findIndex((r2) => r2.id === selIdRef.current);
-    const cur = found >= 0 ? found : Math.min(rows.length - 1, Math.max(0, selIdxRef.current));
-    const step2 = page ? RESUME_VISIBLE_ROWS : 1;
-    const next = Math.min(rows.length - 1, Math.max(0, cur + dir * step2));
-    const id = rows[next].id;
-    const off = followOffset(next, resumeOffsetRef.current, rows.length, RESUME_VISIBLE_ROWS);
-    selIdRef.current = id;
-    selIdxRef.current = next;
-    resumeOffsetRef.current = off;
-    setSelId(id);
-    setResumeOffset(off);
-    clearResumeStatus();
+    resume.move(dir * (page ? RESUME_VISIBLE_ROWS : 1));
   };
   const onEnter = () => {
-    const row = selectedRow();
-    if (row === null) return;
-    const live = isLive(row);
-    const seq = ++enterSeq.current;
-    resumeExtras({ id: row.id, slug: row.slug, cwd: row.cwd }).catch(() => ({ bypass: false })).then((extras) => {
-      if (seq !== enterSeq.current) return void 0;
-      return copyResume({ id: row.id, cwd: row.cwd, live, name: extras.name, bypass: extras.bypass === true }).then(
-        showResult
-      );
-    }).catch(() => {
-    });
+    if (rightPaneRef.current !== "oturumlar") return;
+    resume.enter();
   };
   const onOpen = () => {
-    const row = selectedRow();
-    if (row === null) return;
-    enterSeq.current++;
-    const id = row.id;
-    if (flashTimer.current) clearTimeout(flashTimer.current);
-    flashTimer.current = null;
-    setResumeStatus("opening\u2026");
-    if (isLive(row)) {
-      openResume({ id, cwd: row.cwd, live: true }).then(showResult, () => {
-      });
-      return;
-    }
-    const token = ++holdToken.current;
-    claimLaunch(launchHolds.current, id, Date.now(), token);
-    bumpHolds();
-    readLiveRegistry(registryDirs()).catch(() => /* @__PURE__ */ new Set()).then((registry) => {
-      const fresh = new Set(registry);
-      for (const r2 of liveRowsRef.current) fresh.add(r2.session_id);
-      return openResume({ id, cwd: row.cwd, live: fresh.has(id) });
-    }).then(
-      (r2) => {
-        settleLaunch(launchHolds.current, id, token, r2.ok);
-        bumpHolds();
-        showResult(r2);
-      },
-      () => {
-        settleLaunch(launchHolds.current, id, token, false);
-        bumpHolds();
-      }
-    );
+    if (rightPaneRef.current !== "oturumlar") return;
+    resume.open();
   };
   const nConf = state.conflicts.length;
   const summaryLead = sanitize(`${state.live} live \xB7 ${state.idle} idle \xB7 `);
@@ -23674,7 +23727,7 @@ function App2() {
   const clock = sanitize(fmtClock(Date.now()));
   const updLabel = updateLabel(updateTo);
   const showUpdate = updLabel !== null && updateLabelFits(termCols, BRAND, updLabel, clock);
-  const shownRows = applyHolds(resumeRows, launchHolds.current);
+  const shownRows = resume.rows;
   const withLiveBranch = (row) => {
     const b = liveBranch(row, branches);
     return b === row.branch ? row : { ...row, branch: b };
@@ -23729,9 +23782,9 @@ function App2() {
         SessionsPane,
         {
           rows: shownRows,
-          cursorId: selId,
-          scrollOffset: resumeOffset,
-          status: resumeStatus,
+          cursorId: resume.selId,
+          scrollOffset: resume.offset,
+          status: resume.status?.text ?? null,
           now: Date.now()
         }
       ) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
@@ -23751,10 +23804,10 @@ function App2() {
 }
 
 // src/panel/PanelApp.tsx
-var import_react45 = __toESM(require_react(), 1);
+var import_react47 = __toESM(require_react(), 1);
 
 // src/panel/hooks/useUiTick.ts
-var import_react43 = __toESM(require_react(), 1);
+var import_react45 = __toESM(require_react(), 1);
 var UI_TICK_MS = 250;
 var TICKER_TICKS = 2;
 function animStep(a, paused, tickerTicks = TICKER_TICKS) {
@@ -23765,10 +23818,10 @@ function animStep(a, paused, tickerTicks = TICKER_TICKS) {
 }
 function useUiTick(o) {
   const tickMs = o.tickMs ?? UI_TICK_MS;
-  const [anim, setAnim] = import_react43.default.useState({ tick: 0, step: 0 });
-  const pausedRef = import_react43.default.useRef(o.paused);
+  const [anim, setAnim] = import_react45.default.useState({ tick: 0, step: 0 });
+  const pausedRef = import_react45.default.useRef(o.paused);
   pausedRef.current = o.paused;
-  import_react43.default.useEffect(() => {
+  import_react45.default.useEffect(() => {
     if (!o.active) return void 0;
     const t = setInterval(() => {
       setAnim((a) => animStep(a, pausedRef.current));
@@ -23779,7 +23832,7 @@ function useUiTick(o) {
 }
 
 // src/panel/hooks/useResizeRepaint.ts
-var import_react44 = __toESM(require_react(), 1);
+var import_react46 = __toESM(require_react(), 1);
 var RESIZE_SETTLE_MS = 150;
 var HOME_ERASE_DOWN = "\x1B[1;1H\x1B[0J";
 var REAL_TIMERS = {
@@ -23790,7 +23843,7 @@ function useResizeRepaint(o = {}) {
   const { stdout, write } = useStdout();
   const settle = o.settleMs ?? RESIZE_SETTLE_MS;
   const timers = o.timers ?? REAL_TIMERS;
-  import_react44.default.useEffect(() => {
+  import_react46.default.useEffect(() => {
     if (stdout.isTTY !== true) return void 0;
     let pending = null;
     const repaint = () => write(HOME_ERASE_DOWN);
@@ -25858,9 +25911,9 @@ function PanelApp(props = {}) {
   const { rows, columns } = use_window_size_default();
   useResizeRepaint();
   const { isRawModeSupported } = use_stdin_default();
-  const uiRef = import_react45.default.useRef(initialUi);
-  const [ui, setUi] = import_react45.default.useState(initialUi);
-  const apply = import_react45.default.useCallback((action) => {
+  const uiRef = import_react47.default.useRef(initialUi);
+  const [ui, setUi] = import_react47.default.useState(initialUi);
+  const apply = import_react47.default.useCallback((action) => {
     const next = uiReducer(uiRef.current, action);
     if (next === uiRef.current) return;
     uiRef.current = next;
@@ -25877,7 +25930,7 @@ function PanelApp(props = {}) {
     header.clock,
     header.update ?? ""
   ].join("|");
-  const lines = import_react45.default.useMemo(
+  const lines = import_react47.default.useMemo(
     () => drawShell({
       rows,
       cols: columns,
@@ -25978,9 +26031,9 @@ function Root({
   splashMs = DEFAULT_SPLASH_MS,
   variant
 } = {}) {
-  const [ui] = import_react46.default.useState(() => variant ?? uiVariant());
-  const [showSplash, setShowSplash] = import_react46.default.useState(enableSplash);
-  import_react46.default.useEffect(() => {
+  const [ui] = import_react48.default.useState(() => variant ?? uiVariant());
+  const [showSplash, setShowSplash] = import_react48.default.useState(enableSplash);
+  import_react48.default.useEffect(() => {
     if (!showSplash) return;
     const timer = setTimeout(() => setShowSplash(false), splashMs);
     return () => clearTimeout(timer);
@@ -25991,7 +26044,7 @@ function Root({
 
 // src/panel/main.tsx
 function run() {
-  return render_default((0, import_react47.createElement)(Root), { alternateScreen: true });
+  return render_default((0, import_react49.createElement)(Root), { alternateScreen: true });
 }
 
 // src/panel/registration.ts

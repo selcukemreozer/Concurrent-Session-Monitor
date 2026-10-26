@@ -13,26 +13,7 @@ import {
   FAZLAR_TOGGLE_HINT,
   SUBAGENT_COLOR,
 } from "./Card.js";
-import {
-  discoverSessions,
-  resumeScanMs,
-  reconcileSelection,
-  followOffset,
-  RESUME_LIST_N,
-  RESUME_VISIBLE_ROWS,
-  readLiveRegistry,
-  registryDirs,
-  resumeExtras,
-  type ResumeRow,
-} from "../sessions.js";
-import { copyResume, openResume, type LaunchResult } from "./launch.js";
-import {
-  claimLaunch,
-  settleLaunch,
-  settleHolds,
-  applyHolds,
-  type LaunchHolds,
-} from "./launch-hold.js";
+import { RESUME_VISIBLE_ROWS } from "../sessions.js";
 import { liveBranch } from "../branch.js";
 import { clampOffset, cycleIndex, FAZLAR_VISIBLE_ROWS } from "../phases.js";
 import { updateLabel, updateLabelFits } from "../update.js";
@@ -41,16 +22,13 @@ import { usePorts } from "./hooks/usePorts.js";
 import { useBranches } from "./hooks/useBranches.js";
 import { useUpdateCheck } from "./hooks/useUpdateCheck.js";
 import { usePhases } from "./hooks/usePhases.js";
+import { useResume } from "./hooks/useResume.js";
 
 /** The title-row brand; also the width budget input for the update label. */
 const BRAND = "◆ Concurrent Session Monitor";
 
 /** Which pane the RIGHT bottom slot shows (Phase 8, D-14): `r` flips it on a TTY. */
 type RightPane = "fazlar" | "oturumlar";
-
-/** How long a SUCCESSFUL copy/open result stays in the OTURUMLAR pane (D-15).
- * A failure message stays until the next action instead. */
-const RESUME_FLASH_MS = 3000;
 
 /**
  * Estimated vertical cost of one full `SessionCard` (round border top+bottom,
@@ -109,12 +87,13 @@ function fmtClock(now: number): string {
  * `usePoll` interval (or startUpdateCheck's own timers) and stop on unmount, so
  * the process exits cleanly.
  *
- * The FAZLAR phase scan (keyed on `focusedIndex`) and the OTURUMLAR resume scan
- * (keyed on `rightPane`) deliberately stay inline here. They carry closed race
- * guards (the component-lifetime `mounted` ref, the D-19 visible-period
- * generations, the D-16 launch holds and the T-08-11 stale-closure refs) and had
- * no second consumer in Phase 9; Phase 10 extracts them as usePhases/useResume
- * when the v2 PHASES and SESSIONS panes go live.
+ * The FAZLAR phase scan and the OTURUMLAR resume picker live in the shared
+ * `usePhases` (focus by Tab index here) and `useResume` (visible while the right
+ * slot shows OTURUMLAR) hooks (Phase 10 plan 10-05, D-23), moved verbatim with
+ * their closed race guards (the component-lifetime `mounted` refs, the D-19
+ * visible-period generations, the D-16 launch holds and the T-08-11
+ * stale-closure refs). App keeps the pane state, the Tab focus index, the FAZLAR
+ * scroll offset and the only keyboard handler (`PanelKeyboard`).
  *
  * useRoster's `seen` Map (session_id -> { row, endedAt? }) drives D-05/D-06/D-08:
  * a dead or vanished session renders dim-grey as "ended" for the grace, then
@@ -124,9 +103,9 @@ function fmtClock(now: number): string {
  * (D-13) via Ink's built-in `useWindowSize`.
  *
  * The RIGHT bottom slot holds the interactive FAZLAR pane (PANEL-07/08/09): a
- * SECOND, slower env-gated scan effect (`phaseScanMs`) resolves `.planning/`
- * roots OFF the render tick (`resolvePlanningRoots`) and spawns `scanProgress`
- * for the focused project, while a TTY-guarded `useInput`
+ * SECOND, slower env-gated scan (`usePhases`, `phaseScanMs`) resolves
+ * `.planning/` roots OFF the render tick and spawns `scanProgress` for the
+ * focused project, while a TTY-guarded `useInput`
  * (`isActive: isRawModeSupported`) drives Tab/Shift+Tab project cycling and
  * arrow/PageUp/PageDown FAZLAR scrolling. Raw mode is entered ONLY when a TTY is
  * present, so Ink's default `exitOnCtrlC` cleanly unmounts the alt-screen on
@@ -138,8 +117,8 @@ function fmtClock(now: number): string {
  * Phase 8 (RESUME-04): on a TTY `r` flips the right slot between FAZLAR (the
  * default) and OTURUMLAR, the resumable-sessions picker (D-14); each pane shows
  * a dim toggle hint, and on a non-TTY the slot stays FAZLAR with no hint. The
- * OTURUMLAR list comes from a visibility-gated scan (D-19): one immediate
- * `discoverSessions` call when the pane opens, then a `resumeScanMs()` interval
+ * OTURUMLAR list comes from useResume's visibility-gated scan (D-19): one
+ * immediate session discovery when the pane opens, then a `resumeScanMs()` interval
  * that is cleared as soon as FAZLAR returns or App unmounts. The scan is async,
  * overlap-guarded and never part of the 750ms poll; its last-good rows stay
  * cached across toggles. The cursor is kept as a session id (D-17), Enter copies
@@ -222,20 +201,6 @@ export function App() {
   const ph = usePhases(liveRowsRef, focusedIndex);
   const { focusSet, idx, focusProgress, totalPhases } = ph;
 
-  // Component-lifetime "mounted" flag so a late scan resolve is dropped only on a
-  // REAL unmount — NOT when the reconciler re-runs a keyed scan effect or
-  // dev-double-invokes passive effects. A per-effect `let alive` closure would
-  // be flipped false by that teardown and silently swallow the first scan; this
-  // `[]`-scoped ref settles back true after any remount, so the async result
-  // reaches the live component's stable state setters.
-  const mounted = React.useRef(false);
-  React.useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-
   // Reset the FAZLAR scroll window to the top whenever the focused project
   // changes (D-04) — a fresh project always starts at its first phase.
   React.useEffect(() => {
@@ -243,129 +208,17 @@ export function App() {
   }, [idx]);
 
   // ── OTURUMLAR (RIGHT pane, Phase 8) state ──────────────────────────────────
-  // Which pane the right slot shows (FAZLAR by default, D-14), the cached
-  // last-good resume rows (null until the first scan resolves), the cursor kept
-  // as a session id (D-17), the list scroll offset and the copy/open result line.
+  // Which pane the right slot shows (FAZLAR by default, D-14). The resume picker
+  // itself (the visibility-gated scan with its generations and overlap guard,
+  // the id-based cursor and offset, the D-16 launch holds, the flash timer, the
+  // Enter sequence counter and the claim-before-await on `o`) lives in the
+  // shared useResume hook (Phase 10 plan 10-05, D-23). rightPaneRef is updated
+  // synchronously on `r`, so quick successive keys see the new pane before
+  // React re-renders (T-08-11).
   const [rightPane, setRightPane] = React.useState<RightPane>("fazlar");
-  const [resumeRows, setResumeRows] = React.useState<ResumeRow[] | null>(null);
-  const [selId, setSelId] = React.useState<string | null>(null);
-  const [resumeOffset, setResumeOffset] = React.useState(0);
-  const [resumeStatus, setResumeStatus] = React.useState<string | null>(null);
-  // Overlap guard for the resume scan, plus refs holding the latest values so the
-  // key handlers never act on a stale list (T-08-11) and quick successive keys
-  // see each other's effect before React re-renders.
-  const scanningResume = React.useRef(false);
-  // Generation of the current OTURUMLAR visible period (D-19) and the tick of
-  // the live scan effect, so a discarded scan can kick a fresh one at once.
-  const resumeScanGen = React.useRef(0);
-  const resumeTickRef = React.useRef<(() => void) | null>(null);
   const rightPaneRef = React.useRef(rightPane);
   rightPaneRef.current = rightPane;
-  const resumeRowsRef = React.useRef(resumeRows);
-  resumeRowsRef.current = resumeRows;
-  const selIdRef = React.useRef(selId);
-  selIdRef.current = selId;
-  // Last known index of the selected row; only updated while the id is still
-  // in the list, so reconcileSelection can fall back to the nearest row when
-  // the selected session drops out (D-17).
-  const selIdxRef = React.useRef(0);
-  if (resumeRows !== null && selId !== null) {
-    const i = resumeRows.findIndex((r) => r.id === selId);
-    if (i >= 0) selIdxRef.current = i;
-  }
-  const resumeOffsetRef = React.useRef(resumeOffset);
-  resumeOffsetRef.current = resumeOffset;
-  // D-16 launch holds (launch-hold.ts): ids this panel is launching or has just
-  // launched, keyed by session id, plus the per-press token counter. Kept in
-  // refs so quick successive keys see each other's claim before React
-  // re-renders; holdVersion only forces a re-render after a hold changes.
-  const launchHolds = React.useRef<LaunchHolds>(new Map());
-  const holdToken = React.useRef(0);
-  const [, setHoldVersion] = React.useState(0);
-  const bumpHolds = () => {
-    if (mounted.current) setHoldVersion((v) => v + 1);
-  };
-  const flashTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  React.useEffect(
-    () => () => {
-      if (flashTimer.current) clearTimeout(flashTimer.current);
-      flashTimer.current = null;
-    },
-    [],
-  );
-
-  // Visibility-gated resume scan (D-19, RESUME-04): runs ONLY while OTURUMLAR is
-  // visible — one immediate tick when `r` opens it, then a slow resumeScanMs()
-  // interval; switching back to FAZLAR (or unmounting) clears the interval. It
-  // is async and never part of the 750ms poll (T-08-12). liveIds are the
-  // non-ended store rows' session ids, so a CSM-tracked live session is marked
-  // live even without a registry entry (D-11); launch holds are never fed in.
-  // A rejected scan keeps the last-good rows; rows are not reset on hide, so
-  // reopening shows the cached list while the next scan runs.
-  //
-  // D-19 overlap rules (review WR-03, 08-07):
-  // - The in-flight scan owns the overlap guard: only its own `finally` clears
-  //   scanningResume, never the effect cleanup, so a quick r,r,r (show, hide,
-  //   show) can never run two discoverSessions calls at once.
-  // - Each visible period has a generation; the cleanup bumps it on hide or
-  //   unmount. A scan's rows apply only when its generation is still current
-  //   and App is mounted, so an older scan never overwrites fresher rows.
-  // - When a discarded scan ends while OTURUMLAR is visible again, a fresh scan
-  //   starts at once instead of waiting a full interval.
-  // - Launch holds (D-16) are settled only from applied scans, using the time
-  //   the scan started.
-  React.useEffect(() => {
-    if (rightPane !== "oturumlar") return undefined;
-    const gen = ++resumeScanGen.current;
-    const tick = () => {
-      if (scanningResume.current) return; // prior scan still running — no overlap
-      scanningResume.current = true;
-      const startedAt = Date.now();
-      // liveIds come from the store only, never from launch holds: settleHolds
-      // reads the scan's live flag as the confirmation that releases a hold.
-      discoverSessions({
-        n: RESUME_LIST_N,
-        liveIds: new Set(liveRowsRef.current.map((r) => r.session_id)),
-      })
-        .then((rows) => {
-          if (!mounted.current || gen !== resumeScanGen.current) return; // stale scan
-          if (settleHolds(launchHolds.current, rows, startedAt)) bumpHolds();
-          setResumeRows(rows);
-        })
-        .catch(() => {
-          /* non-fatal: keep the last-good rows */
-        })
-        .finally(() => {
-          scanningResume.current = false;
-          // A discarded scan blocked the reopened pane's first tick: run it now.
-          if (gen !== resumeScanGen.current && mounted.current) resumeTickRef.current?.();
-        });
-    };
-    resumeTickRef.current = tick;
-    tick();
-    const t = setInterval(tick, resumeScanMs());
-    return () => {
-      clearInterval(t);
-      // Discard results of scans started in this visible period from now on.
-      // scanningResume is deliberately left alone: only the scan's finally
-      // releases it.
-      resumeScanGen.current += 1;
-      if (resumeTickRef.current === tick) resumeTickRef.current = null;
-    };
-  }, [rightPane]);
-
-  // Keep the cursor on the same session id when a scan reorders or drops rows,
-  // falling back to the nearest row; the scroll offset follows the cursor (D-17).
-  React.useEffect(() => {
-    if (resumeRows === null) return;
-    const r = reconcileSelection(resumeRows, selIdRef.current, selIdxRef.current);
-    selIdRef.current = r.selId;
-    if (r.idx >= 0) selIdxRef.current = r.idx;
-    const off = followOffset(Math.max(0, r.idx), resumeOffsetRef.current, resumeRows.length, RESUME_VISIBLE_ROWS);
-    resumeOffsetRef.current = off;
-    setSelId(r.selId);
-    setResumeOffset(off);
-  }, [resumeRows]);
+  const resume = useResume(liveRowsRef, rightPane === "oturumlar");
 
   // Raw-mode is entered ONLY on a TTY (D-08, Pitfall 1). Rather than call
   // `useInput` with `{isActive:false}` on a non-TTY — which still makes Ink
@@ -376,45 +229,11 @@ export function App() {
   // that always shows FAZLAR (OTURUMLAR is unreachable and never scanned).
   const { isRawModeSupported } = useStdin();
 
-  const clearResumeStatus = () => {
-    if (flashTimer.current) clearTimeout(flashTimer.current);
-    flashTimer.current = null;
-    setResumeStatus(null);
-  };
-  // Show a copy/open result in the pane: a success clears after RESUME_FLASH_MS,
-  // a failure stays until the next action (D-15).
-  const showResult = (r: LaunchResult) => {
-    if (!mounted.current) return;
-    if (flashTimer.current) clearTimeout(flashTimer.current);
-    flashTimer.current = null;
-    setResumeStatus(r.message);
-    if (r.ok) {
-      flashTimer.current = setTimeout(() => {
-        flashTimer.current = null;
-        if (mounted.current) setResumeStatus(null);
-      }, RESUME_FLASH_MS);
-    }
-  };
-  // The selected OTURUMLAR row, read from the refs (never a stale closure).
-  const selectedRow = (): ResumeRow | null => {
-    if (rightPaneRef.current !== "oturumlar") return null;
-    const rows = resumeRowsRef.current;
-    const id = selIdRef.current;
-    if (rows === null || id === null) return null;
-    return rows.find((r) => r.id === id) ?? null;
-  };
-  // A row counts as live when the last scan said so OR this panel holds it
-  // (launching or just launched, D-16).
-  const isLive = (row: ResumeRow): boolean => row.live || launchHolds.current.has(row.id);
-  // quick-261014-fq8: bumped by every Enter and every `o`, so a still-pending
-  // Enter whose extras resolve after a newer press never touches the clipboard.
-  const enterSeq = React.useRef(0);
-
   const onToggle = () => {
     const next: RightPane = rightPaneRef.current === "fazlar" ? "oturumlar" : "fazlar";
     rightPaneRef.current = next;
     setRightPane(next);
-    clearResumeStatus();
+    resume.clearStatus();
   };
   // Tab cycles the FAZLAR project; it is a no-op while OTURUMLAR is visible.
   const onCycle = (dir: 1 | -1) => {
@@ -428,90 +247,17 @@ export function App() {
       return;
     }
     // OTURUMLAR: move the cursor by one row (arrows) or one window (PgUp/PgDn).
-    const rows = resumeRowsRef.current;
-    if (rows === null || rows.length === 0) return;
-    const found = rows.findIndex((r) => r.id === selIdRef.current);
-    const cur = found >= 0 ? found : Math.min(rows.length - 1, Math.max(0, selIdxRef.current));
-    const step = page ? RESUME_VISIBLE_ROWS : 1;
-    const next = Math.min(rows.length - 1, Math.max(0, cur + dir * step));
-    const id = rows[next]!.id;
-    const off = followOffset(next, resumeOffsetRef.current, rows.length, RESUME_VISIBLE_ROWS);
-    selIdRef.current = id;
-    selIdxRef.current = next;
-    resumeOffsetRef.current = off;
-    setSelId(id);
-    setResumeOffset(off);
-    clearResumeStatus();
+    resume.move(dir * (page ? RESUME_VISIBLE_ROWS : 1));
   };
-  // Enter: copy the resume line for the selected row (D-15). The row's cwd is
-  // passed so launch.ts can build the session-cwd form (D-10 REVISED), and the
-  // live flag (scan OR launch hold, taken at press time) so launch.ts warns on
-  // a live session (D-16). quick-261014-fq8: resumeExtras first resolves, on
-  // demand, the session's unique safe `/rename` name (the line then resumes
-  // by name) and whether it last ran in bypassPermissions (the line then ends
-  // with --dangerously-skip-permissions and the status warns). A rejection
-  // counts as no name and no bypass. A newer Enter or an `o` press supersedes
-  // this one: its copy is dropped, so it can never overwrite the clipboard.
+  // Enter copies and `o` opens the selected OTURUMLAR session (D-15, D-16);
+  // both act only while OTURUMLAR is the visible pane.
   const onEnter = () => {
-    const row = selectedRow();
-    if (row === null) return;
-    const live = isLive(row);
-    const seq = ++enterSeq.current;
-    resumeExtras({ id: row.id, slug: row.slug, cwd: row.cwd })
-      .catch(() => ({ bypass: false }) as { name?: string; bypass: boolean })
-      .then((extras) => {
-        if (seq !== enterSeq.current) return undefined;
-        return copyResume({ id: row.id, cwd: row.cwd, live, name: extras.name, bypass: extras.bypass === true }).then(
-          showResult,
-        );
-      })
-      .catch(() => {});
+    if (rightPaneRef.current !== "oturumlar") return;
+    resume.enter();
   };
-  // `o`: open the selected session in a new terminal window/tab. A live row is
-  // never opened — launch.ts copies and warns instead (D-16, T-08-09). To keep
-  // a double `o`, or an `o` during a pending launch, from starting a second
-  // process (review CR-01), the id is claimed synchronously BEFORE anything is
-  // awaited; a held id is treated as live. Liveness is then re-checked from
-  // fresh sources (CC registry + current store ids), since the scanned flag can
-  // be one scan interval old. Only this press's own failed launch (token-
-  // checked) releases the claim; a success stays held until a scan settles it.
   const onOpen = () => {
-    const row = selectedRow();
-    if (row === null) return;
-    enterSeq.current++; // quick-261014-fq8: an `o` press drops a pending Enter
-    // `row` is a const snapshot of an immutable scan row, so a later cursor
-    // move cannot change what this in-flight press launches (T-08-11).
-    const id = row.id;
-    if (flashTimer.current) clearTimeout(flashTimer.current);
-    flashTimer.current = null;
-    setResumeStatus("opening…");
-    if (isLive(row)) {
-      // Live or held: copy and warn only; no claim, and the result never
-      // touches the holds.
-      openResume({ id, cwd: row.cwd, live: true }).then(showResult, () => {});
-      return;
-    }
-    const token = ++holdToken.current;
-    claimLaunch(launchHolds.current, id, Date.now(), token);
-    bumpHolds(); // the row shows `· live` at once (D-11)
-    readLiveRegistry(registryDirs())
-      .catch(() => new Set<string>())
-      .then((registry) => {
-        const fresh = new Set(registry);
-        for (const r of liveRowsRef.current) fresh.add(r.session_id);
-        return openResume({ id, cwd: row.cwd, live: fresh.has(id) });
-      })
-      .then(
-        (r) => {
-          settleLaunch(launchHolds.current, id, token, r.ok);
-          bumpHolds();
-          showResult(r);
-        },
-        () => {
-          settleLaunch(launchHolds.current, id, token, false);
-          bumpHolds();
-        },
-      );
+    if (rightPaneRef.current !== "oturumlar") return;
+    resume.open();
   };
 
   const nConf = state.conflicts.length;
@@ -539,9 +285,10 @@ export function App() {
   // " · " + clock fit on the one title line; otherwise dropped, never wrapped.
   const updLabel = updateLabel(updateTo);
   const showUpdate = updLabel !== null && updateLabelFits(termCols, BRAND, updLabel, clock);
-  // OTURUMLAR display rows: held ids read as live at once (D-11, D-16). Cursor,
-  // scroll and selection stay on the RAW resumeRows; the ids are identical.
-  const shownRows = applyHolds(resumeRows, launchHolds.current);
+  // OTURUMLAR display rows: held ids read as live at once (D-11, D-16); the
+  // hook applies the launch-hold overlay. Cursor, scroll and selection stay on
+  // the raw scan rows; the ids are identical.
+  const shownRows = resume.rows;
 
   // Merge the live-derived branch into each roster row (D-LB-03): App overrides
   // the `branch` field so SessionCard's `s.branch` display AND its 260914-507
@@ -633,9 +380,9 @@ export function App() {
           {rightPane === "oturumlar" ? (
             <SessionsPane
               rows={shownRows}
-              cursorId={selId}
-              scrollOffset={resumeOffset}
-              status={resumeStatus}
+              cursorId={resume.selId}
+              scrollOffset={resume.offset}
+              status={resume.status?.text ?? null}
               now={Date.now()}
             />
           ) : (
