@@ -1804,3 +1804,51 @@ describe("session title (NAME-01, D-02/D-03/D-04/D-10)", () => {
     expect(resolveTitle({ title: "X", tsMs: 20 }, t("Y", 20))).toBe("X");
   });
 });
+
+describe("transcript card facts (10-06, D-07)", () => {
+  /** A transcript with an assistant line and a last-prompt record (RESEARCH Q3 shape). */
+  function writeCardTranscript(id: string, model: string, prompt: string, mtimeSec: number): string {
+    const p = writeTranscript(id, [], mtimeSec);
+    fs.appendFileSync(
+      p,
+      JSON.stringify({
+        parentUuid: null,
+        isSidechain: false,
+        message: { model, role: "assistant", content: [] },
+        type: "assistant",
+        sessionId: id,
+      }) +
+        "\n" +
+        JSON.stringify({ type: "last-prompt", lastPrompt: prompt, sessionId: id }) +
+        "\n",
+    );
+    fs.utimesSync(p, mtimeSec, mtimeSec);
+    return p;
+  }
+
+  it("F1: a row carries last_prompt and transcript_model from its own transcript", () => {
+    const p = writeCardTranscript("alpha", "claude-opus-4-8", "fix the tests", 1700000000);
+    seedSession("alpha", new Date().toISOString(), { transcriptPath: p });
+    seedSession("beta", new Date().toISOString());
+    const rows = readAll();
+    const alpha = rows.find((r) => r.session_id === "alpha");
+    expect(alpha?.transcript_model).toBe("claude-opus-4-8");
+    expect(alpha?.last_prompt).toBe("fix the tests");
+    expect(alpha?.model).toBe("unknown"); // session.json value untouched
+    const beta = rows.find((r) => r.session_id === "beta");
+    expect(beta?.transcript_model).toBeUndefined();
+    expect(beta?.last_prompt).toBeUndefined();
+  });
+
+  it("F2: card facts never change the last_active row order", () => {
+    const now = Date.now();
+    const p = writeCardTranscript("older", "claude-opus-4-8", "x", 1700000000);
+    const older = seedSession("older", new Date(now - 60_000).toISOString(), { transcriptPath: p });
+    const newer = seedSession("newer", new Date(now - 60_000).toISOString());
+    appendTouch(older, { file_path: "/repo/a.ts", ts: new Date(now - 30_000).toISOString() });
+    appendTouch(newer, { file_path: "/repo/b.ts", ts: new Date(now - 1_000).toISOString() });
+    const rows = readAll(now);
+    expect(rows.map((r) => r.session_id)).toEqual(["newer", "older"]);
+    expect(rows[1].transcript_model).toBe("claude-opus-4-8");
+  });
+});

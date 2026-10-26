@@ -20902,6 +20902,62 @@ function scanTailFacts(buf, atBoundary, sessionId, slug) {
   }
   return f;
 }
+var MODEL_PREFIX_CHARS = 2048;
+var MODEL_PREFIX_PATTERN = /"model":"([A-Za-z0-9._\[\]-]{1,100})"/;
+var SIDECHAIN_TRUE = '"isSidechain":true';
+var SESSION_ID_MARKER = '"sessionId":"';
+var TYPE_MARKER = '"type":"';
+var SYNTHETIC_MODEL = "<synthetic>";
+function lastKeyValue(line, marker) {
+  const at = line.lastIndexOf(marker);
+  if (at < 0) return void 0;
+  const start = at + marker.length;
+  const end = line.indexOf('"', start);
+  return end > start ? line.slice(start, end) : void 0;
+}
+function longLineModel(line, sessionId) {
+  if (lastKeyValue(line, TYPE_MARKER) !== "assistant") return void 0;
+  const prefix = line.slice(0, MODEL_PREFIX_CHARS);
+  if (prefix.includes(SIDECHAIN_TRUE)) return void 0;
+  const sid = lastKeyValue(line, SESSION_ID_MARKER);
+  if (sid !== void 0 && sid !== sessionId) return void 0;
+  const m = MODEL_PREFIX_PATTERN.exec(prefix);
+  if (m === null || m[1] === SYNTHETIC_MODEL) return void 0;
+  return m[1];
+}
+function scanCardFacts(buf, atBoundary, sessionId) {
+  const f = {};
+  for (const line of windowLines(buf, atBoundary)) {
+    if (line.length === 0) continue;
+    const isPrompt = line.length <= MAX_TITLE_LINE && line.includes('"type":"last-prompt"');
+    const isAssistant = line.includes(ASSISTANT_MARKER);
+    if (!isPrompt && !isAssistant) continue;
+    if (line.length > MAX_SCAN_LINE) {
+      const model2 = longLineModel(line, sessionId);
+      if (model2 !== void 0) f.model = model2;
+      continue;
+    }
+    let parsed;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (parsed === null || typeof parsed !== "object") continue;
+    const o = parsed;
+    if (o.sessionId !== void 0 && o.sessionId !== sessionId) continue;
+    if (isPrompt && o.type === "last-prompt" && typeof o.lastPrompt === "string") {
+      f.lastPrompt = o.lastPrompt;
+      continue;
+    }
+    if (o.type !== "assistant" || o.isSidechain === true) continue;
+    const msg = o.message;
+    if (msg === null || typeof msg !== "object") continue;
+    const model = msg.model;
+    if (typeof model === "string" && model.length > 0 && model !== SYNTHETIC_MODEL) f.model = model;
+  }
+  return f;
+}
 function scanPermissionMode(buf, atBoundary, sessionId) {
   try {
     if (buf.lastIndexOf(MODE_MARKER_BYTES) < 0) return { decided: false };
@@ -21141,12 +21197,13 @@ function isAllowedTranscriptPath(sessionId, p, roots) {
     return void 0;
   }
 }
-function readTailCustomTitle(realPath, sessionId, budget = TAIL_BYTES) {
+function readTailTitleAndCard(realPath, sessionId, budget) {
   try {
     const window2 = readWindowSync(realPath, "tail", budget);
     if (window2 === void 0) return void 0;
     const title = scanCustomTitle(window2.buf, window2.atBoundary, sessionId);
-    return { title, size: window2.size, mtimeMs: window2.mtimeMs };
+    const card = scanCardFacts(window2.buf, window2.atBoundary, sessionId);
+    return { title, card, size: window2.size, mtimeMs: window2.mtimeMs };
   } catch {
     return void 0;
   }
@@ -21187,11 +21244,15 @@ function readTranscriptTitle(sessionId, transcriptPath, budget = TAIL_BYTES) {
     if (st.size < entry.size) {
       entry.title = void 0;
       entry.changedAtMs = void 0;
+      entry.lastPrompt = void 0;
+      entry.model = void 0;
       entry.size = -1;
       entry.mtimeMs = -1;
     }
-    const r2 = readTailCustomTitle(entry.realPath, sessionId, budget);
+    const r2 = readTailTitleAndCard(entry.realPath, sessionId, budget);
     if (r2 === void 0) return valueOf(entry);
+    if (r2.card.lastPrompt !== void 0) entry.lastPrompt = r2.card.lastPrompt;
+    if (r2.card.model !== void 0) entry.model = r2.card.model;
     const baseline = entry.size < 0;
     if (r2.title !== void 0 && r2.title !== entry.title) {
       entry.title = r2.title;
@@ -21203,6 +21264,14 @@ function readTranscriptTitle(sessionId, transcriptPath, budget = TAIL_BYTES) {
   } catch {
     return valueOf(cache2.get(sessionId));
   }
+}
+function readTranscriptCard(sessionId) {
+  const e = cache2.get(sessionId);
+  const out = {};
+  if (e === void 0) return out;
+  if (e.lastPrompt !== void 0) out.lastPrompt = e.lastPrompt;
+  if (e.model !== void 0) out.model = e.model;
+  return out;
 }
 function pruneTranscriptTitleCache(keep) {
   for (const id of [...cache2.keys()]) {
@@ -22638,6 +22707,7 @@ function readAll(now = Date.now(), probe = defaultProbe, startedProbe = defaultS
     const { files, lastActive } = activeFiles(dir, now);
     const titleShard = readTitleShard(dir);
     const title = resolveTitle(titleShard, readTranscriptTitle(id, titleShard.transcript_path));
+    const card = readTranscriptCard(id);
     const rawReads = activeReads(dir, now);
     const writeSet = new Set(files.map((f) => f.file_path));
     const reads = rawReads.filter((r2) => !writeSet.has(r2.file_path));
@@ -22693,6 +22763,10 @@ function readAll(now = Date.now(), probe = defaultProbe, startedProbe = defaultS
       // SKILL-03 additive card-only field (D-01 separate shard)
       title,
       // NAME-01 additive card-only field (D-02 shard + D-04 tail)
+      last_prompt: card.lastPrompt,
+      // 10-06 additive card-only field (D-07 tail)
+      transcript_model: card.model,
+      // 10-06 additive card-only field (D-07 tail)
       last_active: lastActive,
       last_seen: heartbeatMs !== void 0 ? new Date(heartbeatMs).toISOString() : state.last_seen,
       alive,

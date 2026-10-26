@@ -13,6 +13,7 @@ import type {
 } from "./schema.js";
 import {
   readTranscriptTitle,
+  readTranscriptCard,
   pruneTranscriptTitleCache,
   type TranscriptTitle,
 } from "./transcript.js";
@@ -290,6 +291,24 @@ export type SessionRow = SessionState & {
    * Additive; SESSION_SCHEMA_VERSION unchanged.
    */
   title?: string;
+  /**
+   * The session's last user prompt, from the `last-prompt` record in its own
+   * transcript tail (Phase 10 plan 10-06; D-07, 09 D-11), read by the same
+   * cached tail read as {@link title} (no extra IO). RAW untrusted text: every
+   * render surface draws it through `plainText`. Card/detail-only: it never
+   * drives sort, liveness, or conflict detection. Additive; absent when the
+   * tail holds no such record.
+   */
+  last_prompt?: string;
+  /**
+   * The raw model id of the newest real (non-sidechain, non-`<synthetic>`)
+   * assistant line in the session's own transcript tail (Phase 10 plan 10-06;
+   * D-07, 09 D-11), so a `/model` switch shows up. Same cached tail read as
+   * {@link title}. RAW untrusted text, shortened by `cardModel` (D-07 order:
+   * this, then `model` when not `unknown`). Card/detail-only: it never drives
+   * sort, liveness, or conflict detection. Additive.
+   */
+  transcript_model?: string;
 };
 
 /**
@@ -686,6 +705,8 @@ export function readAll(
     // liveness, or conflicts.
     const titleShard = readTitleShard(dir);
     const title = resolveTitle(titleShard, readTranscriptTitle(id, titleShard.transcript_path));
+    // 10-06 (D-07): the card facts cached by that same tail read (no extra IO).
+    const card = readTranscriptCard(id);
 
     // Read-side aggregate (D-06), independent of the write window. D-07: a path
     // in this session's active write set is a WRITE, never also a read — filter
@@ -863,6 +884,8 @@ export function readAll(
       ...readTargetBranch(dir), // TB-02 additive card-only field (D-01/D-BR-01 separate shard)
       ...readSkill(dir, now), // SKILL-03 additive card-only field (D-01 separate shard)
       title, // NAME-01 additive card-only field (D-02 shard + D-04 tail)
+      last_prompt: card.lastPrompt, // 10-06 additive card-only field (D-07 tail)
+      transcript_model: card.model, // 10-06 additive card-only field (D-07 tail)
       last_active: lastActive,
       last_seen: heartbeatMs !== undefined ? new Date(heartbeatMs).toISOString() : state.last_seen,
       alive,
