@@ -200,6 +200,20 @@ function sumItems(slots: readonly Slot[], from: number, to: number): number {
 }
 
 /**
+ * What drawAgentsPane reports: the rows used from `r.y`, the hidden-item count
+ * below, and the grid window it drew (Phase 10 plan 10-08, RESEARCH Pattern 3):
+ * `firstRow` is the clamped first card row drawn and `visibleRows` the number
+ * of card rows drawn. The shell feeds `firstRow` back as the next render's
+ * offset, so the window is sticky.
+ */
+export interface AgentsPaneResult {
+  rows: number;
+  moreBelow: number;
+  firstRow: number;
+  visibleRows: number;
+}
+
+/**
  * Draw the AGENTS pane into `r` and return the rows used from `r.y` (the
  * `down N more` row included) and the hidden-item count below (0 = no `down`
  * row). Clipping, with `available = r.h - 1` (minus 1 more for the `up` row):
@@ -227,8 +241,8 @@ export function drawAgentsPane(
     selectedId: string | null;
     firstRow: number;
   },
-): { rows: number; moreBelow: number } {
-  if (r.h < 1 || r.w < 1) return { rows: 0, moreBelow: 0 };
+): AgentsPaneResult {
+  if (r.h < 1 || r.w < 1) return { rows: 0, moreBelow: 0, firstRow: 0, visibleRows: 0 };
   const nA = m.agents.length;
   const nI = m.idle.length;
   const right =
@@ -247,7 +261,7 @@ export function drawAgentsPane(
       scr.put(r.x + 2, r.y + 2, plainText(EMPTY_BODY, r.w - 2), { fg: PALETTE.dim2 });
       rows = 3;
     }
-    return { rows, moreBelow: 0 };
+    return { rows, moreBelow: 0, firstRow: 0, visibleRows: 0 };
   }
 
   // WR-06 (Phase 10 plan 10-02): a pane narrower than one card draws no card
@@ -257,9 +271,9 @@ export function drawAgentsPane(
     const n = nA + nI;
     if (r.h >= 2 && r.w > 2) {
       scr.put(r.x + 2, r.y + 1, plainText(`${V2.down} ${n} more`, r.w - 2), dimSt);
-      return { rows: 2, moreBelow: n };
+      return { rows: 2, moreBelow: n, firstRow: 0, visibleRows: 0 };
     }
-    return { rows: 1, moreBelow: n };
+    return { rows: 1, moreBelow: n, firstRow: 0, visibleRows: 0 };
   }
   const want = Number.isFinite(m.cardCols) ? Math.trunc(m.cardCols) : 1;
   const cols = Math.min(fit, Math.max(1, want));
@@ -269,7 +283,13 @@ export function drawAgentsPane(
   const cardRows = Math.ceil(slots.length / cols);
 
   const fr = Number.isFinite(m.firstRow) ? Math.trunc(m.firstRow) : 0;
-  const first = Math.min(Math.max(0, fr), Math.max(0, cardRows - 1));
+  // 10-08 (Pattern 3, Pitfall 20): a fed-back offset is clamped to the last
+  // start whose remaining card rows still fill the rect (under the `up` row),
+  // and to 0 when the whole grid fits, so a resize never leaves rows hidden
+  // above a window that has room for them.
+  const allFit = cardRows * CARD_PITCH_Y - 1 <= r.h - 1;
+  const maxStart = allFit ? 0 : Math.max(0, cardRows - Math.max(1, Math.floor((r.h - 1) / CARD_PITCH_Y)));
+  const first = Math.min(Math.max(0, fr), maxStart);
   // the `up` row needs a row under the title inside the rect (09-09 rect clip)
   const up = first > 0 && r.h >= 2;
   const available = r.h - 1 - (up ? 1 : 0);
@@ -328,5 +348,5 @@ export function drawAgentsPane(
     scr.put(r.x + 2, dy, `${V2.down} ${below} more`, dimSt);
     rows = dy - r.y + 1;
   }
-  return { rows: Math.min(rows, r.h), moreBelow: below };
+  return { rows: Math.min(rows, r.h), moreBelow: below, firstRow: first, visibleRows: k };
 }

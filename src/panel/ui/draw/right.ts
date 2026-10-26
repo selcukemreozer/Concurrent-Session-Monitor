@@ -69,6 +69,12 @@ export interface RightColumnModel {
   sessionStatus: Flash | null;
   ports: readonly PortEntry[];
   sample: boolean;
+  /**
+   * Per-pane chips (10-08, D-23, RESEARCH Pattern 4): the tabs row's chip and
+   * the PORTS chip; each falls back to `sample` when absent.
+   */
+  sampleTabs?: boolean;
+  samplePorts?: boolean;
   portsMinY: number;
 }
 
@@ -148,7 +154,7 @@ export function drawTabsBody(
   if (r.w <= 0 || r.h <= 0) return { end: r.y - 1, bodyRows: 0 };
   const ui = m.ui;
   const rightFocused = ui.focus === "right";
-  drawTabs(scr, r.x, r.y, r.w, { active: ui.rightTab, columnFocused: rightFocused, sample: m.sample });
+  drawTabs(scr, r.x, r.y, r.w, { active: ui.rightTab, columnFocused: rightFocused, sample: m.sampleTabs ?? m.sample });
 
   const h = Math.max(0, Math.min(Math.trunc(bodyH) || 0, r.h - 2));
   const bodyRect: Rect = { x: r.x, y: r.y + 2, w: r.w, h };
@@ -189,7 +195,7 @@ export function drawBand(scr: Screen, r: Rect, band: Band, m: RightColumnModel):
       ports: m.ports,
       focused: portsFocused,
       cursorKey: portsFocused ? (m.ports[0]?.key ?? null) : null,
-      sample: m.sample,
+      sample: m.samplePorts ?? m.sample,
     },
   );
   const end = Math.min(bottom - 1, Math.max(r.y, left.end, r.y + portsRows - 1));
@@ -241,7 +247,7 @@ export function drawRightColumn(scr: Screen, r: Rect, m: RightColumnModel): { en
       ports: m.ports,
       focused: portsFocused,
       cursorKey: portsFocused ? (m.ports[0]?.key ?? null) : null,
-      sample: m.sample,
+      sample: m.samplePorts ?? m.sample,
     },
   );
 

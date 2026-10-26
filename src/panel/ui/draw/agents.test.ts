@@ -589,7 +589,7 @@ describe("drawAgentsPane: reports its window (10-08, Pattern 3)", () => {
     // 6 card rows; h 18 holds the up row + 2 card rows, so the last start is 4
     const res = drawAgentsPane(scr, { x: 0, y: 0, w: 96, h: 18 }, { ...PANE, agents: many, firstRow: 99 });
     expect(res).toMatchObject({ firstRow: 4, visibleRows: 2, moreBelow: 0 });
-    expect(text(scr, 1)).toBe("  ↑ 9 more");
+    expect(text(scr, 1)).toBe("  ↑ 8 more");
   });
 
   it("clamps the offset to 0 when the whole grid fits", () => {

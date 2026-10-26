@@ -35,7 +35,7 @@ import { drawTooSmall } from "./tooSmall.js";
  *     row and the `│` divider at `band.divX` on the band rows only
  *     (`drawBand`). The band takes the right column's place in the stacked
  *     budget below; its height is the taller half's natural height.
- *   - D-20: every pane carries the ` sample ` chip while `sample` is set; the
+ *   - D-20: every pane carries the ` sample ` chip while its `sample` flag is set; the
  *     header never does.
  *
  * Vertical budget: row 0 header, row 1 blank, content on rows 2..rows-3, one
@@ -80,6 +80,21 @@ import { drawTooSmall } from "./tooSmall.js";
  * drawn outside its rect, every line is at most `cols` cells and at most
  * `rows` lines are returned.
  *
+ * Sticky windows (Phase 10 plan 10-08, RESEARCH Pattern 3, LAYOUT-02):
+ * `drawShellFrame` takes the previous frame's `ScrollState` as `input.scroll`
+ * and returns the window each pane actually drew. The caller (PanelApp) keeps
+ * it in a ref and feeds it back on the next draw, so a pane's window only
+ * moves when its cursor leaves it. Every offset is clamped by the pane on every
+ * render (agents: to the last start that still fills the rect), so a resize
+ * can never leave a stale offset (milestone Pitfall 20). The grid's natural
+ * height is always measured from offset 0, so allocation never depends on the
+ * scroll position.
+ *
+ * Per-pane sample chips (10-08, RESEARCH Pattern 4, D-23): `sample` is either
+ * one boolean (every pane alike, as in Phase 9) or a `SampleFlags` record;
+ * each pane's ` sample ` chip goes away when its own flag turns false. The
+ * tabs row carries the chip of the ACTIVE tab.
+ *
  * Motion (UI-SPEC section Motion): `tick` drives the spinners (one 250 ms UI
  * tick) and `step` drives the FILES ticker (one step every 2 ticks, frozen
  * while paused). Both are plain inputs: the function is pure, so tests need no
@@ -100,7 +115,49 @@ export interface ShellInput {
   // chrome
   keysOff: boolean;
   flash: Flash | null;
-  sample: boolean;
+  /** One flag for every pane, or one per pane (10-08, D-23). */
+  sample: boolean | SampleFlags;
+  /** The previous frame's windows (10-08, Pattern 3); absent = all at 0. */
+  scroll?: ScrollState;
+}
+
+/** A pane's window: the first row (or item) drawn and how many were drawn. */
+export interface PaneWindow {
+  offset: number;
+  visible: number;
+}
+
+/** The windows of every scrollable pane, fed back on the next draw (Pattern 3). */
+export interface ScrollState {
+  grid: PaneWindow;
+  phases: PaneWindow;
+  sessions: PaneWindow;
+  ports: PaneWindow;
+}
+
+const NO_WINDOW: PaneWindow = Object.freeze({ offset: 0, visible: 0 });
+
+export const EMPTY_SCROLL: ScrollState = Object.freeze({
+  grid: NO_WINDOW,
+  phases: NO_WINDOW,
+  sessions: NO_WINDOW,
+  ports: NO_WINDOW,
+});
+
+/** Which panes still draw SAMPLE data, and so carry the ` sample ` chip (D-23). */
+export interface SampleFlags {
+  agents: boolean;
+  files: boolean;
+  phases: boolean;
+  sessions: boolean;
+  ports: boolean;
+}
+
+/** `sample` normalized to one flag per pane. */
+function flags(input: ShellInput): SampleFlags {
+  const s = input.sample;
+  if (typeof s === "boolean") return { agents: s, files: s, phases: s, sessions: s, ports: s };
+  return s;
 }
 
 /** The first content row (row 0 header, row 1 blank). */
@@ -131,16 +188,17 @@ interface Measured {
   filesTicker: number;
 }
 
-function agentsModel(input: ShellInput, cardCols: number): Parameters<typeof drawAgentsPane>[2] {
+/** The AGENTS model; `firstRow` is the fed-back grid offset unless `natural` (measurement). */
+function agentsModel(input: ShellInput, cardCols: number, natural = false): Parameters<typeof drawAgentsPane>[2] {
   return {
     agents: input.panes.agents,
     idle: input.panes.idle,
     focused: input.ui.focus === "agents",
-    sample: input.sample,
+    sample: flags(input).agents,
     cardCols,
     tick: input.tick,
     selectedId: input.ui.selectedAgentId,
-    firstRow: 0,
+    firstRow: natural ? 0 : (input.scroll?.grid.offset ?? 0),
   };
 }
 
@@ -150,12 +208,13 @@ function filesModel(input: ShellInput): Parameters<typeof drawFilesPane>[2] {
     groups: input.panes.groups,
     paused: input.ui.filesPaused,
     step: input.step,
-    sample: input.sample,
+    sample: flags(input).files,
   };
 }
 
 function rightModel(input: ShellInput, portsMinY: number): Parameters<typeof drawRightColumn>[2] {
   const p = input.panes;
+  const f = flags(input);
   return {
     ui: input.ui,
     projects: p.projects,
@@ -163,7 +222,9 @@ function rightModel(input: ShellInput, portsMinY: number): Parameters<typeof dra
     sessions: p.sessions,
     sessionStatus: p.sessionStatus,
     ports: p.ports,
-    sample: input.sample,
+    sample: f.phases || f.sessions,
+    sampleTabs: f[input.ui.rightTab],
+    samplePorts: f.ports,
     portsMinY,
   };
 }
@@ -202,7 +263,7 @@ function measureLeft(input: ShellInput, w: number, cardCols: number): Measured {
   const p = input.panes;
   const slots = p.agents.length + Math.ceil(p.idle.length / 3);
   const h = CARD_PITCH_Y * (slots + 1) + 2;
-  const a = drawAgentsPane(new Screen(w, h), { x: 0, y: 0, w, h }, agentsModel(input, cardCols));
+  const a = drawAgentsPane(new Screen(w, h), { x: 0, y: 0, w, h }, agentsModel(input, cardCols, true));
   const f = drawFilesPane(new Screen(w, FILES_MAX_H), { x: 0, y: 0, w, h: FILES_MAX_H }, filesModel(input));
   const filesHard = Math.min(f, 1 + Math.min(p.conflicts.length, MAX_CONFLICT_ROWS));
   return { agents: a.rows, filesHard, filesTicker: f - filesHard };
@@ -219,12 +280,20 @@ function bandNatural(rm: RightColumnModel, leftW: number, rightW: number, h: num
   const ports = drawPortsPane(
     new Screen(rightW, h),
     { x: 0, y: 0, w: rightW, h },
-    { ports: rm.ports, focused, cursorKey: focused ? (rm.ports[0]?.key ?? null) : null, sample: rm.sample },
+    {
+      ports: rm.ports,
+      focused,
+      cursorKey: focused ? (rm.ports[0]?.key ?? null) : null,
+      sample: rm.samplePorts ?? rm.sample,
+    },
   );
   return Math.max(left, ports);
 }
 
-/** Draw AGENTS then FILES down one column; returns the FILES title row and the last row used. */
+/**
+ * Draw AGENTS then FILES down one column; returns the FILES title row, the
+ * last row used and the grid window drawn (10-08).
+ */
 function drawLeft(
   scr: Screen,
   input: ShellInput,
@@ -234,7 +303,7 @@ function drawLeft(
   agentsH: number,
   filesH: number,
   bottom: number,
-): { filesY: number; end: number } {
+): { filesY: number; end: number; grid: PaneWindow } {
   const ar: Rect = { x, y: BODY_Y, w, h: agentsH };
   const a = drawAgentsPane(scr, ar, agentsModel(input, cardCols));
   // a spacer after the grid only when the rect has a row left for it
@@ -242,12 +311,21 @@ function drawLeft(
   const fh = Math.max(0, Math.min(filesH, bottom - filesY));
   const f = drawFilesPane(scr, { x, y: filesY, w, h: fh }, filesModel(input));
   const end = f > 0 ? filesY + f - 1 : BODY_Y + a.rows - 1;
-  return { filesY, end };
+  return { filesY, end, grid: { offset: a.firstRow, visible: a.visibleRows } };
 }
 
+/** The frame lines only (every Phase 9 caller); see drawShellFrame. */
 export function drawShell(input: ShellInput): Line[] {
+  return drawShellFrame(input).lines;
+}
+
+/**
+ * The frame plus the windows the panes drew (10-08, Pattern 3). Feed `scroll`
+ * back as `input.scroll` on the next draw.
+ */
+export function drawShellFrame(input: ShellInput): { lines: Line[]; scroll: ScrollState } {
   const g = geometry(input.cols, input.rows);
-  if (g.mode === "small") return drawTooSmall(g.cols, g.rows, input.header);
+  if (g.mode === "small") return { lines: drawTooSmall(g.cols, g.rows, input.header), scroll: EMPTY_SCROLL };
 
   const cols = g.cols;
   const rows = g.rows;
@@ -258,6 +336,7 @@ export function drawShell(input: ShellInput): Line[] {
   /** Exclusive end of the content rows (the spacer row above the footer). */
   const bottom = BODY_Y + total;
   let end: number;
+  let gridWin: PaneWindow = NO_WINDOW;
 
   if (g.split && g.divX !== null) {
     const m = measureLeft(input, g.LW, g.cardCols);
@@ -281,6 +360,7 @@ export function drawShell(input: ShellInput): Line[] {
       bottom,
     );
     const right = drawRightColumn(scr, { x: g.RX, y: BODY_Y, w: g.RW, h: total }, rightModel(input, left.filesY));
+    gridWin = left.grid;
     end = Math.max(left.end, right.end);
     for (let y = BODY_Y; y <= end; y++) scr.put(g.divX, y, V2.vline, { fg: PALETTE.edge });
   } else {
@@ -334,6 +414,7 @@ export function drawShell(input: ShellInput): Line[] {
       (b.filesHard ?? 0) + (b.ticker ?? 0),
       bottom,
     );
+    gridWin = left.grid;
     end = left.end;
     const ry = left.end + 1 + (b.rightSpacer ?? 0);
     const rH = Math.max(0, Math.min(b[rid] ?? 0, bottom - ry));
@@ -346,5 +427,8 @@ export function drawShell(input: ShellInput): Line[] {
 
   const footerY = Math.min(end + 2, rows - 1);
   drawFooter(scr, footerY, cols, { hints: hintsFor(input.ui), keysOff: input.keysOff, flash: input.flash });
-  return scr.toLines(footerY + 1);
+  // phases / sessions / ports stay at 0 until their panes go live (wired by
+  // the PHASES/SESSIONS plan 10-13 and the PORTS plan 10-14)
+  const scroll: ScrollState = { grid: gridWin, phases: NO_WINDOW, sessions: NO_WINDOW, ports: NO_WINDOW };
+  return { lines: scr.toLines(footerY + 1), scroll };
 }
