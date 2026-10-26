@@ -23,6 +23,7 @@ import { ScreenView } from "./ui/ScreenView.js";
 import { buildAgents, stableOrder } from "./ui/build/agents.js";
 import { gridItems, moveGrid, pageGrid } from "./ui/nav.js";
 import { geometry } from "./ui/geometry.js";
+import { defaultGotoDeps, runGoto, type GotoDeps } from "./actions/goto.js";
 import type { SessionRow } from "../aggregate.js";
 import type { AgentCard, IdleStrip } from "./ui/models.js";
 
@@ -78,8 +79,18 @@ import type { AgentCard, IdleStrip } from "./ui/models.js";
  *     card under the cursor (T-10-21). Its ` sample ` chip is gone; the other
  *     panes keep SAMPLE until their plans.
  *   - `move` / `page` intents in AGENTS select by identity over the cards and
- *     strips (nav.ts moveGrid / pageGrid); go-to stays a no-op until 10-10.
+ *     strips (nav.ts moveGrid / pageGrid); Enter (go-to) is wired by 10-10.
  *   - A selection whose session leaves the roster is cleared (fails closed).
+ *
+ * Phase 10 plan 10-10 (GOTO-01, GOTO-04, GOTO-05, D-09, D-12, D-13):
+ *   - Enter on a selected card or idle strip runs the ONE go-to action
+ *     (`./actions/goto.js` runGoto): an Enter-time liveness and ancestry
+ *     probe, the strict URL check, then `open` with an args array. Its
+ *     result is a footer flash (`focusing <name>` or one plain reason).
+ *   - One go-to at a time (`gotoInFlight`); the probes are async, so the
+ *     render path never waits on them. A flash after unmount is dropped.
+ *   - The selection keeps the normal 15 s idle rule after a go-to (D-09).
+ *   - Tests inject `gotoDeps`; production builds `defaultGotoDeps()` once.
  */
 export interface PanelAppProps {
   tickMs?: number;
@@ -88,6 +99,8 @@ export interface PanelAppProps {
   initialUi?: Partial<UiState>;
   /** Tests only: observes every intent the dispatcher routes, with its context. */
   intentSpy?: (intent: Intent, ctx: HintContext) => void;
+  /** Tests only: the go-to probes and opener (production: defaultGotoDeps()). */
+  gotoDeps?: GotoDeps;
 }
 
 /** The view facts the dispatcher resolves keys against (10-08; later plans add ports, phases, sessions). */
@@ -101,6 +114,8 @@ interface ViewFacts {
   cols: number;
   /** The live rows by session id (10-09; go-to and detail lookups). */
   byId: ReadonlyMap<string, SessionRow>;
+  /** The raw card / strip names by session id (10-10; the go-to flash). */
+  nameById: ReadonlyMap<string, string>;
 }
 
 /** Each flag turns false when its pane goes live (D-23); AGENTS is live from 10-09. */
@@ -205,6 +220,7 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
     stripIds: [],
     cols: 1,
     byId: new Map(),
+    nameById: new Map(),
   });
   viewRef.current = {
     agentIds: new Set([...cardIds, ...stripIds]),
@@ -212,6 +228,7 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
     stripIds,
     cols: Math.max(1, geometry(columns, rows).cardCols),
     byId: ag.byId,
+    nameById: new Map([...ag.agents, ...ag.idle].map((x) => [x.id, x.name] as const)),
   };
   const scrollRef = React.useRef<ScrollState>(EMPTY_SCROLL);
   const uiForDraw = effectiveUi(ui, viewRef.current.agentIds);
@@ -262,6 +279,19 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
   // Pattern 3: the windows drawn are fed back on the next draw (a ref: no state, no extra render)
   scrollRef.current = frame.scroll;
 
+  // 10-10: the go-to deps (created once), the in-flight guard and the mounted flag
+  const defaultDepsRef = React.useRef<GotoDeps | null>(null);
+  if (props.gotoDeps === undefined && defaultDepsRef.current === null) defaultDepsRef.current = defaultGotoDeps();
+  const gotoDeps: GotoDeps = props.gotoDeps ?? (defaultDepsRef.current as GotoDeps);
+  const gotoInFlight = React.useRef(false);
+  const mounted = React.useRef(true);
+  React.useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
   // The dispatcher's per-context intent handlers, reassigned every render so
   // they read the latest view-model. A handler is added only by the plan that
   // makes its pane live (T-10-19): AGENTS from 10-09, the rest are no-ops.
@@ -274,6 +304,36 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
       case "agentsSelected": {
         // KEYS-02 / D-16: select by identity over the freshest cards + strips
         const v = viewRef.current;
+        if (intent.t === "goto") {
+          const sel = uiRef.current.selectedAgentId;
+          const row = sel === null ? undefined : v.byId.get(sel);
+          // RESEARCH Q1 row 1: a selection that no longer resolves fails closed, no flash
+          if (sel === null || row === undefined) {
+            apply({ t: "clearSelection" });
+            return;
+          }
+          if (gotoInFlight.current) return; // one go-to at a time (T-10-26)
+          gotoInFlight.current = true;
+          void runGoto(
+            {
+              name: v.nameById.get(sel) ?? row.folder,
+              pid: row.pid,
+              pid_started: row.pid_started,
+              warp: row.warp,
+              ended: false,
+            },
+            gotoDeps,
+          )
+            .then((r) => {
+              if (mounted.current) apply({ t: "flash", text: r.text, ok: r.ok, at: now() });
+            })
+            .catch(() => undefined)
+            .finally(() => {
+              gotoInFlight.current = false;
+            });
+          // D-09: no special selection handling after a go-to
+          return;
+        }
         const items = gridItems(v.cardIds, v.stripIds);
         const cur = uiRef.current.selectedAgentId;
         let id: string | null = null;
@@ -281,7 +341,6 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
         else if (intent.t === "page") {
           id = pageGrid(items, v.cols, cur, Math.max(1, scrollRef.current.grid.visible), intent.dir);
         }
-        // goto: 10-10
         if (id !== null && id !== cur) apply({ t: "select", id });
         return;
       }

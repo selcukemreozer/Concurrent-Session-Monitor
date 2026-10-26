@@ -26276,6 +26276,136 @@ function pageGrid(items2, cols, currentId, rows, dir) {
   return (hit ?? items2[0]).id;
 }
 
+// src/panel/actions/goto.ts
+import { execFile as execFile4 } from "node:child_process";
+function refuse(reason) {
+  return { kind: "refuse", reason };
+}
+function focusUrlOf(warp) {
+  if (typeof warp !== "object" || warp === null || Array.isArray(warp)) return void 0;
+  return warp.focus_url;
+}
+function gotoVerdict(t, alive, host) {
+  if (t.ended === true || alive === "dead") return refuse("process gone");
+  if (t.warp === null) {
+    return host === "mux" || host === "ide" || host === "warp" ? refuse("pane not findable") : refuse("not a Warp session");
+  }
+  const url = focusUrlOf(t.warp);
+  if (!isWarpSessionUrl(url)) return refuse("no Warp pane recorded");
+  if (alive === "unknown") return refuse("pane not findable");
+  if (host !== "warp") return refuse("pane not findable");
+  return { kind: "open", url };
+}
+var PROC_LINE = /^\s*(\d+)\s+(\d+)\s+(.*)$/;
+function parseProcTable(stdout) {
+  const ppid = /* @__PURE__ */ new Map();
+  const comm = /* @__PURE__ */ new Map();
+  for (const line of stdout.split("\n")) {
+    const m = PROC_LINE.exec(line);
+    if (!m) continue;
+    const pid = Number(m[1]);
+    const parent = Number(m[2]);
+    if (!Number.isInteger(pid) || !Number.isInteger(parent)) continue;
+    ppid.set(pid, parent);
+    comm.set(pid, m[3].trimEnd());
+  }
+  return { ppid, comm };
+}
+var MUX = /^(tmux|screen|zellij|byobu|dtach|abduco)$/i;
+var WARP_APP = /\/Warp[A-Za-z]*\.app\/Contents\/MacOS\//;
+var IDE_APP = /(Visual Studio Code|Code Helper|Cursor|Windsurf|VSCodium|IntelliJ|PyCharm|WebStorm|GoLand|JetBrains|Zed)/;
+function classifyHost(chain, comm) {
+  for (const pid of chain.slice(1)) {
+    const c = comm.get(pid);
+    if (c === void 0) continue;
+    const base = c.split("/").pop() ?? c;
+    if (MUX.test(base)) return "mux";
+    if (c.includes(".app/Contents/")) {
+      if (WARP_APP.test(c)) return "warp";
+      return IDE_APP.test(c) ? "ide" : "otherApp";
+    }
+  }
+  return "none";
+}
+function focusingText(name) {
+  return `focusing ${nameText(name, 40) || "session"}`;
+}
+function execText(cmd, args) {
+  return new Promise((resolve4) => {
+    try {
+      execFile4(cmd, [...args], { encoding: "utf8", timeout: 1e3, maxBuffer: 1 << 20 }, (err, stdout) => {
+        resolve4(err ? null : String(stdout));
+      });
+    } catch {
+      resolve4(null);
+    }
+  });
+}
+function defaultGotoDeps() {
+  return {
+    probe: defaultProbe,
+    startedProbe: (pid) => execText("ps", ["-o", "lstart=", "-p", String(pid)]).then((s) => s === null ? "" : s.trim()),
+    procTable: () => execText("ps", ["-axo", "pid=,ppid=,comm="]),
+    open: (url) => defaultRun(OPEN_BIN, [url], { timeoutMs: 3e3 }).then((r2) => r2.ok)
+  };
+}
+function validPid(pid) {
+  return typeof pid === "number" && Number.isInteger(pid) && pid > 1;
+}
+async function liveness(t, deps) {
+  if (!validPid(t.pid)) return "unknown";
+  let base;
+  try {
+    base = deps.probe(t.pid);
+  } catch {
+    return "dead";
+  }
+  if (base !== "alive") return "dead";
+  if (typeof t.pid_started === "string" && t.pid_started !== "") {
+    let now = "";
+    try {
+      now = await deps.startedProbe(t.pid);
+    } catch {
+      now = "";
+    }
+    if (typeof now === "string" && now !== "" && now !== t.pid_started) return "dead";
+  }
+  return "alive";
+}
+async function hostOf(pid, deps) {
+  if (!validPid(pid)) return "unknown";
+  let out;
+  try {
+    out = await deps.procTable();
+  } catch {
+    return "unknown";
+  }
+  if (typeof out !== "string") return "unknown";
+  const table = parseProcTable(out);
+  return classifyHost(ancestryChain(pid, table.ppid), table.comm);
+}
+async function runGoto(t, deps = defaultGotoDeps()) {
+  const no = (reason) => ({ text: reason, ok: false });
+  try {
+    const alive = await liveness(t, deps);
+    if (t.ended === true || alive === "dead") return no("process gone");
+    const needHost = t.warp === null || isWarpSessionUrl(focusUrlOf(t.warp));
+    const host = needHost ? await hostOf(t.pid, deps) : "unknown";
+    const v = gotoVerdict(t, alive, host);
+    if (v.kind === "refuse") return no(v.reason);
+    if (!isWarpSessionUrl(v.url)) return no("no Warp pane recorded");
+    let opened = false;
+    try {
+      opened = await deps.open(v.url) === true;
+    } catch {
+      opened = false;
+    }
+    return opened ? { text: focusingText(t.name), ok: false } : no("pane not findable");
+  } catch {
+    return no("pane not findable");
+  }
+}
+
 // src/panel/PanelApp.tsx
 var import_jsx_runtime4 = __toESM(require_jsx_runtime(), 1);
 var SAMPLE_FLAGS = { agents: false, files: true, phases: true, sessions: true, ports: true };
@@ -26352,14 +26482,16 @@ function PanelApp(props = {}) {
     cardIds: [],
     stripIds: [],
     cols: 1,
-    byId: /* @__PURE__ */ new Map()
+    byId: /* @__PURE__ */ new Map(),
+    nameById: /* @__PURE__ */ new Map()
   });
   viewRef.current = {
     agentIds: /* @__PURE__ */ new Set([...cardIds, ...stripIds]),
     cardIds,
     stripIds,
     cols: Math.max(1, geometry(columns, rows).cardCols),
-    byId: ag.byId
+    byId: ag.byId,
+    nameById: new Map([...ag.agents, ...ag.idle].map((x) => [x.id, x.name]))
   };
   const scrollRef = import_react47.default.useRef(EMPTY_SCROLL);
   const uiForDraw = effectiveUi(ui, viewRef.current.agentIds);
@@ -26401,6 +26533,17 @@ function PanelApp(props = {}) {
     [rows, columns, ui, uiForDraw.selectedAgentId, tick, step2, isRawModeSupported, headerKey, flashKey, scrollKey, panesKey]
   );
   scrollRef.current = frame.scroll;
+  const defaultDepsRef = import_react47.default.useRef(null);
+  if (props.gotoDeps === void 0 && defaultDepsRef.current === null) defaultDepsRef.current = defaultGotoDeps();
+  const gotoDeps = props.gotoDeps ?? defaultDepsRef.current;
+  const gotoInFlight = import_react47.default.useRef(false);
+  const mounted = import_react47.default.useRef(true);
+  import_react47.default.useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const intentSpy = props.intentSpy;
   const intentRef = import_react47.default.useRef(() => void 0);
   intentRef.current = (intent, ctx) => {
@@ -26409,6 +26552,31 @@ function PanelApp(props = {}) {
       case "agents":
       case "agentsSelected": {
         const v = viewRef.current;
+        if (intent.t === "goto") {
+          const sel = uiRef.current.selectedAgentId;
+          const row = sel === null ? void 0 : v.byId.get(sel);
+          if (sel === null || row === void 0) {
+            apply({ t: "clearSelection" });
+            return;
+          }
+          if (gotoInFlight.current) return;
+          gotoInFlight.current = true;
+          void runGoto(
+            {
+              name: v.nameById.get(sel) ?? row.folder,
+              pid: row.pid,
+              pid_started: row.pid_started,
+              warp: row.warp,
+              ended: false
+            },
+            gotoDeps
+          ).then((r2) => {
+            if (mounted.current) apply({ t: "flash", text: r2.text, ok: r2.ok, at: now() });
+          }).catch(() => void 0).finally(() => {
+            gotoInFlight.current = false;
+          });
+          return;
+        }
         const items2 = gridItems(v.cardIds, v.stripIds);
         const cur = uiRef.current.selectedAgentId;
         let id = null;
