@@ -4,6 +4,7 @@ import { useRoster } from "./hooks/useRoster.js";
 import { useUpdateCheck } from "./hooks/useUpdateCheck.js";
 import { useUiTick, UI_TICK_MS } from "./hooks/useUiTick.js";
 import { useResizeRepaint } from "./hooks/useResizeRepaint.js";
+import { useBranches } from "./hooks/useBranches.js";
 import { headerFromRoster } from "./ui/headerModel.js";
 import {
   effectiveUi,
@@ -19,6 +20,11 @@ import { drawShellFrame, EMPTY_SCROLL, type SampleFlags, type ScrollState } from
 import { tickerRows } from "./ui/draw/files.js";
 import { SAMPLE } from "./ui/sample.js";
 import { ScreenView } from "./ui/ScreenView.js";
+import { buildAgents, stableOrder } from "./ui/build/agents.js";
+import { gridItems, moveGrid, pageGrid } from "./ui/nav.js";
+import { geometry } from "./ui/geometry.js";
+import type { SessionRow } from "../aggregate.js";
+import type { AgentCard, IdleStrip } from "./ui/models.js";
 
 /**
  * The v2 panel root behind `CSM_UI=v2` (Phase 9, plan 09-12). Plan 09-13 wires
@@ -64,6 +70,16 @@ import { ScreenView } from "./ui/ScreenView.js";
  *     on time without a key press.
  *   - The draw and the footer hints use `effectiveUi`, so a selection that no
  *     longer resolves never shows `⏎ go to pane` (KEYS-03).
+ *
+ * Phase 10 plan 10-09 (LAYOUT-07, KEYS-02, D-05, D-06, D-08, D-16):
+ *   - The AGENTS pane is LIVE: `buildAgents` turns the roster into cards and
+ *     idle strips in the first-seen start order kept in `orderRef`
+ *     (`stableOrder`), so a re-sorted readAll or a `/compact` never moves a
+ *     card under the cursor (T-10-21). Its ` sample ` chip is gone; the other
+ *     panes keep SAMPLE until their plans.
+ *   - `move` / `page` intents in AGENTS select by identity over the cards and
+ *     strips (nav.ts moveGrid / pageGrid); go-to stays a no-op until 10-10.
+ *   - A selection whose session leaves the roster is cleared (fails closed).
  */
 export interface PanelAppProps {
   tickMs?: number;
@@ -74,13 +90,45 @@ export interface PanelAppProps {
   intentSpy?: (intent: Intent, ctx: HintContext) => void;
 }
 
-/** The view facts the dispatcher resolves keys against (10-08; later plans add rows, ports, phases, sessions). */
+/** The view facts the dispatcher resolves keys against (10-08; later plans add ports, phases, sessions). */
 interface ViewFacts {
+  /** Every selectable AGENTS id: cards + idle strips. */
   agentIds: ReadonlySet<string>;
+  /** The card ids and strip ids in drawn order (10-09). */
+  cardIds: readonly string[];
+  stripIds: readonly string[];
+  /** The grid's card columns at this size (10-09). */
+  cols: number;
+  /** The live rows by session id (10-09; go-to and detail lookups). */
+  byId: ReadonlyMap<string, SessionRow>;
 }
 
-/** Every pane still draws SAMPLE (D-20); each flag turns false when its pane goes live (D-23). */
-const SAMPLE_FLAGS: SampleFlags = { agents: true, files: true, phases: true, sessions: true, ports: true };
+/** Each flag turns false when its pane goes live (D-23); AGENTS is live from 10-09. */
+const SAMPLE_FLAGS: SampleFlags = { agents: false, files: true, phases: true, sessions: true, ports: true };
+
+/** A redraw key over every drawn card / strip field, so a live change redraws. */
+function agentsKey(agents: readonly AgentCard[], idle: readonly IdleStrip[]): string {
+  const c = agents.map((a) =>
+    [
+      a.id,
+      a.state,
+      a.name,
+      a.dir,
+      a.branch,
+      a.uptime,
+      a.model ?? "",
+      a.prompt ?? "",
+      a.waitFor ?? "",
+      a.subagents,
+      a.conflicts,
+      a.writes,
+      a.reads,
+      a.inConflict ? 1 : 0,
+    ].join("\u001f"),
+  );
+  const i = idle.map((s) => [s.id, s.name, s.ago].join("\u001f"));
+  return `${c.join("\u001e")}\u001d${i.join("\u001e")}`;
+}
 
 /** Rows the FILES ticker shows before it starts scrolling. */
 const TICKER_VISIBLE = 6;
@@ -112,9 +160,28 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
     setUi(next);
   }, []);
 
+  // 10-09: the live AGENTS pane. liveRowsRef lets the slow branch scan read
+  // the freshest live rows without re-arming (the App.tsx pattern).
+  const liveRows = roster.display.filter((d) => !d.ended).map((d) => d.row);
+  const liveRowsRef = React.useRef<SessionRow[]>(liveRows);
+  liveRowsRef.current = liveRows;
+  const branches = useBranches(liveRowsRef);
+  // D-05: the first-seen start order survives re-sorts and compacts (Pitfall 2)
+  const orderRef = React.useRef<Map<string, number>>(new Map());
+  orderRef.current = stableOrder(orderRef.current, liveRows);
+  const ag = buildAgents({
+    display: roster.display,
+    conflicts: roster.conflicts,
+    branches,
+    order: orderRef.current,
+    now: now(),
+  });
+  const panes = { ...SAMPLE, agents: ag.agents, idle: ag.idle };
+  const panesKey = agentsKey(ag.agents, ag.idle);
+
+  // the FILES ticker still draws SAMPLE until 10-12
   const animating =
-    SAMPLE.agents.some((a) => a.state === "running") ||
-    tickerRows(SAMPLE.groups).length > TICKER_VISIBLE;
+    ag.agents.some((a) => a.state === "running") || tickerRows(SAMPLE.groups).length > TICKER_VISIBLE;
   const flash = flashVisible(ui, now());
   // D-09 / D-12: the clock also runs while a flash is up or a selection may expire
   const { tick, step } = useUiTick({
@@ -129,11 +196,32 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick, ui.selectedAgentId, ui.lastKeyAt]);
 
-  // The view facts of the panes drawn this render (SAMPLE: cards + idle strips).
-  const viewRef = React.useRef<ViewFacts>({ agentIds: new Set() });
-  viewRef.current = { agentIds: SAMPLE_AGENT_IDS };
+  // The view facts of the panes drawn this render (live cards + idle strips).
+  const cardIds = ag.agents.map((a) => a.id);
+  const stripIds = ag.idle.map((s) => s.id);
+  const viewRef = React.useRef<ViewFacts>({
+    agentIds: new Set(),
+    cardIds: [],
+    stripIds: [],
+    cols: 1,
+    byId: new Map(),
+  });
+  viewRef.current = {
+    agentIds: new Set([...cardIds, ...stripIds]),
+    cardIds,
+    stripIds,
+    cols: Math.max(1, geometry(columns, rows).cardCols),
+    byId: ag.byId,
+  };
   const scrollRef = React.useRef<ScrollState>(EMPTY_SCROLL);
   const uiForDraw = effectiveUi(ui, viewRef.current.agentIds);
+
+  // Pitfall 4 / T-10-21: a selection whose session left the roster is cleared
+  // (fails closed); effectiveUi keeps the draw and the footer honest until then.
+  const selectionLive = ui.selectedAgentId === null || viewRef.current.agentIds.has(ui.selectedAgentId);
+  React.useEffect(() => {
+    if (!selectionLive) apply({ t: "clearSelection" });
+  }, [selectionLive, apply]);
 
   const header = headerFromRoster(roster, updateTo, now());
   const headerKey = [
@@ -158,32 +246,45 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
         tick,
         step,
         header,
-        panes: SAMPLE,
+        panes,
         keysOff: !isRawModeSupported,
         flash,
         sample: SAMPLE_FLAGS,
         scroll: scrollRef.current,
       }),
     // `header` is keyed by its fields (headerKey), the flash by its visible
-    // text (flashKey) and the fed-back windows by their offsets (scrollKey): a
+    // text (flashKey), the live AGENTS cards and strips by their fields
+    // (panesKey) and the fed-back windows by their offsets (scrollKey): a
     // fresh object with the same values never re-draws the frame.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rows, columns, ui, uiForDraw.selectedAgentId, tick, step, isRawModeSupported, headerKey, flashKey, scrollKey],
+    [rows, columns, ui, uiForDraw.selectedAgentId, tick, step, isRawModeSupported, headerKey, flashKey, scrollKey, panesKey],
   );
   // Pattern 3: the windows drawn are fed back on the next draw (a ref: no state, no extra render)
   scrollRef.current = frame.scroll;
 
   // The dispatcher's per-context intent handlers, reassigned every render so
-  // they read the latest view-model. Every case is a no-op in 10-08: a handler
-  // is added only by the plan that makes its pane live (T-10-19).
+  // they read the latest view-model. A handler is added only by the plan that
+  // makes its pane live (T-10-19): AGENTS from 10-09, the rest are no-ops.
   const intentSpy = props.intentSpy;
   const intentRef = React.useRef<(intent: Intent, ctx: HintContext) => void>(() => undefined);
   intentRef.current = (intent: Intent, ctx: HintContext): void => {
     intentSpy?.(intent, ctx);
     switch (ctx) {
-      case "agents": // select / move in the grid: 10-09
-      case "agentsSelected": // move + go to pane: 10-09, 10-10
+      case "agents":
+      case "agentsSelected": {
+        // KEYS-02 / D-16: select by identity over the freshest cards + strips
+        const v = viewRef.current;
+        const items = gridItems(v.cardIds, v.stripIds);
+        const cur = uiRef.current.selectedAgentId;
+        let id: string | null = null;
+        if (intent.t === "move") id = moveGrid(items, v.cols, cur, intent.dir);
+        else if (intent.t === "page") {
+          id = pageGrid(items, v.cols, cur, Math.max(1, scrollRef.current.grid.visible), intent.dir);
+        }
+        // goto: 10-10
+        if (id !== null && id !== cur) apply({ t: "select", id });
         return;
+      }
       case "phases": // browse + project: 10-13
       case "sessions": // browse + copy + open: 10-13
         return;
@@ -227,12 +328,6 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
     </Box>
   );
 }
-
-/** The SAMPLE cards and idle strips a selection may resolve to. */
-const SAMPLE_AGENT_IDS: ReadonlySet<string> = new Set([
-  ...SAMPLE.agents.map((a) => a.id),
-  ...SAMPLE.idle.map((s) => s.id),
-]);
 
 /**
  * The ONLY input handler in v2 (KEYS-01). Every key goes to PanelApp's single

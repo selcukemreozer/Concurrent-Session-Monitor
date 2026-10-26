@@ -20544,10 +20544,10 @@ function cleanTitle(raw) {
   let res = "";
   let n = 0;
   for (const g of graphemes(kept)) {
-    const len = Array.from(g).length;
-    if (n + len > MAX_TITLE_CP) break;
+    const len2 = Array.from(g).length;
+    if (n + len2 > MAX_TITLE_CP) break;
     res += g;
-    n += len;
+    n += len2;
   }
   res = res.trim();
   return /[^\s\u200d\ufe0e\ufe0f]/u.test(res) ? res : "";
@@ -20640,8 +20640,8 @@ function staleMs() {
 function activeMs() {
   return numEnv("CSM_ACTIVE_MS", 3e4);
 }
-function fmtUptime(startMs, now) {
-  const s = Math.max(0, Math.floor((now - startMs) / 1e3));
+function fmtUptime(startMs2, now) {
+  const s = Math.max(0, Math.floor((now - startMs2) / 1e3));
   if (s < 60) return `${s}s`;
   const m = Math.floor(s / 60);
   if (m < 60) return `${m}m`;
@@ -21049,8 +21049,8 @@ function scanHeadFacts(buf, sessionId, slug) {
     const o = parsed;
     if (o.sessionId !== void 0 && o.sessionId !== sessionId) continue;
     if (f.prompt === void 0 && isUser) {
-      const label2 = promptLabel(parsed);
-      if (label2 !== void 0) f.prompt = label2;
+      const label3 = promptLabel(parsed);
+      if (label3 !== void 0) f.prompt = label3;
     }
     if (typeof o.cwd === "string" && o.cwd.length > 0) {
       if (f.firstCwd === void 0) f.firstCwd = o.cwd;
@@ -21479,7 +21479,7 @@ async function rowFor(c, roots, live) {
       entry.headSize = entry.size;
     }
   }
-  const { label: label2, labelKind } = resumeLabel({
+  const { label: label3, labelKind } = resumeLabel({
     customTitle: facts.customTitle,
     aiTitle: facts.aiTitle,
     firstPrompt: entry.head?.prompt
@@ -21488,7 +21488,7 @@ async function rowFor(c, roots, live) {
   const cwd2 = sessionCwd(entry.head, facts.slugCwd);
   return {
     id: c.id,
-    label: label2,
+    label: label3,
     labelKind,
     folder: folderOf(cwd2, c.slug),
     cwd: cwd2,
@@ -21950,9 +21950,9 @@ function confirmPrompt(c) {
 var import_jsx_runtime = __toESM(require_jsx_runtime(), 1);
 var ESC3 = String.fromCharCode(27);
 var ST = ESC3 + "\\";
-function osc8(url, label2) {
+function osc8(url, label3) {
   const u = sanitize(url);
-  const l = sanitize(label2);
+  const l = sanitize(label3);
   return `${ESC3}]8;;${u}${ST}${l}${ESC3}]8;;${ST}`;
 }
 function modelLabel(model) {
@@ -22238,11 +22238,11 @@ var SESSIONS_TOGGLE_HINT = "[r: fazlar]";
 var FAZLAR_TOGGLE_HINT = "[r: oturumlar]";
 var LIVE_MARK = "\xB7 live";
 function SessionRowLine({ row, selected, now }) {
-  const label2 = sanitize(row.label);
+  const label3 = sanitize(row.label);
   let labelNode;
-  if (row.labelKind === "name") labelNode = /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { bold: true, children: label2 });
-  else if (row.labelKind === "derived") labelNode = /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: "\u201C" + label2 + "\u201D" });
-  else labelNode = /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: label2 });
+  if (row.labelKind === "name") labelNode = /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { bold: true, children: label3 });
+  else if (row.labelKind === "derived") labelNode = /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: "\u201C" + label3 + "\u201D" });
+  else labelNode = /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: label3 });
   const middle = " \xB7 " + sanitize(row.folder) + " \xB7 " + sanitize(fmtAge(row.mtimeMs, now)) + " \xB7 ";
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Text, { wrap: "truncate-end", children: [
     selected ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { bold: true, children: CURRENT_GLYPH + " " }) : "  ",
@@ -22355,9 +22355,9 @@ function updateLabel(remote) {
   const v = normalizeVersion(remote);
   return v === null ? null : sanitize("\u2B06 v" + v + " available");
 }
-function updateLabelFits(cols, brand, label2, clock) {
-  const len = (s) => [...s].length;
-  return len(brand) + len(label2) + 3 + len(clock) + 2 + 1 <= cols;
+function updateLabelFits(cols, brand, label3, clock) {
+  const len2 = (s) => [...s].length;
+  return len2(brand) + len2(label3) + 3 + len2(clock) + 2 + 1 <= cols;
 }
 async function fetchLatestVersion(opts) {
   const timeoutMs = opts?.timeoutMs ?? FETCH_TIMEOUT_MS;
@@ -24710,9 +24710,9 @@ function putIn(scr, x, y, text, st, end) {
   scr.put(x, y, t, st);
   return x + cellWidth(t);
 }
-function putInverse(scr, x, y, label2, end) {
+function putInverse(scr, x, y, label3, end) {
   let cx = putIn(scr, x, y, V2.capL, CAP, end);
-  cx = putIn(scr, cx, y, label2, INVERSE, end);
+  cx = putIn(scr, cx, y, label3, INVERSE, end);
   return putIn(scr, cx, y, V2.capR, CAP, end);
 }
 function drawTitle(scr, x, y, w2, o) {
@@ -24746,11 +24746,11 @@ var TABS = [
 function drawTabs(scr, x, y, w2, o) {
   const end = x + w2;
   let cx = x;
-  for (const [tab, label2] of TABS) {
+  for (const [tab, label3] of TABS) {
     const act = o.active === tab;
-    if (act && o.columnFocused) cx = putInverse(scr, cx, y, label2, end);
-    else if (act) cx = putIn(scr, cx, y, ` ${label2} `, { fg: PALETTE.fg, bg: PALETTE.idle, bold: true }, end);
-    else cx = putIn(scr, cx, y, ` ${label2} `, { fg: PALETTE.dim2 }, end);
+    if (act && o.columnFocused) cx = putInverse(scr, cx, y, label3, end);
+    else if (act) cx = putIn(scr, cx, y, ` ${label3} `, { fg: PALETTE.fg, bg: PALETTE.idle, bold: true }, end);
+    else cx = putIn(scr, cx, y, ` ${label3} `, { fg: PALETTE.dim2 }, end);
     cx += 1;
   }
   if (o.sample) cx = putIn(scr, cx, y, SAMPLE_CHIP, CHIP_STYLE, end) + 1;
@@ -24828,13 +24828,13 @@ function drawCard(scr, x, y, c, o) {
   scr.put(x + 4, y + 4, V2.prompt, { fg: tone(PALETTE.dim) });
   const prompt = c.prompt === null ? "" : plainText(c.prompt, PROMPT_W);
   scr.put(x + 6, y + 4, prompt || DASH, { fg: tone(PALETTE.fg) });
-  let label2 = LABEL[c.state];
+  let label3 = LABEL[c.state];
   if (c.state === "waiting" && c.waitFor !== null) {
     const wait = plainText(c.waitFor, WAIT_W);
-    if (wait !== "") label2 += ` ${wait}`;
+    if (wait !== "") label3 += ` ${wait}`;
   }
-  if (c.state === "subagent") label2 += ` ${TIMES}${countText(c.subagents)}`;
-  const lx = scr.put(x + 2, y + 5, label2, { fg: tone(sc), bold: true });
+  if (c.state === "subagent") label3 += ` ${TIMES}${countText(c.subagents)}`;
+  const lx = scr.put(x + 2, y + 5, label3, { fg: tone(sc), bold: true });
   if (c.state === "running") {
     const n = V2.spinner.length;
     const t = Number.isFinite(o.tick) ? Math.trunc(o.tick) : 0;
@@ -24854,12 +24854,16 @@ function drawCard(scr, x, y, c, o) {
   }
 }
 function drawIdleStrip(scr, x, y, s, o) {
-  scr.put(x, y, V2.edgeTop.repeat(CARD_W), { fg: o.dimmed ? PALETTE.edge : PALETTE.idle });
-  scr.put(x + 2, y + 1, V2.idleDot, { fg: PALETTE.dim2 });
+  const selected = o.selected === true;
+  const dimmed = o.dimmed && !selected;
+  const edge = selected ? PALETTE.hi : dimmed ? PALETTE.edge : PALETTE.idle;
+  scr.put(x, y, V2.edgeTop.repeat(CARD_W), { fg: edge });
+  scr.put(x + 2, y + 1, V2.idleDot, { fg: selected ? PALETTE.hi : PALETTE.dim2 });
   const ago = plainText(s.ago, 12);
   const name = nameText(s.name, CARD_W - 8 - cellWidth(ago)) || DASH;
-  scr.put(x + 4, y + 1, name, { fg: o.dimmed ? PALETTE.dim2 : PALETTE.dim });
-  scr.put(x + CARD_W - 2 - cellWidth(ago), y + 1, ago, { fg: PALETTE.dim2 });
+  const nameSt = selected ? { fg: PALETTE.hi, bold: true } : { fg: dimmed ? PALETTE.dim2 : PALETTE.dim };
+  scr.put(x + 4, y + 1, name, nameSt);
+  scr.put(x + CARD_W - 2 - cellWidth(ago), y + 1, ago, { fg: selected ? PALETTE.dim : PALETTE.dim2 });
 }
 function items(s) {
   return "card" in s ? 1 : s.strips.length;
@@ -24868,6 +24872,25 @@ function sumItems(slots, from, to) {
   let n = 0;
   for (let i = Math.max(0, from); i < Math.min(slots.length, to); i++) n += items(slots[i]);
   return n;
+}
+function windowAt(first, h, cardRows) {
+  const up = first > 0 && h >= 2;
+  const available = h - 1 - (up ? 1 : 0);
+  const remaining = Math.max(0, cardRows - first);
+  let k;
+  let downRow = true;
+  if (remaining * CARD_PITCH_Y - 1 <= available) {
+    k = remaining;
+  } else {
+    k = Math.min(remaining, Math.floor(available / CARD_PITCH_Y));
+    if (k === 0 && available >= CARD_H) {
+      k = 1;
+      downRow = false;
+    } else if (k === 0 && available < 1) {
+      downRow = false;
+    }
+  }
+  return { up, k, downRow };
 }
 function drawAgentsPane(scr, r2, m) {
   if (r2.h < 1 || r2.w < 1) return { rows: 0, moreBelow: 0, firstRow: 0, visibleRows: 0 };
@@ -24905,26 +24928,26 @@ function drawAgentsPane(scr, r2, m) {
   const fr = Number.isFinite(m.firstRow) ? Math.trunc(m.firstRow) : 0;
   const allFit = cardRows * CARD_PITCH_Y - 1 <= r2.h - 1;
   const maxStart = allFit ? 0 : Math.max(0, cardRows - Math.max(1, Math.floor((r2.h - 1) / CARD_PITCH_Y)));
-  const first = Math.min(Math.max(0, fr), maxStart);
-  const up = first > 0 && r2.h >= 2;
-  const available = r2.h - 1 - (up ? 1 : 0);
-  const remaining = cardRows - first;
-  let k;
-  let downRow = true;
-  if (remaining * CARD_PITCH_Y - 1 <= available) {
-    k = remaining;
-  } else {
-    k = Math.min(remaining, Math.floor(available / CARD_PITCH_Y));
-    if (k === 0 && available >= CARD_H) {
-      k = 1;
-      downRow = false;
-    } else if (k === 0 && available < 1) {
-      downRow = false;
+  const sticky = Math.min(Math.max(0, fr), maxStart);
+  const selCard = m.selectedId === null ? -1 : m.agents.findIndex((a) => a.id === m.selectedId);
+  const selStrip = m.selectedId === null || selCard >= 0 ? -1 : m.idle.findIndex((s) => s.id === m.selectedId);
+  const hasSel = selCard >= 0 || selStrip >= 0;
+  let first = sticky;
+  if (hasSel) {
+    const slot = selCard >= 0 ? selCard : nA + Math.floor(selStrip / 3);
+    const selRow = Math.floor(slot / cols);
+    if (selRow < first) {
+      first = selRow;
+    } else if (selRow >= first + windowAt(first, r2.h, cardRows).k) {
+      let f = first + 1;
+      while (f < selRow && f + windowAt(f, r2.h, cardRows).k <= selRow) f++;
+      first = f;
     }
+    first = Math.min(Math.max(0, first), maxStart);
   }
+  const { up, k, downRow } = windowAt(first, r2.h, cardRows);
   const above = sumItems(slots, 0, first * cols);
   const below = sumItems(slots, (first + k) * cols, slots.length);
-  const hasSel = m.selectedId !== null && m.agents.some((a) => a.id === m.selectedId);
   let gy = r2.y + 1;
   if (up) {
     scr.put(r2.x + 2, gy, `${V2.up} ${above} more`, dimSt);
@@ -24945,7 +24968,10 @@ function drawAgentsPane(scr, r2, m) {
           dimmed: hasSel && !sel
         });
       } else {
-        slot.strips.forEach((s, j) => drawIdleStrip(scr, sx, sy + 2 * j, s, { dimmed: hasSel }));
+        slot.strips.forEach((s, j) => {
+          const sel = hasSel && s.id === m.selectedId;
+          drawIdleStrip(scr, sx, sy + 2 * j, s, { dimmed: hasSel && !sel, selected: sel });
+        });
       }
     }
   }
@@ -25076,62 +25102,62 @@ function toInt(n, fallback) {
   return n !== void 0 && Number.isFinite(n) ? Math.trunc(n) : fallback;
 }
 function windowSlice(w2) {
-  const len = Math.max(0, toInt(w2.len, 0));
+  const len2 = Math.max(0, toInt(w2.len, 0));
   const height = Math.max(0, toInt(w2.height, 0));
   const context = Math.max(0, toInt(w2.context, 1));
   let cursor = toInt(w2.cursor, -1);
-  if (cursor < 0 || len === 0) cursor = -1;
-  else if (cursor >= len) cursor = len - 1;
-  const offset = Math.min(Math.max(0, toInt(w2.offset, 0)), len);
-  const h = new Array(len);
-  for (let i = 0; i < len; i++) {
+  if (cursor < 0 || len2 === 0) cursor = -1;
+  else if (cursor >= len2) cursor = len2 - 1;
+  const offset = Math.min(Math.max(0, toInt(w2.offset, 0)), len2);
+  const h = new Array(len2);
+  for (let i = 0; i < len2; i++) {
     const v = w2.heights?.[i];
     h[i] = v !== void 0 && Number.isFinite(v) && v >= 1 ? Math.trunc(v) : 1;
   }
-  const suffix = new Array(len + 1);
-  suffix[len] = 0;
-  for (let i = len - 1; i >= 0; i--) suffix[i] = suffix[i + 1] + h[i];
+  const suffix = new Array(len2 + 1);
+  suffix[len2] = 0;
+  for (let i = len2 - 1; i >= 0; i--) suffix[i] = suffix[i + 1] + h[i];
   const out = (start2, f) => ({
     offset: start2,
     start: start2,
     end: f.end,
     above: start2,
-    below: len - f.end,
+    below: len2 - f.end,
     rows: f.rows,
     up: f.up,
     down: f.down
   });
-  if (height <= 0 || len === 0) {
+  if (height <= 0 || len2 === 0) {
     return out(offset, { end: offset, rows: 0, up: false, down: false });
   }
   if (suffix[0] <= height) {
-    return out(0, { end: len, rows: suffix[0], up: false, down: false });
+    return out(0, { end: len2, rows: suffix[0], up: false, down: false });
   }
   const fill = (s) => {
     if (height === 1) return { end: s + 1, rows: 1, up: false, down: false };
     if (height === 2) {
-      const down = s + 1 < len;
+      const down = s + 1 < len2;
       const up2 = !down && s > 0;
       const ind = up2 || down ? 1 : 0;
       return { end: s + 1, rows: ind + Math.min(h[s], height - ind), up: up2, down };
     }
     const up = s > 0;
     const budget = height - (up ? 1 : 0);
-    if (suffix[s] <= budget) return { end: len, rows: (up ? 1 : 0) + suffix[s], up, down: false };
+    if (suffix[s] <= budget) return { end: len2, rows: (up ? 1 : 0) + suffix[s], up, down: false };
     const b2 = budget - 1;
     let end = s;
     let used = 0;
-    while (end < len && used + h[end] <= b2) used += h[end++];
+    while (end < len2 && used + h[end] <= b2) used += h[end++];
     if (end === s) {
       end = s + 1;
-      if (end === len) return { end, rows: (up ? 1 : 0) + Math.min(h[s], budget), up, down: false };
+      if (end === len2) return { end, rows: (up ? 1 : 0) + Math.min(h[s], budget), up, down: false };
       used = Math.min(h[s], b2);
     }
     return { end, rows: (up ? 1 : 0) + used + 1, up, down: true };
   };
-  let maxStart = len - 1;
-  for (let s = 0; s < len; s++) {
-    if (fill(s).end === len) {
+  let maxStart = len2 - 1;
+  for (let s = 0; s < len2; s++) {
+    if (fill(s).end === len2) {
       maxStart = s;
       break;
     }
@@ -25139,7 +25165,7 @@ function windowSlice(w2) {
   let start = Math.min(offset, maxStart);
   if (cursor >= 0) {
     const ctxTop = Math.min(context, cursor);
-    const needEnd = Math.min(len, cursor + context + 1);
+    const needEnd = Math.min(len2, cursor + context + 1);
     const top = () => {
       if (start > cursor - ctxTop) start = cursor - ctxTop;
     };
@@ -25245,8 +25271,8 @@ function drawPhases(scr, r2, m) {
         if (contAfter) put(MARK_X, y2, V2.vline, { fg: PALETTE.edge });
         const n = Math.max(0, Math.trunc(ph.plansTotal ?? 0));
         const kd = Math.min(n, Math.max(0, Math.trunc(ph.plansDone ?? 0)));
-        const label2 = `${kd}/${n} plan`;
-        const tx = put(NAME_X, y2, label2, DIM) - x;
+        const label3 = `${kd}/${n} plan`;
+        const tx = put(NAME_X, y2, label3, DIM) - x;
         const cellsN = n > MINI_MAX ? MINI_MAX : n;
         const fill = n > MINI_MAX ? Math.round(kd / n * MINI_MAX) : kd;
         put(tx + 2, y2, V2.heavyH.repeat(fill), { fg: PALETTE.running });
@@ -26062,9 +26088,219 @@ function ScreenView({ lines }) {
   return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Box_default, { flexDirection: "column", children: lines.map((line, i) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Box_default, { flexShrink: 0, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Text, { wrap: "truncate-end", children: line.length === 0 ? " " : line.map((s, j) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Text, { color: s.fg, backgroundColor: s.bg, bold: s.bold, children: s.text }, j)) }) }, i)) });
 }
 
+// src/panel/ui/model-name.ts
+var NEW_FORM = /^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/;
+var LEGACY_FORM = /^claude-(\d+)(?:-(\d+))?-([a-z]+)(?:-\d{8})?$/;
+var BRACKET_SUFFIX = /\[[^\]]*\]$/;
+function label2(family, major, minor) {
+  return `${family} ${major}${minor ? "." + minor : ""}`;
+}
+function shortModelName(raw) {
+  if (typeof raw !== "string") return null;
+  if (raw === "" || raw === "<synthetic>" || raw === "unknown") return null;
+  const id = raw.replace(BRACKET_SUFFIX, "");
+  if (id === "") return null;
+  const n = NEW_FORM.exec(id);
+  if (n) return label2(n[1], n[2], n[3]);
+  const l = LEGACY_FORM.exec(id);
+  if (l) return label2(l[3], l[1], l[2]);
+  const rest = id.startsWith("claude-") ? id.slice("claude-".length) : id;
+  return rest === "" ? null : rest;
+}
+function cardModel(row) {
+  return shortModelName(row.transcript_model) ?? shortModelName(row.model);
+}
+
+// src/panel/ui/build/agents.ts
+var DASH4 = "\u2014";
+function startMs(r2) {
+  const t = Date.parse(r2.start_time);
+  return Number.isFinite(t) ? t : 0;
+}
+function byStart(a, b) {
+  return startMs(a) - startMs(b) || (a.session_id < b.session_id ? -1 : a.session_id > b.session_id ? 1 : 0);
+}
+function stableOrder(prev, rows) {
+  const next = /* @__PURE__ */ new Map();
+  let seq = 0;
+  for (const v of prev.values()) if (Number.isFinite(v)) seq = Math.max(seq, v + 1);
+  const live = new Set(rows.map((r2) => r2.session_id));
+  for (const [id, s] of prev) if (live.has(id)) next.set(id, s);
+  const fresh = rows.filter((r2) => !next.has(r2.session_id)).sort(byStart);
+  for (const r2 of fresh) if (!next.has(r2.session_id)) next.set(r2.session_id, seq++);
+  return next;
+}
+function cardState(row) {
+  if (row.asking === true) return "asking";
+  if (row.attention === true) return "waiting";
+  if (row.running === true) return "running";
+  if (row.subagent === true) return "subagent";
+  return null;
+}
+function len(a) {
+  return Array.isArray(a) ? a.length : 0;
+}
+function ageOf(now, ...times) {
+  for (const t of times) {
+    if (typeof t !== "string") continue;
+    const ms = Date.parse(t);
+    if (Number.isFinite(ms)) return fmtAge(ms, now);
+  }
+  return DASH4;
+}
+function buildAgents(i) {
+  const rows = i.display.filter((d) => !d.ended).map((d) => d.row);
+  const byId = /* @__PURE__ */ new Map();
+  for (const r2 of rows) byId.set(r2.session_id, r2);
+  const sorted = [...byId.values()].sort((a, b) => {
+    const sa = i.order.get(a.session_id);
+    const sb = i.order.get(b.session_id);
+    if (sa !== void 0 && sb !== void 0) return sa - sb;
+    if (sa !== void 0) return -1;
+    if (sb !== void 0) return 1;
+    return byStart(a, b);
+  });
+  const conflictCount = /* @__PURE__ */ new Map();
+  for (const c of i.conflicts) {
+    const ids = new Set((c.sessions ?? []).map((s) => s.session_id));
+    for (const id of ids) conflictCount.set(id, (conflictCount.get(id) ?? 0) + 1);
+  }
+  const agents2 = [];
+  const idle = [];
+  for (const r2 of sorted) {
+    const name = labelLead({ title: r2.title, folder: r2.folder });
+    const state = cardState(r2);
+    if (state === null) {
+      idle.push({ id: r2.session_id, name, ago: ageOf(i.now, r2.last_seen, r2.last_active, r2.start_time) });
+      continue;
+    }
+    const start = Date.parse(r2.start_time);
+    const attn = typeof r2.attention_ts === "string" ? Date.parse(r2.attention_ts) : NaN;
+    const conflicts = conflictCount.get(r2.session_id) ?? 0;
+    const subs = r2.subagent_count;
+    agents2.push({
+      id: r2.session_id,
+      name,
+      dir: r2.folder,
+      branch: liveBranch(r2, i.branches),
+      uptime: Number.isFinite(start) ? fmtUptime(start, i.now) : DASH4,
+      model: cardModel(r2),
+      prompt: typeof r2.last_prompt === "string" ? r2.last_prompt : null,
+      state,
+      waitFor: state === "waiting" && Number.isFinite(attn) ? fmtAge(attn, i.now) : null,
+      subagents: typeof subs === "number" && Number.isFinite(subs) ? subs : 0,
+      conflicts,
+      writes: len(r2.files),
+      reads: len(r2.reads),
+      inConflict: conflicts > 0
+    });
+  }
+  return { agents: agents2, idle, byId };
+}
+
+// src/panel/ui/nav.ts
+var STRIPS_PER_SLOT = 3;
+function normCols(cols) {
+  return Number.isFinite(cols) ? Math.max(1, Math.floor(cols)) : 1;
+}
+function normInt(n) {
+  return Number.isFinite(n) ? Math.trunc(n) : 0;
+}
+function atSlot(items2, slot, which) {
+  let found;
+  for (const it of items2) {
+    if (it.slot !== slot) continue;
+    if (which === "first") return it;
+    found = it;
+  }
+  return found;
+}
+function gridItems(cardIds, stripIds) {
+  const out = [];
+  const nCards = cardIds.length;
+  for (let i = 0; i < nCards; i++) out.push({ id: cardIds[i], kind: "card", slot: i, sub: 0 });
+  for (let k = 0; k < stripIds.length; k++) {
+    out.push({
+      id: stripIds[k],
+      kind: "strip",
+      slot: nCards + Math.floor(k / STRIPS_PER_SLOT),
+      sub: k % STRIPS_PER_SLOT
+    });
+  }
+  return out;
+}
+function moveGrid(items2, cols, currentId, dir) {
+  const n = items2.length;
+  if (n === 0) return null;
+  const i = currentId === null ? -1 : items2.findIndex((x) => x.id === currentId);
+  if (i < 0) return items2[0].id;
+  const cur = items2[i];
+  const c = normCols(cols);
+  switch (dir) {
+    case "left":
+      return items2[Math.max(0, i - 1)].id;
+    case "right":
+      return items2[Math.min(n - 1, i + 1)].id;
+    case "down": {
+      const next = items2[i + 1];
+      if (next !== void 0 && next.slot === cur.slot) return next.id;
+      const below = atSlot(items2, cur.slot + c, "first");
+      if (below !== void 0) return below.id;
+      const last = items2[n - 1];
+      if (Math.floor(last.slot / c) > Math.floor(cur.slot / c)) return last.id;
+      return cur.id;
+    }
+    case "up": {
+      if (cur.sub > 0 && i > 0) return items2[i - 1].id;
+      if (cur.slot - c >= 0) {
+        const above = atSlot(items2, cur.slot - c, "last");
+        if (above !== void 0) return above.id;
+      }
+      return cur.id;
+    }
+  }
+}
+function pageGrid(items2, cols, currentId, rows, dir) {
+  const n = items2.length;
+  if (n === 0) return null;
+  const i = currentId === null ? -1 : items2.findIndex((x) => x.id === currentId);
+  if (i < 0) return items2[0].id;
+  const c = normCols(cols);
+  const r2 = Math.max(1, normInt(rows));
+  const target = items2[i].slot + dir * r2 * c;
+  if (dir === 1) {
+    const hit2 = target <= items2[n - 1].slot ? atSlot(items2, target, "first") : void 0;
+    return (hit2 ?? items2[n - 1]).id;
+  }
+  const hit = target >= 0 ? atSlot(items2, target, "last") : void 0;
+  return (hit ?? items2[0]).id;
+}
+
 // src/panel/PanelApp.tsx
 var import_jsx_runtime4 = __toESM(require_jsx_runtime(), 1);
-var SAMPLE_FLAGS = { agents: true, files: true, phases: true, sessions: true, ports: true };
+var SAMPLE_FLAGS = { agents: false, files: true, phases: true, sessions: true, ports: true };
+function agentsKey(agents2, idle) {
+  const c = agents2.map(
+    (a) => [
+      a.id,
+      a.state,
+      a.name,
+      a.dir,
+      a.branch,
+      a.uptime,
+      a.model ?? "",
+      a.prompt ?? "",
+      a.waitFor ?? "",
+      a.subagents,
+      a.conflicts,
+      a.writes,
+      a.reads,
+      a.inConflict ? 1 : 0
+    ].join("")
+  );
+  const i = idle.map((s) => [s.id, s.name, s.ago].join(""));
+  return `${c.join("")}${i.join("")}`;
+}
 var TICKER_VISIBLE = 6;
 function PanelApp(props = {}) {
   const tickMs = props.tickMs ?? UI_TICK_MS;
@@ -26084,7 +26320,22 @@ function PanelApp(props = {}) {
     uiRef.current = next;
     setUi(next);
   }, []);
-  const animating = SAMPLE.agents.some((a) => a.state === "running") || tickerRows(SAMPLE.groups).length > TICKER_VISIBLE;
+  const liveRows = roster.display.filter((d) => !d.ended).map((d) => d.row);
+  const liveRowsRef = import_react47.default.useRef(liveRows);
+  liveRowsRef.current = liveRows;
+  const branches = useBranches(liveRowsRef);
+  const orderRef = import_react47.default.useRef(/* @__PURE__ */ new Map());
+  orderRef.current = stableOrder(orderRef.current, liveRows);
+  const ag = buildAgents({
+    display: roster.display,
+    conflicts: roster.conflicts,
+    branches,
+    order: orderRef.current,
+    now: now()
+  });
+  const panes = { ...SAMPLE, agents: ag.agents, idle: ag.idle };
+  const panesKey = agentsKey(ag.agents, ag.idle);
+  const animating = ag.agents.some((a) => a.state === "running") || tickerRows(SAMPLE.groups).length > TICKER_VISIBLE;
   const flash = flashVisible(ui, now());
   const { tick, step: step2 } = useUiTick({
     active: animating || flash !== null || ui.selectedAgentId !== null,
@@ -26094,10 +26345,28 @@ function PanelApp(props = {}) {
   import_react47.default.useEffect(() => {
     if (selectionExpired(uiRef.current, now())) apply({ t: "clearSelection" });
   }, [tick, ui.selectedAgentId, ui.lastKeyAt]);
-  const viewRef = import_react47.default.useRef({ agentIds: /* @__PURE__ */ new Set() });
-  viewRef.current = { agentIds: SAMPLE_AGENT_IDS };
+  const cardIds = ag.agents.map((a) => a.id);
+  const stripIds = ag.idle.map((s) => s.id);
+  const viewRef = import_react47.default.useRef({
+    agentIds: /* @__PURE__ */ new Set(),
+    cardIds: [],
+    stripIds: [],
+    cols: 1,
+    byId: /* @__PURE__ */ new Map()
+  });
+  viewRef.current = {
+    agentIds: /* @__PURE__ */ new Set([...cardIds, ...stripIds]),
+    cardIds,
+    stripIds,
+    cols: Math.max(1, geometry(columns, rows).cardCols),
+    byId: ag.byId
+  };
   const scrollRef = import_react47.default.useRef(EMPTY_SCROLL);
   const uiForDraw = effectiveUi(ui, viewRef.current.agentIds);
+  const selectionLive = ui.selectedAgentId === null || viewRef.current.agentIds.has(ui.selectedAgentId);
+  import_react47.default.useEffect(() => {
+    if (!selectionLive) apply({ t: "clearSelection" });
+  }, [selectionLive, apply]);
   const header = headerFromRoster(roster, updateTo, now());
   const headerKey = [
     header.agents,
@@ -26118,17 +26387,18 @@ function PanelApp(props = {}) {
       tick,
       step: step2,
       header,
-      panes: SAMPLE,
+      panes,
       keysOff: !isRawModeSupported,
       flash,
       sample: SAMPLE_FLAGS,
       scroll: scrollRef.current
     }),
     // `header` is keyed by its fields (headerKey), the flash by its visible
-    // text (flashKey) and the fed-back windows by their offsets (scrollKey): a
+    // text (flashKey), the live AGENTS cards and strips by their fields
+    // (panesKey) and the fed-back windows by their offsets (scrollKey): a
     // fresh object with the same values never re-draws the frame.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rows, columns, ui, uiForDraw.selectedAgentId, tick, step2, isRawModeSupported, headerKey, flashKey, scrollKey]
+    [rows, columns, ui, uiForDraw.selectedAgentId, tick, step2, isRawModeSupported, headerKey, flashKey, scrollKey, panesKey]
   );
   scrollRef.current = frame.scroll;
   const intentSpy = props.intentSpy;
@@ -26137,9 +26407,18 @@ function PanelApp(props = {}) {
     intentSpy?.(intent, ctx);
     switch (ctx) {
       case "agents":
-      // select / move in the grid: 10-09
-      case "agentsSelected":
+      case "agentsSelected": {
+        const v = viewRef.current;
+        const items2 = gridItems(v.cardIds, v.stripIds);
+        const cur = uiRef.current.selectedAgentId;
+        let id = null;
+        if (intent.t === "move") id = moveGrid(items2, v.cols, cur, intent.dir);
+        else if (intent.t === "page") {
+          id = pageGrid(items2, v.cols, cur, Math.max(1, scrollRef.current.grid.visible), intent.dir);
+        }
+        if (id !== null && id !== cur) apply({ t: "select", id });
         return;
+      }
       case "phases":
       // browse + project: 10-13
       case "sessions":
@@ -26177,10 +26456,6 @@ function PanelApp(props = {}) {
     /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ScreenView, { lines: frame.lines })
   ] });
 }
-var SAMPLE_AGENT_IDS = /* @__PURE__ */ new Set([
-  ...SAMPLE.agents.map((a) => a.id),
-  ...SAMPLE.idle.map((s) => s.id)
-]);
 function V2Keyboard({
   onKeyRef
 }) {
