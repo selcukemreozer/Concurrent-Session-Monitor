@@ -23,6 +23,8 @@ import { SAMPLE } from "./ui/sample.js";
 import { PALETTE } from "./ui/palette.js";
 import { lineText } from "./ui/screen.js";
 import { buildAgents, stableOrder } from "./ui/build/agents.js";
+import type { GotoDeps } from "./actions/goto.js";
+import { HEX32 } from "../warp-url.fixtures.js";
 
 // Phase 9 plan 09-12 Task 2: the v2 root through real Ink. The store is mocked
 // to two live rows (one asking, one waiting) so the LIVE header (D-20) is
@@ -235,8 +237,8 @@ describe("PanelApp unbound keys (D-19)", () => {
   });
 });
 
-describe("PanelApp go-to stays a no-op until 10-10 (10-07, 10-09)", () => {
-  it("Enter with AGENTS focused leaves the frame unchanged", async () => {
+describe("PanelApp Enter with nothing selected (10-07, 10-09, 10-10)", () => {
+  it("Enter with AGENTS focused and no selection leaves the frame unchanged", async () => {
     const { lastFrame, stdin } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
     const before = lastFrame();
     press(stdin, KEYS.enter);
@@ -560,9 +562,173 @@ describe("PanelApp live AGENTS (10-09)", () => {
   });
 });
 
+// --- Phase 10 plan 10-10: Enter on a selected card or strip runs the go-to
+// action (GOTO-01, GOTO-04, GOTO-05, D-09, D-12, D-13). Every probe and the
+// opener are fakes injected through `gotoDeps`: no test runs ps or open.
+
+const GO_URL = "warp://session/" + HEX32;
+const PS_WARP_4242 = [
+  " 4242  4241 claude",
+  " 4241  4240 -zsh",
+  " 4240     1 /Applications/Warp.app/Contents/MacOS/stable",
+  "",
+].join("\n");
+const PS_SCREEN_4242 = [
+  " 4242  4241 claude",
+  " 4241  4235 -zsh",
+  " 4235  4234 login",
+  " 4234     1 SCREEN",
+  "",
+].join("\n");
+const PS_NONE_4242 = [" 4242  4241 claude", " 4241     1 /bin/zsh", ""].join("\n");
+
+function gotoRows(warp: SessionRow["warp"] = { focus_url: GO_URL }): SessionRow[] {
+  return [
+    makeRow({ session_id: "s-go", title: "go task", start_time: T1, running: true, pid: 4242, warp }),
+    makeRow({ session_id: "s-strip", title: "strip task", start_time: T2, pid: 4242, warp }),
+  ];
+}
+
+function fakeGoto(ps: string, open?: (url: string) => Promise<boolean>): { deps: GotoDeps; opened: string[] } {
+  const opened: string[] = [];
+  return {
+    opened,
+    deps: {
+      probe: () => "alive",
+      startedProbe: async () => "",
+      procTable: async () => ps,
+      open: (url) => {
+        opened.push(url);
+        return open ? open(url) : Promise.resolve(true);
+      },
+    },
+  };
+}
+
+describe("PanelApp go-to (10-10, GOTO-01, GOTO-04, D-13)", () => {
+  beforeEach(() => {
+    ROWS.list = gotoRows();
+  });
+  afterEach(() => {
+    ROWS.list = DEFAULT_ROWS;
+  });
+
+  it("Enter on a selected card opens its URL once and flashes focusing <name>; the flash clears, the selection stays", async () => {
+    const clock = { t: 1000 };
+    const g = fakeGoto(PS_WARP_4242);
+    const { lastFrame, stdin } = await mountTty(
+      <PanelApp
+        tickMs={20}
+        now={() => clock.t}
+        gotoDeps={g.deps}
+        initialUi={{ selectedAgentId: "s-go", lastKeyAt: 1000 }}
+      />,
+    );
+    expect(lastFrame()).toContain("┏");
+    press(stdin, KEYS.enter);
+    await vi.waitFor(() => expect(footer(lastFrame())).toContain("focusing go task"), { timeout: 5000 });
+    expect(g.opened).toEqual([GO_URL]);
+    clock.t = 1000 + 2500;
+    await vi.waitFor(() => expect(footer(lastFrame())).not.toContain("focusing"), { timeout: 5000 });
+    // D-09: only the 15 s idle rule drops the selection
+    expect(lastFrame()).toContain("┏");
+    expect(footer(lastFrame())).toContain("go to pane");
+  });
+
+  it("Enter on a selected idle strip runs the same go-to", async () => {
+    const g = fakeGoto(PS_WARP_4242);
+    const { lastFrame, stdin } = await mountTty(
+      <PanelApp tickMs={FROZEN} now={() => NOW} gotoDeps={g.deps} initialUi={{ selectedAgentId: "s-strip", lastKeyAt: NOW }} />,
+    );
+    expect(footer(lastFrame())).toContain("go to pane");
+    press(stdin, KEYS.enter);
+    await vi.waitFor(() => expect(footer(lastFrame())).toContain("focusing strip task"), { timeout: 5000 });
+    expect(g.opened).toEqual([GO_URL]);
+  });
+
+  it("a GNU screen ancestry shows pane not findable and never opens (D-13)", async () => {
+    const g = fakeGoto(PS_SCREEN_4242);
+    const { lastFrame, stdin } = await mountTty(
+      <PanelApp tickMs={FROZEN} now={() => NOW} gotoDeps={g.deps} initialUi={{ selectedAgentId: "s-go", lastKeyAt: NOW }} />,
+    );
+    press(stdin, KEYS.enter);
+    await vi.waitFor(() => expect(footer(lastFrame())).toContain("pane not findable"), { timeout: 5000 });
+    expect(g.opened).toEqual([]);
+  });
+
+  it("warp null: a Warp host gives pane not findable, no host gives not a Warp session", async () => {
+    ROWS.list = gotoRows(null);
+    const a = fakeGoto(PS_WARP_4242);
+    const one = await mountTty(
+      <PanelApp tickMs={FROZEN} now={() => NOW} gotoDeps={a.deps} initialUi={{ selectedAgentId: "s-go", lastKeyAt: NOW }} />,
+    );
+    press(one.stdin, KEYS.enter);
+    await vi.waitFor(() => expect(footer(one.lastFrame())).toContain("pane not findable"), { timeout: 5000 });
+    expect(a.opened).toEqual([]);
+    live.pop()!.unmount();
+
+    const b = fakeGoto(PS_NONE_4242);
+    const two = await mountTty(
+      <PanelApp tickMs={FROZEN} now={() => NOW} gotoDeps={b.deps} initialUi={{ selectedAgentId: "s-go", lastKeyAt: NOW }} />,
+    );
+    press(two.stdin, KEYS.enter);
+    await vi.waitFor(() => expect(footer(two.lastFrame())).toContain("not a Warp session"), { timeout: 5000 });
+    expect(b.opened).toEqual([]);
+  });
+
+  it("a second Enter while the first open is pending is ignored (one go-to at a time)", async () => {
+    let release: (ok: boolean) => void = () => undefined;
+    const pending = new Promise<boolean>((r) => {
+      release = r;
+    });
+    const g = fakeGoto(PS_WARP_4242, () => pending);
+    const { lastFrame, stdin } = await mountTty(
+      <PanelApp tickMs={FROZEN} now={() => NOW} gotoDeps={g.deps} initialUi={{ selectedAgentId: "s-go", lastKeyAt: NOW }} />,
+    );
+    press(stdin, KEYS.enter);
+    await vi.waitFor(() => expect(g.opened).toHaveLength(1), { timeout: 5000 });
+    press(stdin, KEYS.enter);
+    press(stdin, KEYS.enter);
+    await sleep(150);
+    expect(g.opened).toHaveLength(1);
+    release(true);
+    await vi.waitFor(() => expect(footer(lastFrame())).toContain("focusing go task"), { timeout: 5000 });
+    // the guard is released afterwards: a later Enter runs again
+    press(stdin, KEYS.enter);
+    await vi.waitFor(() => expect(g.opened).toHaveLength(2), { timeout: 5000 });
+  });
+
+  it("Enter with the selected row gone from the roster: no flash, no open, the selection clears", async () => {
+    const g = fakeGoto(PS_WARP_4242);
+    const { lastFrame, stdin } = await mountTty(
+      <PanelApp tickMs={FROZEN} now={() => NOW} gotoDeps={g.deps} initialUi={{ selectedAgentId: "s-gone", lastKeyAt: NOW }} />,
+    );
+    press(stdin, KEYS.enter);
+    await sleep(150);
+    expect(g.opened).toEqual([]);
+    const f = footer(lastFrame());
+    expect(f).toContain("select agent");
+    for (const reason of ["focusing", "pane not findable", "not a Warp session", "process gone", "no Warp pane recorded"]) {
+      expect(f).not.toContain(reason);
+    }
+  });
+});
+
 describe("PanelApp source (T-09-11, T-09-08c)", () => {
   const src = readFileSync(fileURLToPath(new URL("./PanelApp.tsx", import.meta.url)), "utf8");
   const imports = [...src.matchAll(/from\s+["']([^"']+)["']/g)].map((m) => m[1]!);
+
+  it("imports exactly one action module, ./actions/goto.js (10-10, D-12)", () => {
+    expect(imports.filter((spec) => spec.includes("actions/"))).toEqual(["./actions/goto.js"]);
+  });
+
+  it("never reads an open-command override from the environment", () => {
+    const code = src
+      .split("\n")
+      .filter((l) => !/^\s*(\/\/|\*)/.test(l))
+      .join("\n");
+    expect(code).not.toMatch(/CSM_OPEN_CMD/);
+  });
 
   it("imports no action module (launch, ports, child process, warp-url, registration)", () => {
     expect(imports.length).toBeGreaterThan(0);
