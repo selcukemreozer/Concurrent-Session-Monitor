@@ -123,6 +123,24 @@ export interface Flash {
   ok: boolean;
 }
 
+/**
+ * The selection detail strip (Phase 10 plan 10-11; LAYOUT-07, 09 D-12, D-17):
+ * the selected card's or idle strip's intent, branch, owned ports, uptime,
+ * model and full last prompt. Strings are RAW; drawDetail makes them
+ * cell-safe. `state` is `"idle"` for a selected idle strip.
+ */
+export interface DetailModel {
+  id: string;
+  name: string;
+  state: AgentState | "idle";
+  uptime: string;
+  model: string | null;
+  intent: string | null;
+  branch: string;
+  ports: { port: number; proc: string }[];
+  prompt: string | null;
+}
+
 /** Everything the v2 panes draw. */
 export interface PanesModel {
   // agents
@@ -139,4 +157,6 @@ export interface PanesModel {
   sessionStatus: Flash | null;
   // ports
   ports: PortEntry[];
+  // selection (10-11): drawn only while `ui.selectedAgentId === detail.id`
+  detail?: DetailModel | null;
 }
