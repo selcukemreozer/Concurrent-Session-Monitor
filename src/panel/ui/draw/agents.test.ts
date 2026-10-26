@@ -599,3 +599,161 @@ describe("drawAgentsPane: reports its window (10-08, Pattern 3)", () => {
     expect(text(scr, 3, 0, 96)).toBe(cut(FRAME_AGENTS[1] as string, 0, 96));
   });
 });
+
+// --- Phase 10 plan 10-09: selectable idle strips (D-06, D-17) and the
+// selection-driven grid scroll (UI-SPEC § Grid order and scroll).
+
+const HI = "#f5f3ec";
+const DIM = "#85827a";
+
+describe("drawIdleStrip: selected (10-09, D-17)", () => {
+  const scr = new Screen(47, 2);
+  drawIdleStrip(scr, 0, 0, { id: "x", name: "project requirements", ago: "5h" }, { dimmed: false, selected: true });
+
+  it("draws the top edge, the dot and the bold name in hi, the ago in dim", () => {
+    expect(text(scr, 0)).toBe("▄".repeat(47));
+    for (let x = 0; x < 47; x++) expect(cellAt(scr, x, 0).fg).toBe(HI);
+    expect(cellAt(scr, 2, 1)).toMatchObject({ ch: "●", fg: HI });
+    expect(cellAt(scr, 4, 1)).toMatchObject({ ch: "p", fg: HI, bold: true });
+    expect(cellAt(scr, 43, 1)).toMatchObject({ ch: "5", fg: DIM });
+    expect(text(scr, 1)).toBe("  ● project requirements".padEnd(43) + "5h");
+  });
+
+  it("selected wins over dimmed", () => {
+    const s = new Screen(47, 2);
+    drawIdleStrip(s, 0, 0, { id: "x", name: "p", ago: "5h" }, { dimmed: true, selected: true });
+    expect(cellAt(s, 0, 0).fg).toBe(HI);
+  });
+});
+
+describe("drawAgentsPane: idle-strip selection (10-09, D-06)", () => {
+  // SAMPLE: 5 cards + 1 strip slot at 2 columns; the strip slot is grid row 2,
+  // column 1 (x49), so strip 0 draws at rows 19-20 and strip 1 at rows 21-22.
+  const IDLE0 = SAMPLE.idle[0]!.id;
+  const scr = new Screen(175, 40);
+  drawAgentsPane(scr, { x: 0, y: 2, w: 96, h: 24 }, { ...PANE, selectedId: IDLE0 });
+
+  it("draws the selected strip in the spotlight look", () => {
+    expect(cellAt(scr, 49, 19)).toMatchObject({ ch: "▄", fg: HI });
+    expect(cellAt(scr, 51, 20)).toMatchObject({ ch: "●", fg: HI });
+    expect(cellAt(scr, 53, 20)).toMatchObject({ fg: HI, bold: true });
+  });
+
+  it("dims every other strip", () => {
+    expect(cellAt(scr, 49, 21).fg).toBe(EDGE);
+    expect(cellAt(scr, 53, 22).fg).toBe(DIM2);
+  });
+
+  it("dims every card, keeping red elements red", () => {
+    expect(cellAt(scr, 0, 3).fg).toBe(EDGE);
+    expect(cellAt(scr, 4, 4).fg).toBe(DIM2);
+    expect(text(scr, 11, 0, 96)).not.toContain("┏");
+    // the checkout card (grid row 1, col 0) is in conflict: its ▀ edge stays red
+    expect(cellAt(scr, 0, 17)).toMatchObject({ ch: "▀", fg: RED });
+  });
+
+  it("an id that is neither a card nor a strip dims nothing", () => {
+    const s = new Screen(175, 40);
+    drawAgentsPane(s, { x: 0, y: 2, w: 96, h: 24 }, { ...PANE, selectedId: "nope" });
+    for (let i = 0; i < FRAME_AGENTS.length; i++) {
+      expect(text(s, 2 + i, 0, 96)).toBe(cut(FRAME_AGENTS[i] as string, 0, 96));
+    }
+    expect(cellAt(s, 49, 21).fg).toBe("#4a4945");
+  });
+});
+
+describe("drawAgentsPane: scroll follows the selection (10-09, D-05)", () => {
+  const cards12: AgentCard[] = Array.from({ length: 12 }, (_, i) => ({
+    ...PLAN,
+    id: `c${i}`,
+    name: `card ${i}`,
+    inConflict: false,
+    conflicts: 0,
+  }));
+  // 6 card rows at 2 columns; h 18 holds 2 card rows (with or without the up row)
+  const RECT = { x: 0, y: 0, w: 96, h: 18 };
+  const draw = (selectedId: string | null, firstRow: number, idle: IdleStrip[] = []) => {
+    const scr = new Screen(175, 40);
+    const res = drawAgentsPane(scr, RECT, { ...PANE, agents: cards12, idle, selectedId, firstRow });
+    return { scr, res };
+  };
+  const rowsWith = (scr: Screen, s: string): number[] => {
+    const out: number[] = [];
+    for (let y = 0; y < 40; y++) if (text(scr, y).includes(s)) out.push(y);
+    return out;
+  };
+
+  it("selecting a card in grid row 4 scrolls so that row is fully drawn", () => {
+    const { scr, res } = draw("c8", 0);
+    expect(res.firstRow).toBe(3);
+    expect(res.visibleRows).toBe(2);
+    // the heavy frame of c8 is fully inside the rect
+    const top = rowsWith(scr, "┏");
+    expect(top).toHaveLength(1);
+    expect(top[0]! + 6).toBeLessThan(RECT.h);
+    expect(text(scr, top[0]! + 6, 0, 47)).toContain("┗");
+    expect(text(scr, top[0]! + 1, 0, 47)).toContain("card 8");
+    expect(text(scr, 1)).toBe("  ↑ 6 more");
+    expect(res.moreBelow).toBe(2);
+    expect(rowsWith(scr, "↓ 2 more")).toHaveLength(1);
+  });
+
+  it("selecting row 0 afterwards scrolls back to 0", () => {
+    const { scr, res } = draw("c0", 3);
+    expect(res.firstRow).toBe(0);
+    expect(text(scr, 1, 0, 47)).toContain("card 0");
+    expect(res.moreBelow).toBe(8);
+  });
+
+  it("moving within the visible rows keeps the offset (sticky)", () => {
+    expect(draw("c6", 3).res.firstRow).toBe(3);
+    expect(draw("c9", 3).res.firstRow).toBe(3);
+    expect(draw("c2", 0).res.firstRow).toBe(0);
+    expect(draw("c3", 0).res.firstRow).toBe(0);
+  });
+
+  it("selecting a row above the window starts the window at it", () => {
+    expect(draw("c4", 3).res.firstRow).toBe(2);
+  });
+
+  it("selecting the last row scrolls to the last start", () => {
+    const { res } = draw("c11", 0);
+    expect(res.firstRow).toBe(4);
+    expect(res.moreBelow).toBe(0);
+  });
+
+  it("no selection keeps today's clamp", () => {
+    expect(draw(null, 2).res.firstRow).toBe(2);
+    expect(draw(null, 99).res.firstRow).toBe(4);
+  });
+
+  it("selecting a strip in a lower slot scrolls its card row into view", () => {
+    const cards6 = cards12.slice(0, 6);
+    const idle4: IdleStrip[] = Array.from({ length: 4 }, (_, i) => ({ id: `i${i}`, name: `idle ${i}`, ago: "1h" }));
+    // slots 0-5 cards, slot 6 = strips 0-2, slot 7 = strip 3: 4 card rows
+    const scr = new Screen(175, 40);
+    const res = drawAgentsPane(scr, RECT, { ...PANE, agents: cards6, idle: idle4, selectedId: "i3", firstRow: 0 });
+    expect(res.firstRow).toBe(2);
+    expect(text(scr, 1)).toBe("  ↑ 4 more");
+    expect(res.moreBelow).toBe(0);
+    const at = rowsWith(scr, "idle 3");
+    expect(at).toHaveLength(1);
+    expect(cellAt(scr, 49, at[0]! - 1)).toMatchObject({ ch: "▄", fg: HI });
+
+    // and back to the first card: the hidden count below counts cards + strips
+    const s2 = new Screen(175, 40);
+    const r2 = drawAgentsPane(s2, RECT, { ...PANE, agents: cards6, idle: idle4, selectedId: "c0", firstRow: 2 });
+    expect(r2.firstRow).toBe(0);
+    expect(r2.moreBelow).toBe(6);
+    expect(rowsWith(s2, "↓ 6 more")).toHaveLength(1);
+  });
+
+  it("calm mode: a strip selection scrolls by its slot from slot 0", () => {
+    const idle15: IdleStrip[] = Array.from({ length: 15 }, (_, i) => ({ id: `i${i}`, name: `idle ${i}`, ago: "1h" }));
+    // 5 strip slots at 2 columns = 3 card rows; strip 14 is slot 4 = row 2
+    const scr = new Screen(175, 40);
+    const res = drawAgentsPane(scr, { x: 0, y: 0, w: 96, h: 9 }, { ...PANE, agents: [], idle: idle15, selectedId: "i14", firstRow: 0 });
+    expect(res.firstRow).toBe(2);
+    expect(rowsWith(scr, "idle 14")).toHaveLength(1);
+  });
+});
