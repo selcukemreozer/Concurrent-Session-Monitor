@@ -9,7 +9,8 @@ import type { Flash, HeaderModel, PanesModel, Rect } from "../models.js";
 import { drawHeader } from "./header.js";
 import { drawAgentsPane } from "./agents.js";
 import { drawFilesPane } from "./files.js";
-import { drawRightColumn, focusedFloor } from "./right.js";
+import { bandFloor, drawBand, drawRightColumn, drawTabsBody, focusedFloor, type RightColumnModel } from "./right.js";
+import { drawPortsPane } from "./ports.js";
 import { drawFooter } from "./footer.js";
 import { drawTooSmall } from "./tooSmall.js";
 
@@ -25,11 +26,15 @@ import { drawTooSmall } from "./tooSmall.js";
  *   - D-27: below 60x16 the too-small screen is returned instead, drawn at
  *     the geometry-normalized size (a NaN, Infinity or negative size is 0),
  *     so a bad size can never build an unbounded Screen (WR-07).
- *   - RESEARCH Open Question 2 (Claude's discretion, recorded in 09-09): every
- *     width from 60 to 164 is drawn as the S1 full-width stack AGENTS -> FILES
- *     -> PHASES|SESSIONS -> PORTS. S2's side-by-side bottom band is Phase 10
- *     work (`geometry()` already returns its numbers), so the size invariants
- *     hold at every size from day one.
+ *   - S1 (60-99 cols): the full-width stack AGENTS -> FILES ->
+ *     PHASES|SESSIONS -> PORTS.
+ *   - S2 (100-164 cols; Phase 10 plan 10-03, LAYOUT-04, UI-SPEC S2 row):
+ *     AGENTS -> FILES -> a bottom band in which PHASES|SESSIONS (left,
+ *     `band.leftW` = floor((cols - 5) / 2)) and PORTS (right, from
+ *     `band.rightX`) sit side by side with their titles on the band's first
+ *     row and the `│` divider at `band.divX` on the band rows only
+ *     (`drawBand`). The band takes the right column's place in the stacked
+ *     budget below; its height is the taller half's natural height.
  *   - D-20: every pane carries the ` sample ` chip while `sample` is set; the
  *     header never does.
  *
@@ -65,6 +70,11 @@ import { drawTooSmall } from "./tooSmall.js";
  *              more) instead, so the focused pane always draws its inverse
  *              title and real content (UI-SPEC § Shrink order, IN-05; D-13;
  *              09-16). FILES title and conflict rows never yield (LAYOUT-03).
+ *   - S2 band: the same as stacked, with the band in place of the right
+ *              column: minimum tabs + spacer + a 3-row body (the PORTS half
+ *              sits beside it), or `max(bandFloor(), 5)` when the band holds
+ *              focus; the grid yields when one card row would leave the band
+ *              below `bandFloor()`.
  *
  * Every pane clips to the rect it is given (09-09 rect clip), so nothing is
  * drawn outside its rect, every line is at most `cols` cells and at most
@@ -107,6 +117,8 @@ const FILES_MAX_H = 10;
 const RIGHT_MIN = 7;
 /** Right column focused: tabs + spacer + 4 body + spacer + PORTS title + 2 rows. */
 const RIGHT_FOCUS_MIN = 10;
+/** S2 band collapsed: tabs + spacer + a 3-row body (PORTS sits beside it). */
+const BAND_MIN = 5;
 /**
  * The unfocused AGENTS pane when the grid gives way to a focused bottom pane:
  * its title + the ↓ N more row drawAgentsPane draws when no card row fits.
@@ -196,6 +208,22 @@ function measureLeft(input: ShellInput, w: number, cardCols: number): Measured {
   return { agents: a.rows, filesHard, filesTicker: f - filesHard };
 }
 
+/**
+ * The S2 band's natural height (10-03): the taller of the tabs half (tabs +
+ * spacer + the active body's natural rows at `leftW`) and the PORTS half
+ * (its natural rows at `rightW`), measured by drawing into scratch Screens.
+ */
+function bandNatural(rm: RightColumnModel, leftW: number, rightW: number, h: number): number {
+  const left = drawTabsBody(new Screen(leftW, h), { x: 0, y: 0, w: leftW, h }, rm, h - 2).end + 1;
+  const focused = rm.ui.focus === "ports";
+  const ports = drawPortsPane(
+    new Screen(rightW, h),
+    { x: 0, y: 0, w: rightW, h },
+    { ports: rm.ports, focused, cursorKey: focused ? (rm.ports[0]?.key ?? null) : null, sample: rm.sample },
+  );
+  return Math.max(left, ports);
+}
+
 /** Draw AGENTS then FILES down one column; returns the FILES title row and the last row used. */
 function drawLeft(
   scr: Screen,
@@ -258,18 +286,33 @@ export function drawShell(input: ShellInput): Line[] {
   } else {
     const m = measureLeft(input, cols, g.cardCols);
     const rh = Math.max(1, total * 4);
-    const rNat = drawRightColumn(new Screen(cols, rh), { x: 0, y: 0, w: cols, h: rh }, rightModel(input, 0)).end + 1;
+    const band = g.band;
+    const rm = rightModel(input, 0);
+    // S2 (10-03): the band stands in for the right column; its natural height is the taller half's
+    const rNat =
+      band !== null
+        ? bandNatural(rm, band.leftW, band.rightW, rh)
+        : drawRightColumn(new Screen(cols, rh), { x: 0, y: 0, w: cols, h: rh }, rm).end + 1;
     const rightFocused = input.ui.focus === "right" || input.ui.focus === "ports";
     // 09-16: the grid keeps its one card row unless that would leave the focused pane below its floor
     const cardMin = cardMinOf(m);
-    const focusFloor = Math.min(focusedFloor(rightModel(input, 0)), rNat);
+    const focusFloor = Math.min(band !== null ? bandFloor(rm) : focusedFloor(rm), rNat);
     const gridYields = rightFocused && total - cardMin - m.filesHard < focusFloor;
     const collapsed = Math.min(AGENTS_COLLAPSED, m.agents);
     const [grid, gridSpacer] = gridDemands(m);
     const agents: Demand = gridYields ? { id: "agents", min: collapsed, max: collapsed } : grid;
     const filesHard: Demand = { id: "filesHard", min: m.filesHard, max: m.filesHard };
     const ticker: Demand = { id: "ticker", min: Math.min(TICKER_MIN, m.filesTicker), max: m.filesTicker };
-    const right: Demand = { id: "right", min: Math.min(rightFocused ? RIGHT_FOCUS_MIN : RIGHT_MIN, rNat), max: rNat };
+    const rightMin =
+      band !== null
+        ? rightFocused
+          ? Math.max(bandFloor(rm), BAND_MIN)
+          : BAND_MIN
+        : rightFocused
+          ? RIGHT_FOCUS_MIN
+          : RIGHT_MIN;
+    const rid = band !== null ? "band" : "right";
+    const right: Demand = { id: rid, min: Math.min(rightMin, rNat), max: rNat };
     const spacers: Demand[] = [
       gridYields ? { id: "agentsSpacer", min: 0, max: 1 } : gridSpacer,
       { id: "rightSpacer", min: 0, max: 1 },
@@ -278,8 +321,8 @@ export function drawShell(input: ShellInput): Line[] {
       ? [agents, filesHard, right, ticker, ...spacers]
       : [agents, filesHard, ticker, right, ...spacers];
     const grow = rightFocused
-      ? ["right", "agentsSpacer", "agents", "ticker", "rightSpacer"]
-      : ["agentsSpacer", "agents", "ticker", "right", "rightSpacer"];
+      ? [rid, "agentsSpacer", "agents", "ticker", "rightSpacer"]
+      : ["agentsSpacer", "agents", "ticker", rid, "rightSpacer"];
     const b = allocate(total, demands, grow);
     const left = drawLeft(
       scr,
@@ -293,9 +336,10 @@ export function drawShell(input: ShellInput): Line[] {
     );
     end = left.end;
     const ry = left.end + 1 + (b.rightSpacer ?? 0);
-    const rH = Math.max(0, Math.min(b.right ?? 0, bottom - ry));
+    const rH = Math.max(0, Math.min(b[rid] ?? 0, bottom - ry));
     if (rH > 0) {
-      const r = drawRightColumn(scr, { x: 0, y: ry, w: cols, h: rH }, rightModel(input, 0));
+      const rect: Rect = { x: 0, y: ry, w: cols, h: rH };
+      const r = band !== null ? drawBand(scr, rect, band, rm) : drawRightColumn(scr, rect, rm);
       end = Math.max(end, r.end);
     }
   }

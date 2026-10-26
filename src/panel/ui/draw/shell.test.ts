@@ -219,11 +219,12 @@ describe("drawShell: breakpoints (D-27)", () => {
     for (let y = files; y < tabs; y++) expect(cellAt(t[y] as string, 59)).not.toBe("│");
     // no row of the band draws anything else in the gutter
     for (let y = tabs; y < t.length - 1; y++) {
-      for (const x of [57, 58, 60, 61]) expect(cellAt(t[y] as string, x)).toBe("");
+      for (const x of [57, 58, 60, 61]) expect(cellAt(t[y] as string, x).trim()).toBe("");
     }
-    // the PORTS half shows the exposed port beside the PHASES body
-    expect(t.slice(tabs).some((s) => /:27036 .*⇡ exposed/.test(cut(s, 62, 58)))).toBe(true);
-    expect(t.slice(tabs).some((s) => /◉ {2}33/.test(cut(s, 0, 57)))).toBe(true);
+    // the PORTS half shows the exposed port beside the PHASES body (both
+    // unfocused at the band's 5-row minimum: the grid grows first)
+    expect(cut(t[tabs + 2] as string, 0, 57).trimEnd()).toBe(" Scale & Insights v2.1");
+    expect(cut(t[tabs + 2] as string, 62, 58)).toMatch(/:27036 .*⇡ exposed/);
     expect(t[t.length - 1]).toContain("q quit");
     for (const s of t) expect(cellWidth(s)).toBeLessThanOrEqual(120);
   });

@@ -25256,12 +25256,63 @@ function focusedFloor(m) {
   }
   return FOCUSED_TAB_FLOOR;
 }
+function bandFloor(m) {
+  if (m.ui.focus === "ports") return PORTS_MIN + (portRowsNeeded(m.ports, true) > 1 ? 1 : 0);
+  if (m.ui.focus === "right") {
+    if (m.ui.rightTab === "phases" && m.projects.length > 0) {
+      const pi = Math.min(Math.max(0, Math.trunc(m.projectIndex) || 0), m.projects.length - 1);
+      const n = m.projects[pi]?.phases.length ?? 0;
+      if (n > 0) return 2 + PHASES_HEADER_ROWS + 1 + (n > 1 ? 1 : 0);
+    }
+    return 3;
+  }
+  return 2 + BODY_MIN;
+}
+function drawTabsBody(scr, r2, m, bodyH) {
+  if (r2.w <= 0 || r2.h <= 0) return { end: r2.y - 1, bodyRows: 0 };
+  const ui = m.ui;
+  const rightFocused = ui.focus === "right";
+  drawTabs(scr, r2.x, r2.y, r2.w, { active: ui.rightTab, columnFocused: rightFocused, sample: m.sample });
+  const h = Math.max(0, Math.min(Math.trunc(bodyH) || 0, r2.h - 2));
+  const bodyRect = { x: r2.x, y: r2.y + 2, w: r2.w, h };
+  const bodyRows = ui.rightTab === "phases" ? drawPhases(scr, bodyRect, {
+    projects: m.projects,
+    projectIndex: m.projectIndex,
+    focused: rightFocused,
+    cursor: null
+  }) : drawSessions(scr, bodyRect, {
+    sessions: m.sessions,
+    focused: rightFocused,
+    cursorId: m.sessions[0]?.id ?? null,
+    status: m.sessionStatus,
+    scanning: false
+  });
+  return { end: bodyRows > 0 ? bodyRect.y + bodyRows - 1 : r2.y, bodyRows };
+}
+function drawBand(scr, r2, band, m) {
+  if (r2.w <= 0 || r2.h <= 0) return { end: r2.y - 1 };
+  const bottom = r2.y + r2.h;
+  const left = drawTabsBody(scr, { x: r2.x, y: r2.y, w: band.leftW, h: r2.h }, m, Math.max(0, r2.h - 2));
+  const portsFocused = m.ui.focus === "ports";
+  const portsRows = drawPortsPane(
+    scr,
+    { x: r2.x + band.rightX, y: r2.y, w: band.rightW, h: r2.h },
+    {
+      ports: m.ports,
+      focused: portsFocused,
+      cursorKey: portsFocused ? m.ports[0]?.key ?? null : null,
+      sample: m.sample
+    }
+  );
+  const end = Math.min(bottom - 1, Math.max(r2.y, left.end, r2.y + portsRows - 1));
+  for (let y = r2.y; y <= end; y++) scr.put(r2.x + band.divX, y, V2.vline, { fg: PALETTE.edge });
+  return { end };
+}
 function drawRightColumn(scr, r2, m) {
   const ui = m.ui;
   const rightFocused = ui.focus === "right";
   const bottom = r2.y + r2.h;
   if (r2.w <= 0 || r2.h <= 0) return { end: r2.y - 1, portsY: r2.y };
-  drawTabs(scr, r2.x, r2.y, r2.w, { active: ui.rightTab, columnFocused: rightFocused, sample: m.sample });
   const portsFocused = ui.focus === "ports";
   const avail = Math.max(0, r2.h - CHROME_ROWS);
   let budget;
@@ -25275,20 +25326,8 @@ function drawRightColumn(scr, r2, m) {
     const body = { id: "body", min: BODY_MIN, max: avail };
     budget = allocate(avail, [body, { id: "ports", min: PORTS_MIN, max: PORTS_MIN }], ["body"]);
   }
-  const bodyRect = { x: r2.x, y: r2.y + 2, w: r2.w, h: budget.body ?? 0 };
-  const bodyRows = ui.rightTab === "phases" ? drawPhases(scr, bodyRect, {
-    projects: m.projects,
-    projectIndex: m.projectIndex,
-    focused: rightFocused,
-    cursor: null
-  }) : drawSessions(scr, bodyRect, {
-    sessions: m.sessions,
-    focused: rightFocused,
-    cursorId: m.sessions[0]?.id ?? null,
-    status: m.sessionStatus,
-    scanning: false
-  });
-  const bodyEnd = bodyRect.y + bodyRows - 1;
+  const { bodyRows } = drawTabsBody(scr, r2, m, budget.body ?? 0);
+  const bodyEnd = r2.y + 2 + bodyRows - 1;
   let portsY = Math.max(bodyEnd + 2, Math.trunc(m.portsMinY) || 0);
   const portsNeed = portsFocused ? budget.ports ?? PORTS_MIN : PORTS_MIN;
   if (bottom - portsY < portsNeed) portsY = bodyEnd + 2;
@@ -25392,6 +25431,7 @@ var TICKER_MIN = 3;
 var FILES_MAX_H = 10;
 var RIGHT_MIN = 7;
 var RIGHT_FOCUS_MIN = 10;
+var BAND_MIN = 5;
 var AGENTS_COLLAPSED = 2;
 function agentsModel(input, cardCols) {
   return {
@@ -25451,6 +25491,16 @@ function measureLeft(input, w2, cardCols) {
   const filesHard = Math.min(f, 1 + Math.min(p.conflicts.length, MAX_CONFLICT_ROWS2));
   return { agents: a.rows, filesHard, filesTicker: f - filesHard };
 }
+function bandNatural(rm, leftW, rightW, h) {
+  const left = drawTabsBody(new Screen(leftW, h), { x: 0, y: 0, w: leftW, h }, rm, h - 2).end + 1;
+  const focused = rm.ui.focus === "ports";
+  const ports = drawPortsPane(
+    new Screen(rightW, h),
+    { x: 0, y: 0, w: rightW, h },
+    { ports: rm.ports, focused, cursorKey: focused ? rm.ports[0]?.key ?? null : null, sample: rm.sample }
+  );
+  return Math.max(left, ports);
+}
 function drawLeft(scr, input, x, w2, cardCols, agentsH, filesH, bottom) {
   const ar = { x, y: BODY_Y, w: w2, h: agentsH };
   const a = drawAgentsPane(scr, ar, agentsModel(input, cardCols));
@@ -25496,23 +25546,27 @@ function drawShell(input) {
   } else {
     const m = measureLeft(input, cols, g.cardCols);
     const rh = Math.max(1, total * 4);
-    const rNat = drawRightColumn(new Screen(cols, rh), { x: 0, y: 0, w: cols, h: rh }, rightModel(input, 0)).end + 1;
+    const band = g.band;
+    const rm = rightModel(input, 0);
+    const rNat = band !== null ? bandNatural(rm, band.leftW, band.rightW, rh) : drawRightColumn(new Screen(cols, rh), { x: 0, y: 0, w: cols, h: rh }, rm).end + 1;
     const rightFocused = input.ui.focus === "right" || input.ui.focus === "ports";
     const cardMin = cardMinOf(m);
-    const focusFloor = Math.min(focusedFloor(rightModel(input, 0)), rNat);
+    const focusFloor = Math.min(band !== null ? bandFloor(rm) : focusedFloor(rm), rNat);
     const gridYields = rightFocused && total - cardMin - m.filesHard < focusFloor;
     const collapsed = Math.min(AGENTS_COLLAPSED, m.agents);
     const [grid, gridSpacer] = gridDemands(m);
     const agents2 = gridYields ? { id: "agents", min: collapsed, max: collapsed } : grid;
     const filesHard = { id: "filesHard", min: m.filesHard, max: m.filesHard };
     const ticker = { id: "ticker", min: Math.min(TICKER_MIN, m.filesTicker), max: m.filesTicker };
-    const right = { id: "right", min: Math.min(rightFocused ? RIGHT_FOCUS_MIN : RIGHT_MIN, rNat), max: rNat };
+    const rightMin = band !== null ? rightFocused ? Math.max(bandFloor(rm), BAND_MIN) : BAND_MIN : rightFocused ? RIGHT_FOCUS_MIN : RIGHT_MIN;
+    const rid = band !== null ? "band" : "right";
+    const right = { id: rid, min: Math.min(rightMin, rNat), max: rNat };
     const spacers = [
       gridYields ? { id: "agentsSpacer", min: 0, max: 1 } : gridSpacer,
       { id: "rightSpacer", min: 0, max: 1 }
     ];
     const demands = rightFocused ? [agents2, filesHard, right, ticker, ...spacers] : [agents2, filesHard, ticker, right, ...spacers];
-    const grow = rightFocused ? ["right", "agentsSpacer", "agents", "ticker", "rightSpacer"] : ["agentsSpacer", "agents", "ticker", "right", "rightSpacer"];
+    const grow = rightFocused ? [rid, "agentsSpacer", "agents", "ticker", "rightSpacer"] : ["agentsSpacer", "agents", "ticker", rid, "rightSpacer"];
     const b = allocate(total, demands, grow);
     const left = drawLeft(
       scr,
@@ -25526,9 +25580,10 @@ function drawShell(input) {
     );
     end = left.end;
     const ry = left.end + 1 + (b.rightSpacer ?? 0);
-    const rH = Math.max(0, Math.min(b.right ?? 0, bottom - ry));
+    const rH = Math.max(0, Math.min(b[rid] ?? 0, bottom - ry));
     if (rH > 0) {
-      const r2 = drawRightColumn(scr, { x: 0, y: ry, w: cols, h: rH }, rightModel(input, 0));
+      const rect = { x: 0, y: ry, w: cols, h: rH };
+      const r2 = band !== null ? drawBand(scr, rect, band, rm) : drawRightColumn(scr, rect, rm);
       end = Math.max(end, r2.end);
     }
   }

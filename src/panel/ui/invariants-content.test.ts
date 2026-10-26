@@ -591,7 +591,8 @@ describe("v2 content: S2 band (LAYOUT-04)", () => {
           const footer = lines.length - 1;
           const gutter = columns(lines, band.leftW, band.rightX);
           for (let y = top; y <= footer - 2; y++) {
-            expect(gutter[y], `${msg}: gutter row ${y}`).toBe("  │  ");
+            // a blank right half is trimmed from the line, so pad back to the 5 gutter cells
+            expect(gutter[y]!.padEnd(5), `${msg}: gutter row ${y}`).toBe("  │  ");
           }
           expect(gutter[footer - 1]!.trim(), `${msg}: spacer row`).toBe("");
           // the focused band pane draws its inverse title
