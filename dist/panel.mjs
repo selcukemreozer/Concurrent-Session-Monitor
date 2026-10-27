@@ -25380,8 +25380,9 @@ function putIn3(scr, x, y, text, st, end) {
 function plural2(n, one, many) {
   return `${n} ${n === 1 ? one : many}`;
 }
-function drawPhases(scr, r2, m) {
-  if (r2.w <= 0 || r2.h <= 0) return 0;
+function drawPhasesWin(scr, r2, m) {
+  const none = (rows2) => ({ rows: rows2, visible: 0, offset: 0 });
+  if (r2.w <= 0 || r2.h <= 0) return none(0);
   const x = r2.x;
   const end = r2.x + r2.w;
   const bottom = r2.y + r2.h;
@@ -25391,7 +25392,7 @@ function drawPhases(scr, r2, m) {
   };
   if (m.projects.length === 0) {
     put(1, r2.y, plainText("no GSD projects", r2.w - 1), DIM);
-    return 1;
+    return none(1);
   }
   const pi = Math.min(Math.max(0, Math.trunc(m.projectIndex) || 0), m.projects.length - 1);
   const p = m.projects[pi];
@@ -25408,7 +25409,7 @@ function drawPhases(scr, r2, m) {
   }
   if (total === 0) {
     put(1, r2.y + 2, plainText("no roadmap", r2.w - 1), DIM);
-    return Math.min(3, r2.h);
+    return none(Math.min(3, r2.h));
   }
   const done = phases2.filter((ph) => ph.status === "done").length;
   const bw = compact ? 0 : r2.w - 10;
@@ -25420,6 +25421,7 @@ function drawPhases(scr, r2, m) {
   if (!compact && r2.w - 7 >= 1 + Math.max(0, bw)) put(r2.w - 7, r2.y + 2, `${done}/${total}`, DIM);
   const curIdx = phases2.findIndex((ph) => ph.status === "current");
   const center = curIdx >= 0 ? curIdx : Math.min(done, total - 1);
+  const heads = /* @__PURE__ */ new Set();
   const phaseRows = (k, last, contAfter, cursorHere) => {
     const ph = phases2[k];
     const isDone = ph.status === "done";
@@ -25434,6 +25436,7 @@ function drawPhases(scr, r2, m) {
       put(NUM_X, y2, plainText(ph.number, NUM_W), st);
       put(NAME_X, y2, plainText(ph.name, r2.w - NAME_X), st);
     });
+    heads.add(out[0]);
     if (isCur && ph.plansTotal !== null) {
       out.push((y2) => {
         if (contAfter) put(MARK_X, y2, V2.vline, { fg: PALETTE.edge });
@@ -25461,6 +25464,7 @@ function drawPhases(scr, r2, m) {
   const arrowRow = (arrow, n) => (y2) => put(2, y2, `${arrow} ${n} more`, DIM);
   const budget = Math.max(0, r2.h - head);
   let rows = [];
+  let offset = 0;
   if (!m.focused) {
     for (const radius of [2, 1, 0]) {
       const a0 = Math.max(0, center - radius);
@@ -25483,7 +25487,14 @@ function drawPhases(scr, r2, m) {
     const cursor = m.cursor === null ? center : Math.min(total - 1, Math.max(0, Math.trunc(m.cursor)));
     const items2 = [];
     for (let k = 0; k < total; k++) items2.push(phaseRows(k, k === total - 1, k < total - 1, k === cursor));
-    const win = windowSlice({ len: total, height: budget, cursor, offset: 0, heights: items2.map((i) => i.length) });
+    const win = windowSlice({
+      len: total,
+      height: budget,
+      cursor,
+      offset: m.offset ?? 0,
+      heights: items2.map((i) => i.length)
+    });
+    offset = win.offset;
     if (win.up) rows.push(arrowRow(V2.up, win.above));
     for (let k = win.start; k < win.end; k++) rows.push(...items2[k]);
     if (win.down) {
@@ -25494,7 +25505,8 @@ function drawPhases(scr, r2, m) {
   rows = rows.slice(0, budget);
   let y = r2.y + head;
   for (const row of rows) row(y++);
-  return Math.min(r2.h, rows.length > 0 ? y - r2.y : 3);
+  const visible = rows.filter((row) => heads.has(row)).length;
+  return { rows: Math.min(r2.h, rows.length > 0 ? y - r2.y : 3), offset, visible };
 }
 
 // src/panel/ui/draw/sessions.ts
@@ -25516,21 +25528,25 @@ function putIn4(scr, x, y, text, st, end) {
   }
   if (out !== "") scr.put(x, y, out, st);
 }
-function drawSessions(scr, r2, m) {
-  if (r2.w <= 0 || r2.h <= 0) return 0;
+function drawSessionsWin(scr, r2, m) {
+  if (r2.w <= 0 || r2.h <= 0) return { rows: 0, visible: 0, offset: Math.max(0, Math.trunc(m.offset ?? 0) || 0) };
   const x = r2.x;
   const end = r2.x + r2.w;
   const put = (dx, y2, text, st) => putIn4(scr, x + dx, y2, text, st, end);
   let y = r2.y;
   const list2 = m.sessions;
   let statusRows = m.status ? 2 : 0;
+  let offset = 0;
+  let visible = 0;
   if (r2.h - statusRows < 1) statusRows = 0;
   if (list2.length === 0) {
     put(NAME_X2, y, plainText(m.scanning ? `scanning${V2.ellipsis}` : "no resumable sessions", r2.w - NAME_X2), DIM2);
     y++;
   } else {
     const cursor = m.cursorId === null ? -1 : list2.findIndex((s) => s.id === m.cursorId);
-    const win = windowSlice({ len: list2.length, height: r2.h - statusRows, cursor, offset: 0 });
+    const win = windowSlice({ len: list2.length, height: r2.h - statusRows, cursor, offset: m.offset ?? 0 });
+    offset = win.offset;
+    visible = win.end - win.start;
     if (win.up) put(NAME_X2, y++, `${V2.up} ${win.above} more`, DIM2);
     for (let i = win.start; i < win.end; i++) {
       const s = list2[i];
@@ -25547,7 +25563,9 @@ function drawSessions(scr, r2, m) {
   }
   if (m.status && statusRows > 0 && y + 1 < r2.y + r2.h) {
     y++;
-    if (m.status.ok) {
+    if (m.status.ok && m.status.text.includes(V2.ok)) {
+      put(NAME_X2, y, plainText(m.status.text, r2.w - NAME_X2), { fg: PALETTE.running, bold: true });
+    } else if (m.status.ok) {
       put(NAME_X2, y, V2.ok, { fg: PALETTE.running, bold: true });
       put(NAME_X2 + 2, y, plainText(m.status.text, r2.w - NAME_X2 - 2), { fg: PALETTE.fg });
     } else {
@@ -25555,7 +25573,7 @@ function drawSessions(scr, r2, m) {
     }
     y++;
   }
-  return y - r2.y;
+  return { rows: y - r2.y, offset, visible };
 }
 
 // src/panel/ui/draw/ports.ts
@@ -25591,7 +25609,12 @@ function visiblePortEntries(ports, focused) {
   return { shown, others: ports.length - shown.length };
 }
 function drawPortsPane(scr, r2, m) {
-  if (r2.w <= 0 || r2.h <= 0) return 0;
+  return drawPortsWin(scr, r2, m).rows;
+}
+function drawPortsWin(scr, r2, m) {
+  const prev = m.focused ? Math.max(0, Math.trunc(m.offset ?? 0) || 0) : 0;
+  const early = (rows) => ({ rows, visible: 0, offset: prev });
+  if (r2.w <= 0 || r2.h <= 0) return early(0);
   const n = m.ports.length;
   drawTitle(scr, r2.x, r2.y, r2.w, {
     label: "PORTS",
@@ -25599,14 +25622,14 @@ function drawPortsPane(scr, r2, m) {
     sample: m.sample,
     right: m.focused ? `${n} ${n === 1 ? "port" : "ports"}` : null
   });
-  if (r2.h < 3) return 1;
+  if (r2.h < 3) return early(1);
   const x = r2.x;
   const end = r2.x + r2.w;
   const put = (dx, y2, text, st) => putIn5(scr, x + dx, y2, text, st, end);
   let y = r2.y + 2;
   if (n === 0) {
     put(PORT_X, y, plainText("no listening ports", r2.w - PORT_X), DIM3);
-    return 3;
+    return { rows: 3, visible: 0, offset: 0 };
   }
   const { shown, others } = visiblePortEntries(m.ports, m.focused);
   const avail = r2.h - 2;
@@ -25617,22 +25640,24 @@ function drawPortsPane(scr, r2, m) {
   const hiddenOthers = showOthers ? 0 : others;
   if (listH === 1 && (shown.length > 1 || hiddenOthers > 0)) {
     put(PORT_X, y++, `${V2.down} ${shown.length + hiddenOthers} more`, DIM3);
-    return y - r2.y;
+    return early(y - r2.y);
   }
   const cursor = m.focused && m.cursorKey !== null ? shown.findIndex((p) => p.key === m.cursorKey) : -1;
   const win = windowSlice({
     len: shown.length,
     height: listH,
     cursor,
-    offset: 0,
+    offset: prev,
     heights: shown.map((p) => p.owner !== null ? 2 : 1)
   });
   const itemLimit = r2.y + 2 + listH - (win.down ? 1 : 0);
   const showPid = m.focused && r2.w >= PID_MIN_W;
   const showProc = r2.w >= PROC_MIN_W;
   if (win.up) put(PORT_X, y++, `${V2.up} ${win.above} more`, DIM3);
+  let visible = 0;
   for (let i = win.start; i < win.end && y < itemLimit; i++) {
     const p = shown[i];
+    visible++;
     if (i === cursor) put(0, y, V2.cursor, HI_BOLD2);
     put(PORT_X, y, `:${Math.trunc(p.port)}`, p.exposed ? RED_BOLD : HI_BOLD2);
     if (showProc) put(PROC_X, y, plainText(p.proc, PROC_W2), DIM3);
@@ -25650,10 +25675,31 @@ function drawPortsPane(scr, r2, m) {
   }
   if (win.down) put(PORT_X, y++, `${V2.down} ${win.below + hiddenOthers} more`, DIM3);
   if (showOthers) put(PORT_X, y++, `+${others} others`, DIM22);
-  return y - r2.y;
+  return { rows: y - r2.y, offset: win.offset, visible };
 }
 
 // src/panel/ui/draw/right.ts
+function idleWindows(m) {
+  const o = m.offsets;
+  return {
+    phases: { offset: o?.phases ?? 0, visible: 0 },
+    sessions: { offset: o?.sessions ?? 0, visible: 0 },
+    ports: { offset: o?.ports ?? 0, visible: 0 }
+  };
+}
+function portCursorKey(m) {
+  const focused = m.ui.focus === "ports";
+  return m.portCursor ?? (focused ? m.ports[0]?.key ?? null : null);
+}
+function portsModel(m) {
+  return {
+    ports: m.ports,
+    focused: m.ui.focus === "ports",
+    cursorKey: portCursorKey(m),
+    sample: m.samplePorts ?? m.sample,
+    offset: m.offsets?.ports ?? 0
+  };
+}
 var CHROME_ROWS = 3;
 var BODY_MIN = 3;
 var PORTS_MIN = 3;
@@ -25687,56 +25733,58 @@ function bandFloor(m) {
   return 2 + BODY_MIN;
 }
 function drawTabsBody(scr, r2, m, bodyH) {
-  if (r2.w <= 0 || r2.h <= 0) return { end: r2.y - 1, bodyRows: 0 };
+  const windows = idleWindows(m);
+  if (r2.w <= 0 || r2.h <= 0) return { end: r2.y - 1, bodyRows: 0, windows };
   const ui = m.ui;
   const rightFocused = ui.focus === "right";
   drawTabs(scr, r2.x, r2.y, r2.w, { active: ui.rightTab, columnFocused: rightFocused, sample: m.sampleTabs ?? m.sample });
   const h = Math.max(0, Math.min(Math.trunc(bodyH) || 0, r2.h - 2));
   const bodyRect = { x: r2.x, y: r2.y + 2, w: r2.w, h };
-  const bodyRows = ui.rightTab === "phases" ? drawPhases(scr, bodyRect, {
-    projects: m.projects,
-    projectIndex: m.projectIndex,
-    focused: rightFocused,
-    cursor: null
-  }) : drawSessions(scr, bodyRect, {
-    sessions: m.sessions,
-    focused: rightFocused,
-    cursorId: m.sessions[0]?.id ?? null,
-    status: m.sessionStatus,
-    scanning: false
-  });
-  return { end: bodyRows > 0 ? bodyRect.y + bodyRows - 1 : r2.y, bodyRows };
+  let bodyRows;
+  if (ui.rightTab === "phases") {
+    const w2 = drawPhasesWin(scr, bodyRect, {
+      projects: m.projects,
+      projectIndex: m.projectIndex,
+      focused: rightFocused,
+      cursor: m.phaseCursor ?? null,
+      offset: windows.phases.offset
+    });
+    bodyRows = w2.rows;
+    windows.phases = { offset: w2.offset, visible: w2.visible };
+  } else {
+    const w2 = drawSessionsWin(scr, bodyRect, {
+      sessions: m.sessions,
+      focused: rightFocused,
+      cursorId: m.sessionCursor !== void 0 ? m.sessionCursor : m.sessions[0]?.id ?? null,
+      status: m.sessionStatus,
+      scanning: m.sessionsScanning === true,
+      offset: windows.sessions.offset
+    });
+    bodyRows = w2.rows;
+    windows.sessions = { offset: w2.offset, visible: w2.visible };
+  }
+  return { end: bodyRows > 0 ? bodyRect.y + bodyRows - 1 : r2.y, bodyRows, windows };
 }
 function drawBand(scr, r2, band, m) {
-  if (r2.w <= 0 || r2.h <= 0) return { end: r2.y - 1 };
+  if (r2.w <= 0 || r2.h <= 0) return { end: r2.y - 1, windows: idleWindows(m) };
   const bottom = r2.y + r2.h;
   const left = drawTabsBody(scr, { x: r2.x, y: r2.y, w: band.leftW, h: r2.h }, m, Math.max(0, r2.h - 2));
-  const portsFocused = m.ui.focus === "ports";
-  const portsRows = drawPortsPane(
-    scr,
-    { x: r2.x + band.rightX, y: r2.y, w: band.rightW, h: r2.h },
-    {
-      ports: m.ports,
-      focused: portsFocused,
-      cursorKey: portsFocused ? m.ports[0]?.key ?? null : null,
-      sample: m.samplePorts ?? m.sample
-    }
-  );
-  const end = Math.min(bottom - 1, Math.max(r2.y, left.end, r2.y + portsRows - 1));
+  const ports = drawPortsWin(scr, { x: r2.x + band.rightX, y: r2.y, w: band.rightW, h: r2.h }, portsModel(m));
+  const end = Math.min(bottom - 1, Math.max(r2.y, left.end, r2.y + ports.rows - 1));
   for (let y = r2.y; y <= end; y++) scr.put(r2.x + band.divX, y, V2.vline, { fg: PALETTE.edge });
-  return { end };
+  return { end, windows: { ...left.windows, ports: { offset: ports.offset, visible: ports.visible } } };
 }
 function drawRightColumn(scr, r2, m) {
   const ui = m.ui;
   const rightFocused = ui.focus === "right";
   const bottom = r2.y + r2.h;
-  if (r2.w <= 0 || r2.h <= 0) return { end: r2.y - 1, portsY: r2.y };
+  if (r2.w <= 0 || r2.h <= 0) return { end: r2.y - 1, portsY: r2.y, windows: idleWindows(m) };
   const portsFocused = ui.focus === "ports";
   const avail = Math.max(0, r2.h - CHROME_ROWS);
   let budget;
   if (portsFocused) {
-    const ports = { id: "ports", min: PORTS_MIN, max: 2 + portRowsNeeded(m.ports, true) };
-    budget = allocate(avail, [ports, { id: "body", min: 0, max: avail }], ["ports", "body"]);
+    const ports2 = { id: "ports", min: PORTS_MIN, max: 2 + portRowsNeeded(m.ports, true) };
+    budget = allocate(avail, [ports2, { id: "body", min: 0, max: avail }], ["ports", "body"]);
   } else if (rightFocused) {
     const body = { id: "body", min: BODY_MIN, max: avail };
     budget = allocate(avail, [body, { id: "ports", min: 1, max: PORTS_MIN }], ["body", "ports"]);
@@ -25744,7 +25792,7 @@ function drawRightColumn(scr, r2, m) {
     const body = { id: "body", min: BODY_MIN, max: avail };
     budget = allocate(avail, [body, { id: "ports", min: PORTS_MIN, max: PORTS_MIN }], ["body"]);
   }
-  const { bodyRows } = drawTabsBody(scr, r2, m, budget.body ?? 0);
+  const { bodyRows, windows } = drawTabsBody(scr, r2, m, budget.body ?? 0);
   const bodyEnd = r2.y + 2 + bodyRows - 1;
   let portsY = Math.max(bodyEnd + 2, Math.trunc(m.portsMinY) || 0);
   const portsNeed = portsFocused ? budget.ports ?? PORTS_MIN : PORTS_MIN;
@@ -25752,18 +25800,11 @@ function drawRightColumn(scr, r2, m) {
   if (portsFocused && bodyRows === 0 && bottom - portsY === PORTS_MIN && portRowsNeeded(m.ports, true) > 1) {
     portsY -= 1;
   }
-  const portsRows = drawPortsPane(
-    scr,
-    { x: r2.x, y: portsY, w: r2.w, h: Math.max(0, bottom - portsY) },
-    {
-      ports: m.ports,
-      focused: portsFocused,
-      cursorKey: portsFocused ? m.ports[0]?.key ?? null : null,
-      sample: m.samplePorts ?? m.sample
-    }
-  );
+  const ports = drawPortsWin(scr, { x: r2.x, y: portsY, w: r2.w, h: Math.max(0, bottom - portsY) }, portsModel(m));
+  const portsRows = ports.rows;
+  windows.ports = { offset: ports.offset, visible: ports.visible };
   const end = Math.min(bottom - 1, portsRows > 0 ? portsY + portsRows - 1 : Math.max(r2.y, bodyEnd));
-  return { end, portsY };
+  return { end, portsY, windows };
 }
 
 // src/panel/ui/draw/footer.ts
@@ -25901,9 +25942,18 @@ function filesModel(input) {
     narrowed: input.panes.filesNarrowed === true
   };
 }
+function phaseCursorIndex(input) {
+  const id = input.ui.phaseCursor;
+  const projects = input.panes.projects;
+  if (id === null || projects.length === 0) return null;
+  const pi = Math.min(Math.max(0, Math.trunc(input.panes.projectIndex) || 0), projects.length - 1);
+  const k = projects[pi]?.phases.findIndex((ph) => ph.number === id) ?? -1;
+  return k >= 0 ? k : null;
+}
 function rightModel(input, portsMinY) {
   const p = input.panes;
   const f = flags(input);
+  const sc = input.scroll;
   return {
     ui: input.ui,
     projects: p.projects,
@@ -25914,7 +25964,21 @@ function rightModel(input, portsMinY) {
     sample: f.phases || f.sessions,
     sampleTabs: f[input.ui.rightTab],
     samplePorts: f.ports,
-    portsMinY
+    portsMinY,
+    // 10-13: identity cursors and the previous windows
+    phaseCursor: phaseCursorIndex(input),
+    ...p.sessionCursor !== void 0 ? { sessionCursor: p.sessionCursor } : {},
+    portCursor: input.ui.portCursor,
+    sessionsScanning: p.sessionsScanning === true,
+    ...sc !== void 0 ? { offsets: { phases: sc.phases.offset, sessions: sc.sessions.offset, ports: sc.ports.offset } } : {}
+  };
+}
+function keptWindows(input) {
+  const sc = input.scroll;
+  return {
+    phases: { offset: sc?.phases.offset ?? 0, visible: 0 },
+    sessions: { offset: sc?.sessions.offset ?? 0, visible: 0 },
+    ports: { offset: sc?.ports.offset ?? 0, visible: 0 }
   };
 }
 function cardMinOf(m) {
@@ -25954,7 +26018,7 @@ function bandNatural(rm, leftW, rightW, h) {
     {
       ports: rm.ports,
       focused,
-      cursorKey: focused ? rm.ports[0]?.key ?? null : null,
+      cursorKey: portCursorKey(rm),
       sample: rm.samplePorts ?? rm.sample
     }
   );
@@ -25990,6 +26054,7 @@ function drawShellFrame(input) {
   const bottom = BODY_Y + total;
   let end;
   let gridWin = NO_WINDOW;
+  let lists = keptWindows(input);
   const detail = detailOf(input);
   if (g.split && g.divX !== null) {
     const m = measureLeft(input, g.LW, g.cardCols);
@@ -26018,6 +26083,7 @@ function drawShellFrame(input) {
     const left = drawLeft(scr, input, 0, g.LW, g.cardCols, leftRows(b), detail, bottom);
     const right = drawRightColumn(scr, { x: g.RX, y: BODY_Y, w: g.RW, h: total }, rightModel(input, left.filesY));
     gridWin = left.grid;
+    lists = right.windows;
     end = Math.max(left.end, right.end);
     for (let y = BODY_Y; y <= end; y++) scr.put(g.divX, y, V2.vline, { fg: PALETTE.edge });
   } else {
@@ -26025,7 +26091,8 @@ function drawShellFrame(input) {
     const rh = Math.max(1, total * 4);
     const band = g.band;
     const rm = rightModel(input, 0);
-    const rNat = band !== null ? bandNatural(rm, band.leftW, band.rightW, rh) : drawRightColumn(new Screen(cols, rh), { x: 0, y: 0, w: cols, h: rh }, rm).end + 1;
+    const nat = { ...rm, offsets: void 0 };
+    const rNat = band !== null ? bandNatural(nat, band.leftW, band.rightW, rh) : drawRightColumn(new Screen(cols, rh), { x: 0, y: 0, w: cols, h: rh }, nat).end + 1;
     const rightFocused = input.ui.focus === "right" || input.ui.focus === "ports";
     const detailMin = detail !== null && !rightFocused ? DETAIL_MIN : 0;
     const cardMin = cardMinOf(m);
@@ -26061,11 +26128,12 @@ function drawShellFrame(input) {
       const rect = { x: 0, y: ry, w: cols, h: rH };
       const r2 = band !== null ? drawBand(scr, rect, band, rm) : drawRightColumn(scr, rect, rm);
       end = Math.max(end, r2.end);
+      lists = r2.windows;
     }
   }
   const footerY = Math.min(end + 2, rows - 1);
   drawFooter(scr, footerY, cols, { hints: hintsFor(input.ui), keysOff: input.keysOff, flash: input.flash });
-  const scroll = { grid: gridWin, phases: NO_WINDOW, sessions: NO_WINDOW, ports: NO_WINDOW };
+  const scroll = { grid: gridWin, ...lists };
   return { lines: scr.toLines(footerY + 1), scroll };
 }
 

@@ -94,6 +94,8 @@ export interface Project {
   name: string;
   dir: string;
   phases: PhaseEntry[];
+  /** The project's root path, its identity across rebuilds (10-13; used by 10-14, KEYS-05). */
+  root?: string;
 }
 
 export interface SessionEntry {
@@ -162,6 +164,13 @@ export interface PanesModel {
   // sessions
   sessions: SessionEntry[];
   sessionStatus: Flash | null;
+  /**
+   * 10-13 (KEYS-02): the SESSIONS cursor by session id. Absent = the first
+   * session (Phase 9); null = no cursor.
+   */
+  sessionCursor?: string | null;
+  /** 10-13: the first session scan is still running (`scanning…`). */
+  sessionsScanning?: boolean;
   // ports
   ports: PortEntry[];
   // selection (10-11): drawn only while `ui.selectedAgentId === detail.id`

@@ -10,7 +10,15 @@ import { drawHeader } from "./header.js";
 import { drawAgentsPane } from "./agents.js";
 import { DETAIL_ROWS, drawDetail } from "./detail.js";
 import { drawFilesPane } from "./files.js";
-import { bandFloor, drawBand, drawRightColumn, drawTabsBody, focusedFloor, type RightColumnModel } from "./right.js";
+import {
+  bandFloor,
+  drawBand,
+  drawRightColumn,
+  drawTabsBody,
+  focusedFloor,
+  portCursorKey,
+  type RightColumnModel,
+} from "./right.js";
 import { drawPortsPane } from "./ports.js";
 import { drawFooter } from "./footer.js";
 import { drawTooSmall } from "./tooSmall.js";
@@ -110,6 +118,17 @@ import { drawTooSmall } from "./tooSmall.js";
  * can never leave a stale offset (milestone Pitfall 20). The grid's natural
  * height is always measured from offset 0, so allocation never depends on the
  * scroll position.
+ *
+ * 10-13 (LAYOUT-02, KEYS-02): PHASES, SESSIONS and PORTS join the sticky
+ * windows. The shell resolves the cursors by identity: `ui.phaseCursor` (a
+ * phase number) to its index in the shown project (a number that is not
+ * there falls back to the current phase), `panes.sessionCursor` (a session
+ * id) and `ui.portCursor` (a portKey; one that is gone draws no `❯`). The
+ * previous offsets ride in from `input.scroll`, and `scroll.phases /
+ * sessions / ports` report the windows the drawn right column or band used
+ * (a pane not on screen keeps its offset with `visible: 0`). Natural heights
+ * are measured without the offsets. With no cursors and no scroll input
+ * every frame is unchanged.
  *
  * Per-pane sample chips (10-08, RESEARCH Pattern 4, D-23): `sample` is either
  * one boolean (every pane alike, as in Phase 9) or a `SampleFlags` record;
@@ -264,9 +283,20 @@ function filesModel(input: ShellInput): Parameters<typeof drawFilesPane>[2] {
   };
 }
 
+/** `ui.phaseCursor` (a phase number) as an index in the shown project, or null (10-13). */
+function phaseCursorIndex(input: ShellInput): number | null {
+  const id = input.ui.phaseCursor;
+  const projects = input.panes.projects;
+  if (id === null || projects.length === 0) return null;
+  const pi = Math.min(Math.max(0, Math.trunc(input.panes.projectIndex) || 0), projects.length - 1);
+  const k = projects[pi]?.phases.findIndex((ph) => ph.number === id) ?? -1;
+  return k >= 0 ? k : null;
+}
+
 function rightModel(input: ShellInput, portsMinY: number): Parameters<typeof drawRightColumn>[2] {
   const p = input.panes;
   const f = flags(input);
+  const sc = input.scroll;
   return {
     ui: input.ui,
     projects: p.projects,
@@ -278,6 +308,24 @@ function rightModel(input: ShellInput, portsMinY: number): Parameters<typeof dra
     sampleTabs: f[input.ui.rightTab],
     samplePorts: f.ports,
     portsMinY,
+    // 10-13: identity cursors and the previous windows
+    phaseCursor: phaseCursorIndex(input),
+    ...(p.sessionCursor !== undefined ? { sessionCursor: p.sessionCursor } : {}),
+    portCursor: input.ui.portCursor,
+    sessionsScanning: p.sessionsScanning === true,
+    ...(sc !== undefined
+      ? { offsets: { phases: sc.phases.offset, sessions: sc.sessions.offset, ports: sc.ports.offset } }
+      : {}),
+  };
+}
+
+/** The windows of panes that are not on screen this frame: the previous offsets, nothing drawn. */
+function keptWindows(input: ShellInput): Pick<ScrollState, "phases" | "sessions" | "ports"> {
+  const sc = input.scroll;
+  return {
+    phases: { offset: sc?.phases.offset ?? 0, visible: 0 },
+    sessions: { offset: sc?.sessions.offset ?? 0, visible: 0 },
+    ports: { offset: sc?.ports.offset ?? 0, visible: 0 },
   };
 }
 
@@ -341,7 +389,7 @@ function bandNatural(rm: RightColumnModel, leftW: number, rightW: number, h: num
     {
       ports: rm.ports,
       focused,
-      cursorKey: focused ? (rm.ports[0]?.key ?? null) : null,
+      cursorKey: portCursorKey(rm),
       sample: rm.samplePorts ?? rm.sample,
     },
   );
@@ -406,6 +454,7 @@ export function drawShellFrame(input: ShellInput): { lines: Line[]; scroll: Scro
   const bottom = BODY_Y + total;
   let end: number;
   let gridWin: PaneWindow = NO_WINDOW;
+  let lists = keptWindows(input);
 
   const detail = detailOf(input);
 
@@ -438,6 +487,7 @@ export function drawShellFrame(input: ShellInput): { lines: Line[]; scroll: Scro
     const left = drawLeft(scr, input, 0, g.LW, g.cardCols, leftRows(b), detail, bottom);
     const right = drawRightColumn(scr, { x: g.RX, y: BODY_Y, w: g.RW, h: total }, rightModel(input, left.filesY));
     gridWin = left.grid;
+    lists = right.windows;
     end = Math.max(left.end, right.end);
     for (let y = BODY_Y; y <= end; y++) scr.put(g.divX, y, V2.vline, { fg: PALETTE.edge });
   } else {
@@ -445,11 +495,13 @@ export function drawShellFrame(input: ShellInput): { lines: Line[]; scroll: Scro
     const rh = Math.max(1, total * 4);
     const band = g.band;
     const rm = rightModel(input, 0);
+    // natural heights are measured from offset 0 (10-13), like the grid's
+    const nat: RightColumnModel = { ...rm, offsets: undefined };
     // S2 (10-03): the band stands in for the right column; its natural height is the taller half's
     const rNat =
       band !== null
-        ? bandNatural(rm, band.leftW, band.rightW, rh)
-        : drawRightColumn(new Screen(cols, rh), { x: 0, y: 0, w: cols, h: rh }, rm).end + 1;
+        ? bandNatural(nat, band.leftW, band.rightW, rh)
+        : drawRightColumn(new Screen(cols, rh), { x: 0, y: 0, w: cols, h: rh }, nat).end + 1;
     const rightFocused = input.ui.focus === "right" || input.ui.focus === "ports";
     // 10-11: with AGENTS focused the strip's minimum comes before the grid's card row
     const detailMin = detail !== null && !rightFocused ? DETAIL_MIN : 0;
@@ -503,13 +555,13 @@ export function drawShellFrame(input: ShellInput): { lines: Line[]; scroll: Scro
       const rect: Rect = { x: 0, y: ry, w: cols, h: rH };
       const r = band !== null ? drawBand(scr, rect, band, rm) : drawRightColumn(scr, rect, rm);
       end = Math.max(end, r.end);
+      lists = r.windows;
     }
   }
 
   const footerY = Math.min(end + 2, rows - 1);
   drawFooter(scr, footerY, cols, { hints: hintsFor(input.ui), keysOff: input.keysOff, flash: input.flash });
-  // phases / sessions / ports stay at 0 until their panes go live (wired by
-  // the PHASES/SESSIONS plan 10-13 and the PORTS plan 10-14)
-  const scroll: ScrollState = { grid: gridWin, phases: NO_WINDOW, sessions: NO_WINDOW, ports: NO_WINDOW };
+  // 10-13: the list windows of the right column or band that landed on screen
+  const scroll: ScrollState = { grid: gridWin, ...lists };
   return { lines: scr.toLines(footerY + 1), scroll };
 }

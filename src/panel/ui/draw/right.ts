@@ -6,9 +6,9 @@ import type { Band } from "../geometry.js";
 import { PALETTE } from "../palette.js";
 import { V2 } from "../glyphs.js";
 import { drawTabs } from "./title.js";
-import { drawPhases, PHASES_HEADER_ROWS } from "./phases.js";
-import { drawSessions } from "./sessions.js";
-import { drawPortsPane, visiblePortEntries } from "./ports.js";
+import { drawPhasesWin, PHASES_HEADER_ROWS } from "./phases.js";
+import { drawSessionsWin } from "./sessions.js";
+import { drawPortsWin, visiblePortEntries } from "./ports.js";
 
 /**
  * The v2 right column (Phase 9, plan 09-08; D-02, D-20; UI-SPEC W2 layout,
@@ -59,6 +59,16 @@ import { drawPortsPane, visiblePortEntries } from "./ports.js";
  * half bleeds into the gutter or the other half. `bandFloor()` is the band's
  * focused floor: PORTS sits beside the tabs, so each half only needs its own
  * rows.
+ *
+ * Identity cursors and sticky windows (Phase 10 plan 10-13; LAYOUT-02,
+ * KEYS-02, RESEARCH Pattern 3): the model carries the PHASES cursor (an index
+ * the shell resolved from the phase number), the SESSIONS cursor (a session
+ * id) and the PORTS cursor (a portKey), plus the previous frame's window
+ * offsets. The list panes continue from those offsets and every drawer returns
+ * `windows`: the `{ offset, visible }` each list pane used, or its previous
+ * offset with `visible: 0` when it was not drawn. A PORTS cursor whose key is
+ * gone draws no `❯` (fails closed, open question 4, T-10-32). With none of
+ * these fields every frame is unchanged.
  */
 
 export interface RightColumnModel {
@@ -76,6 +86,59 @@ export interface RightColumnModel {
   sampleTabs?: boolean;
   samplePorts?: boolean;
   portsMinY: number;
+  /** 10-13: the PHASES cursor index (null/absent = the current phase). */
+  phaseCursor?: number | null;
+  /** 10-13: the SESSIONS cursor id (absent = the first session; null = none). */
+  sessionCursor?: string | null;
+  /** 10-13: the PORTS cursor key (null/absent = the first shown port while focused). */
+  portCursor?: string | null;
+  /** 10-13: the first session scan is still running. */
+  sessionsScanning?: boolean;
+  /** 10-13: the previous frame's window offsets (absent = all 0). */
+  offsets?: { phases: number; sessions: number; ports: number };
+}
+
+/** A list pane's window: its start (sticky offset) and the items drawn. */
+export interface ListWin {
+  offset: number;
+  visible: number;
+}
+
+/** The windows the right-column list panes used this frame (10-13). */
+export interface RightWindows {
+  phases: ListWin;
+  sessions: ListWin;
+  ports: ListWin;
+}
+
+/** The previous offsets with nothing drawn (a pane that is not on screen). */
+function idleWindows(m: RightColumnModel): RightWindows {
+  const o = m.offsets;
+  return {
+    phases: { offset: o?.phases ?? 0, visible: 0 },
+    sessions: { offset: o?.sessions ?? 0, visible: 0 },
+    ports: { offset: o?.ports ?? 0, visible: 0 },
+  };
+}
+
+/**
+ * The PORTS cursor key to draw (10-13): `portCursor` when set (a key that is
+ * gone then draws no `❯`), else the first shown port while PORTS is focused.
+ */
+export function portCursorKey(m: RightColumnModel): string | null {
+  const focused = m.ui.focus === "ports";
+  return m.portCursor ?? (focused ? (m.ports[0]?.key ?? null) : null);
+}
+
+/** The PORTS pane model with the cursor and the previous offset (10-13). */
+function portsModel(m: RightColumnModel): Parameters<typeof drawPortsWin>[2] {
+  return {
+    ports: m.ports,
+    focused: m.ui.focus === "ports",
+    cursorKey: portCursorKey(m),
+    sample: m.samplePorts ?? m.sample,
+    offset: m.offsets?.ports ?? 0,
+  };
 }
 
 /** Tabs row, the spacer under it and the spacer above the PORTS title. */
@@ -143,37 +206,47 @@ export function bandFloor(m: RightColumnModel): number {
  * The PHASES | SESSIONS tabs on `r.y` and the active tab body (focused when
  * the right column has focus) in `{ r.x, r.y + 2, r.w, bodyH }`, the body cut
  * to the rect. Draws no PORTS. Returns the last row used (`end`, absolute,
- * never past `r.y + r.h - 1`) and the body rows drawn.
+ * never past `r.y + r.h - 1`), the body rows drawn and the windows (10-13;
+ * `ports` is always the previous offset with nothing drawn).
  */
 export function drawTabsBody(
   scr: Screen,
   r: Rect,
   m: RightColumnModel,
   bodyH: number,
-): { end: number; bodyRows: number } {
-  if (r.w <= 0 || r.h <= 0) return { end: r.y - 1, bodyRows: 0 };
+): { end: number; bodyRows: number; windows: RightWindows } {
+  const windows = idleWindows(m);
+  if (r.w <= 0 || r.h <= 0) return { end: r.y - 1, bodyRows: 0, windows };
   const ui = m.ui;
   const rightFocused = ui.focus === "right";
   drawTabs(scr, r.x, r.y, r.w, { active: ui.rightTab, columnFocused: rightFocused, sample: m.sampleTabs ?? m.sample });
 
   const h = Math.max(0, Math.min(Math.trunc(bodyH) || 0, r.h - 2));
   const bodyRect: Rect = { x: r.x, y: r.y + 2, w: r.w, h };
-  const bodyRows =
-    ui.rightTab === "phases"
-      ? drawPhases(scr, bodyRect, {
-          projects: m.projects,
-          projectIndex: m.projectIndex,
-          focused: rightFocused,
-          cursor: null,
-        })
-      : drawSessions(scr, bodyRect, {
-          sessions: m.sessions,
-          focused: rightFocused,
-          cursorId: m.sessions[0]?.id ?? null,
-          status: m.sessionStatus,
-          scanning: false,
-        });
-  return { end: bodyRows > 0 ? bodyRect.y + bodyRows - 1 : r.y, bodyRows };
+  let bodyRows: number;
+  if (ui.rightTab === "phases") {
+    const w = drawPhasesWin(scr, bodyRect, {
+      projects: m.projects,
+      projectIndex: m.projectIndex,
+      focused: rightFocused,
+      cursor: m.phaseCursor ?? null,
+      offset: windows.phases.offset,
+    });
+    bodyRows = w.rows;
+    windows.phases = { offset: w.offset, visible: w.visible };
+  } else {
+    const w = drawSessionsWin(scr, bodyRect, {
+      sessions: m.sessions,
+      focused: rightFocused,
+      cursorId: m.sessionCursor !== undefined ? m.sessionCursor : (m.sessions[0]?.id ?? null),
+      status: m.sessionStatus,
+      scanning: m.sessionsScanning === true,
+      offset: windows.sessions.offset,
+    });
+    bodyRows = w.rows;
+    windows.sessions = { offset: w.offset, visible: w.visible };
+  }
+  return { end: bodyRows > 0 ? bodyRect.y + bodyRows - 1 : r.y, bodyRows, windows };
 }
 
 /**
@@ -181,33 +254,28 @@ export function drawTabsBody(
  * `{ r.x, r.y, band.leftW, r.h }`, PORTS in
  * `{ r.x + band.rightX, r.y, band.rightW, r.h }`, both titles on `r.y`, and
  * the `│` divider at `r.x + band.divX` from `r.y` to the taller half's last
- * row. Returns that row (`end`, absolute, never past `r.y + r.h - 1`). Pure.
+ * row. Returns that row (`end`, absolute, never past `r.y + r.h - 1`) and the
+ * windows the list panes used (10-13). Pure.
  */
-export function drawBand(scr: Screen, r: Rect, band: Band, m: RightColumnModel): { end: number } {
-  if (r.w <= 0 || r.h <= 0) return { end: r.y - 1 };
+export function drawBand(scr: Screen, r: Rect, band: Band, m: RightColumnModel): { end: number; windows: RightWindows } {
+  if (r.w <= 0 || r.h <= 0) return { end: r.y - 1, windows: idleWindows(m) };
   const bottom = r.y + r.h;
   const left = drawTabsBody(scr, { x: r.x, y: r.y, w: band.leftW, h: r.h }, m, Math.max(0, r.h - 2));
-  const portsFocused = m.ui.focus === "ports";
-  const portsRows = drawPortsPane(
-    scr,
-    { x: r.x + band.rightX, y: r.y, w: band.rightW, h: r.h },
-    {
-      ports: m.ports,
-      focused: portsFocused,
-      cursorKey: portsFocused ? (m.ports[0]?.key ?? null) : null,
-      sample: m.samplePorts ?? m.sample,
-    },
-  );
-  const end = Math.min(bottom - 1, Math.max(r.y, left.end, r.y + portsRows - 1));
+  const ports = drawPortsWin(scr, { x: r.x + band.rightX, y: r.y, w: band.rightW, h: r.h }, portsModel(m));
+  const end = Math.min(bottom - 1, Math.max(r.y, left.end, r.y + ports.rows - 1));
   for (let y = r.y; y <= end; y++) scr.put(r.x + band.divX, y, V2.vline, { fg: PALETTE.edge });
-  return { end };
+  return { end, windows: { ...left.windows, ports: { offset: ports.offset, visible: ports.visible } } };
 }
 
-export function drawRightColumn(scr: Screen, r: Rect, m: RightColumnModel): { end: number; portsY: number } {
+export function drawRightColumn(
+  scr: Screen,
+  r: Rect,
+  m: RightColumnModel,
+): { end: number; portsY: number; windows: RightWindows } {
   const ui = m.ui;
   const rightFocused = ui.focus === "right";
   const bottom = r.y + r.h;
-  if (r.w <= 0 || r.h <= 0) return { end: r.y - 1, portsY: r.y };
+  if (r.w <= 0 || r.h <= 0) return { end: r.y - 1, portsY: r.y, windows: idleWindows(m) };
 
   const portsFocused = ui.focus === "ports";
   const avail = Math.max(0, r.h - CHROME_ROWS);
@@ -225,7 +293,7 @@ export function drawRightColumn(scr: Screen, r: Rect, m: RightColumnModel): { en
     budget = allocate(avail, [body, { id: "ports", min: PORTS_MIN, max: PORTS_MIN }], ["body"]);
   }
 
-  const { bodyRows } = drawTabsBody(scr, r, m, budget.body ?? 0);
+  const { bodyRows, windows } = drawTabsBody(scr, r, m, budget.body ?? 0);
   const bodyEnd = r.y + 2 + bodyRows - 1;
 
   // Line PORTS up with FILES, unless that costs a focused PORTS its budgeted
@@ -240,18 +308,11 @@ export function drawRightColumn(scr: Screen, r: Rect, m: RightColumnModel): { en
   if (portsFocused && bodyRows === 0 && bottom - portsY === PORTS_MIN && portRowsNeeded(m.ports, true) > 1) {
     portsY -= 1;
   }
-  const portsRows = drawPortsPane(
-    scr,
-    { x: r.x, y: portsY, w: r.w, h: Math.max(0, bottom - portsY) },
-    {
-      ports: m.ports,
-      focused: portsFocused,
-      cursorKey: portsFocused ? (m.ports[0]?.key ?? null) : null,
-      sample: m.samplePorts ?? m.sample,
-    },
-  );
+  const ports = drawPortsWin(scr, { x: r.x, y: portsY, w: r.w, h: Math.max(0, bottom - portsY) }, portsModel(m));
+  const portsRows = ports.rows;
+  windows.ports = { offset: ports.offset, visible: ports.visible };
 
   // `end` never points past the rect (09-09: tiny rects where the body gets 0 rows).
   const end = Math.min(bottom - 1, portsRows > 0 ? portsY + portsRows - 1 : Math.max(r.y, bodyEnd));
-  return { end, portsY };
+  return { end, portsY, windows };
 }
