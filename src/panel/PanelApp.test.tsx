@@ -60,6 +60,18 @@ vi.mock("../branch.js", async (importOriginal) => {
     branchScanMs: vi.fn(() => 10_000_000),
   };
 });
+// 10-11: PanelApp calls usePorts, which spawns lsof/ps; mock only the scan
+// (a fixture list) and its cadence (as App.test.tsx does), keeping the pure
+// livePidMap / attribute join the detail strip uses for owned ports.
+const PORTS = vi.hoisted(() => ({ list: [] as import("../ports.js").ScannedPort[] }));
+vi.mock("../ports.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../ports.js")>();
+  return {
+    ...actual,
+    scanPorts: vi.fn(async () => PORTS.list),
+    portScanMs: vi.fn(() => 10_000_000),
+  };
+});
 const { UPDATE_STOP } = vi.hoisted(() => ({ UPDATE_STOP: vi.fn() }));
 vi.mock("../update.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../update.js")>();
@@ -744,5 +756,90 @@ describe("PanelApp source (T-09-11, T-09-08c)", () => {
   it("has exactly one input handler and no focus manager", () => {
     expect(src.split("useInput(").length - 1).toBe(1);
     expect(src).not.toMatch(/useFocus|ink-text-input|dimColor/);
+  });
+});
+
+// --- Phase 10 plan 10-11: the selection detail strip (LAYOUT-07, D-06, D-09, D-17)
+
+describe("PanelApp detail strip (10-11, LAYOUT-07)", () => {
+  const PROMPT = "move the coupon field into the cart summary, then recompute the total and run the tests";
+  const detailRows = (): SessionRow[] => {
+    const r = liveRows(PROMPT);
+    r[0] = { ...r[0]!, intent: "checkout screen", pid: 4242 };
+    r[1] = { ...r[1]!, pid: 5353 };
+    return r;
+  };
+  const pill = (f: string, name: string): string | undefined => lines(f).find((l) => l.startsWith(`▐${name}▌`));
+  beforeEach(() => {
+    ROWS.list = detailRows();
+    PORTS.list = [];
+  });
+  afterEach(() => {
+    ROWS.list = DEFAULT_ROWS;
+    PORTS.list = [];
+  });
+
+  it("selecting a card opens the strip (pill, intent, branch, prompt) under the grid; Esc closes it", async () => {
+    const { lastFrame, stdin } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
+    expect(pill(lastFrame(), "alpha task")).toBeUndefined();
+    press(stdin, KEYS.down);
+    await vi.waitFor(() => expect(pill(lastFrame(), "alpha task")).toBeDefined());
+    const ls = lines(lastFrame());
+    const y = ls.findIndex((l) => l.startsWith("▐alpha task▌"));
+    expect(ls[y]).toContain("RUNNING");
+    expect(ls[y]).toContain("opus 4.7");
+    expect(leftOf(ls[y + 1]!)).toMatch(/^ {2}» checkout screen {4}⎇ main/);
+    expect(leftOf(ls[y + 2]!)).toContain(`› ${PROMPT}`);
+    // under the grid, above FILES
+    expect(ls.findIndex((l) => l.includes("┏"))).toBeLessThan(y);
+    expect(ls.findIndex((l) => leftOf(l).startsWith(" FILES "))).toBeGreaterThan(y + 2);
+    // no up-front go-to marker (D-11)
+    expect(lastFrame()).not.toContain("not a Warp session");
+    expect(lastFrame()).not.toContain("no Warp pane recorded");
+
+    press(stdin, KEYS.esc);
+    await vi.waitFor(() => expect(pill(lastFrame(), "alpha task")).toBeUndefined());
+    expect(lastFrame()).not.toContain("» checkout screen");
+  });
+
+  it("shows the ports the selected session owns (ancestry join), not another session's", async () => {
+    const port = (p: number, command: string, ancestryPids: number[]) => ({
+      port: p,
+      pid: ancestryPids[0]!,
+      command,
+      exposed: false,
+      ancestryPids,
+      origin: "other" as const,
+    });
+    PORTS.list = [port(3000, "bun", [9001, 4242]), port(8088, "node", [9002, 5353])];
+    const { lastFrame, stdin } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
+    press(stdin, KEYS.down);
+    await vi.waitFor(() => expect(pill(lastFrame(), "alpha task")).toBeDefined());
+    const ls = lines(lastFrame());
+    const y = ls.findIndex((l) => l.startsWith("▐alpha task▌"));
+    await vi.waitFor(() => expect(leftOf(lines(lastFrame())[y + 1]!)).toContain(":3000 bun"));
+    expect(leftOf(lines(lastFrame())[y + 1]!)).not.toContain(":8088");
+  });
+
+  it("selecting an idle strip opens the strip with IDLE (D-06, D-17)", async () => {
+    const { lastFrame } = await mountTty(
+      <PanelApp tickMs={FROZEN} now={() => NOW} initialUi={{ selectedAgentId: "s-gamma", lastKeyAt: NOW }} />,
+    );
+    await vi.waitFor(() => expect(pill(lastFrame(), "gamma idle")).toBeDefined());
+    expect(pill(lastFrame(), "gamma idle")).toContain("▐gamma idle▌ IDLE");
+    const ls = lines(lastFrame());
+    const y = ls.findIndex((l) => l.startsWith("▐gamma idle▌"));
+    expect(leftOf(ls[y + 1]!)).toMatch(/^ {2}» — {4}⎇ main/);
+  });
+
+  it("drops the selection and the strip after 15 s without a key (D-09)", async () => {
+    const clock = { t: 14_999 };
+    const { lastFrame } = await mountTty(
+      <PanelApp tickMs={20} now={() => clock.t} initialUi={{ selectedAgentId: "s-alpha", lastKeyAt: 0 }} />,
+    );
+    await vi.waitFor(() => expect(pill(lastFrame(), "alpha task")).toBeDefined());
+    clock.t = 15_000;
+    await vi.waitFor(() => expect(pill(lastFrame(), "alpha task")).toBeUndefined(), { timeout: 5000 });
+    expect(lastFrame()).not.toContain("» checkout screen");
   });
 });
