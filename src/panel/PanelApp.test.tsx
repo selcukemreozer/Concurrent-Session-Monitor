@@ -70,6 +70,8 @@ vi.mock("../ports.js", async (importOriginal) => {
     ...actual,
     scanPorts: vi.fn(async () => PORTS.list),
     portScanMs: vi.fn(() => 10_000_000),
+    // 10-15: a stub, so no test can ever signal a real process
+    killPort: vi.fn(async () => ({ ok: false, message: "test stub" })),
   };
 });
 const { UPDATE_STOP } = vi.hoisted(() => ({ UPDATE_STOP: vi.fn() }));
@@ -127,6 +129,7 @@ vi.mock("./launch.js", async (importOriginal) => {
 import { scanProgress, resolvePlanningRoots, phaseScanMs, resolveGsdTools } from "../phases.js";
 import { discoverSessions, resumeScanMs, readLiveRegistry, resumeExtras } from "../sessions.js";
 import { copyResume, openResume } from "./launch.js";
+import { killPort, portScanMs } from "../ports.js";
 
 // Re-arm the 10-14 mocks before every test (a restore elsewhere could strip a
 // vi.fn implementation) so no test ever reaches a real scan or launcher.
@@ -590,11 +593,11 @@ describe("PanelApp live AGENTS (10-09)", () => {
     expect(leftOf(title)).not.toContain("sample");
   });
 
-  it("only PORTS keeps its sample chip; FILES (10-12), PHASES and SESSIONS (10-14) are live (D-23)", async () => {
+  it("no pane keeps its sample chip: FILES (10-12), PHASES and SESSIONS (10-14), PORTS (10-15) are live (D-23)", async () => {
     const { lastFrame, stdin } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
     const ls = lines(lastFrame());
     expect(leftOf(ls.find((l) => leftOf(l).startsWith(" FILES "))!)).not.toContain("sample");
-    expect(ls.find((l) => l.includes("PORTS"))).toContain("sample");
+    expect(ls.find((l) => l.includes("PORTS"))).not.toContain("sample");
     expect(ls.find((l) => l.includes("[r]"))).not.toContain("sample");
     press(stdin, KEYS.r);
     await vi.waitFor(() => expect(footer(lastFrame())).toContain("r phases"));
@@ -844,15 +847,24 @@ describe("PanelApp source (T-09-11, T-09-08c)", () => {
     expect(code).not.toMatch(/CSM_OPEN_CMD/);
   });
 
-  it("imports no action module (launch, ports, child process, warp-url, registration)", () => {
+  it("imports no action module (launch, the port scanner, child process, warp-url, registration)", () => {
     expect(imports.length).toBeGreaterThan(0);
     for (const spec of imports) {
       expect(spec).not.toMatch(/launch/);
-      expect(spec).not.toMatch(/(^|\/)ports(\.js)?$/);
+      // 10-15: the pure ./ui/build/ports.js builder is allowed; the scanner
+      // module (which holds the kill backend) is not
+      expect(spec).not.toMatch(/^\.\.\/ports(\.js)?$/);
       expect(spec).not.toMatch(/child_process/);
       expect(spec).not.toMatch(/warp-url/);
       expect(spec).not.toMatch(/registration/);
     }
+  });
+
+  it("imports the pure PORTS builder but never names the kill backend (10-15, T-10-39)", () => {
+    expect(imports).toContain("./ui/build/ports.js");
+    expect(imports).not.toContain("../ports.js");
+    expect(imports).not.toContain("../ports");
+    expect(src).not.toMatch(/\bkillPort\b/);
   });
 
   it("has exactly one input handler and no focus manager", () => {
@@ -1335,5 +1347,166 @@ describe("PanelApp live SESSIONS (10-14, 08 D-14..D-19)", () => {
     await sleep(100);
     expect(copyResume).not.toHaveBeenCalled();
     expect(openResume).not.toHaveBeenCalled();
+  });
+});
+
+// --- Phase 10 plan 10-15: the live PORTS pane (KEYS-02, KEYS-03, LAYOUT-01, D-23)
+// The scan is the usePorts mock (PORTS.list, cadence portScanMs); ownership is
+// the real livePidMap / attribute join over the mocked live rows.
+
+describe("PanelApp live PORTS (10-15, KEYS-02, KEYS-03)", () => {
+  const PG_DOWN = String.fromCharCode(27) + "[6~";
+  const sp = (port: number, pid: number, command: string, ancestryPids: number[], exposed = false) => ({
+    port,
+    pid,
+    command,
+    exposed,
+    ancestryPids,
+    origin: "other" as const,
+  });
+  const VITE = sp(5173, 20, "vite", [20, 10]);
+  const BUN = sp(3000, 30, "bun", [30, 11]);
+  const STEAM = sp(27036, 811, "steam_osx", [811], true);
+  const portRows = (): SessionRow[] => [
+    makeRow({ session_id: "s-dash", title: "dashboard research", pid: 10 }),
+    makeRow({ session_id: "s-check", title: "checkout screen", pid: 11 }),
+  ];
+  /** The PORTS pane's non-blank rows below its title (the right column). */
+  const portsBlock = (f: string): string[] => {
+    const ls = lines(f);
+    const y = ls.findIndex((l) => /PORTS/.test(l.split("│")[1] ?? ""));
+    if (y < 0) return [];
+    return ls
+      .slice(y + 1)
+      .map((l) => l.split("│")[1] ?? "")
+      .filter((r) => r.trim() !== "");
+  };
+  const portsTitle = (f: string): string => lines(f).find((l) => /PORTS/.test(l.split("│")[1] ?? "")) ?? "";
+  /** The port the `❯` sits on, or null when PORTS draws no cursor. */
+  const cursorPort = (f: string): string | null => {
+    const r = portsBlock(f).find((l) => l.includes("❯"));
+    return r === undefined ? null : (r.match(/:(\d+)/)?.[1] ?? "?");
+  };
+  const setScanMs = (ms: number) => vi.mocked(portScanMs).mockReturnValue(ms);
+
+  beforeEach(() => {
+    ROWS.list = portRows();
+    PORTS.list = [VITE, BUN, STEAM];
+    setScanMs(10_000_000);
+    vi.mocked(killPort).mockClear();
+  });
+  afterEach(() => {
+    ROWS.list = DEFAULT_ROWS;
+    PORTS.list = [];
+    setScanMs(10_000_000);
+  });
+
+  it("unfocused: exposed first, then owned ports with their session; no sample chip (D-23)", async () => {
+    const { lastFrame } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
+    await vi.waitFor(() => expect(lastFrame()).toContain(":27036"));
+    const b = portsBlock(lastFrame()).map((l) => l.trim());
+    expect(b[0]).toMatch(/^:27036 +steam_osx +⇡ exposed$/);
+    expect(b[1]).toMatch(/^:3000 +bun$/);
+    expect(b[2]).toBe("↳ checkout screen");
+    expect(b[3]).toMatch(/^:5173 +vite$/);
+    expect(b[4]).toBe("↳ dashboard research");
+    expect(portsTitle(lastFrame())).not.toContain("sample");
+    expect(cursorPort(lastFrame())).toBeNull();
+    expect(lastFrame()).not.toContain("pid 30");
+  });
+
+  it("an unowned, unexposed port is counted as `+N others` when unfocused", async () => {
+    PORTS.list = [VITE, BUN, STEAM, sp(8080, 90, "python3", [90])];
+    const { lastFrame } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
+    await vi.waitFor(() => expect(portsBlock(lastFrame()).join("\n")).toContain("+1 others"));
+    expect(lastFrame()).not.toContain(":8080");
+  });
+
+  it("every pane is live: no sample chip anywhere in the frame (LAYOUT-01)", async () => {
+    const { lastFrame } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
+    await vi.waitFor(() => expect(lastFrame()).toContain(":27036"));
+    expect(lastFrame()).not.toContain(" sample ");
+  });
+
+  it("Tab to PORTS lists every port with `pid N`, `❯` on the first; footer has no `⏎ actions`", async () => {
+    const { lastFrame, stdin } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
+    await vi.waitFor(() => expect(lastFrame()).toContain(":27036"));
+    await pressEach(stdin, KEYS.tab, KEYS.tab);
+    await vi.waitFor(() => expect(footer(lastFrame())).toContain("browse ports"));
+    const b = portsBlock(lastFrame()).map((l) => l.trim());
+    expect(b[0]).toMatch(/^❯ :3000 +bun +pid 30$/);
+    expect(b[2]).toMatch(/^:5173 +vite +pid 20$/);
+    expect(b[4]).toMatch(/^:27036 +steam_osx +⇡ exposed +pid 811$/);
+    expect(portsTitle(lastFrame())).toContain("3 ports");
+    expect(cursorPort(lastFrame())).toBe("3000");
+    expect(footer(lastFrame()).trim()).toMatch(/↑↓ browse ports +esc agents +tab focus +q quit$/);
+    expect(footer(lastFrame())).not.toContain("actions");
+    expect(footer(lastFrame())).not.toContain("⏎");
+  });
+
+  it("↓ moves the cursor; a re-scan that re-orders the list keeps it on the same port (KEYS-02)", async () => {
+    setScanMs(60);
+    const { lastFrame, stdin } = await mountTty(
+      <PanelApp tickMs={FROZEN} now={() => NOW} initialUi={{ focus: "ports" }} />,
+    );
+    await vi.waitFor(() => expect(cursorPort(lastFrame())).toBe("3000"));
+    press(stdin, KEYS.down);
+    await vi.waitFor(() => expect(cursorPort(lastFrame())).toBe("5173"));
+    // the next scan inserts a port before the selection and arrives in reverse order
+    PORTS.list = [STEAM, VITE, BUN, sp(2000, 40, "deno", [40])];
+    await vi.waitFor(() => expect(lastFrame()).toContain(":2000"));
+    const b = portsBlock(lastFrame()).map((l) => l.trim());
+    expect(b[0]).toMatch(/^:2000 +deno/);
+    expect(cursorPort(lastFrame())).toBe("5173");
+    press(stdin, KEYS.down);
+    await vi.waitFor(() => expect(cursorPort(lastFrame())).toBe("27036"));
+  });
+
+  it("a vanished selected port draws no `❯` (not first, not nearest); one ↓ then selects the first port (fail closed)", async () => {
+    setScanMs(60);
+    const { lastFrame, stdin } = await mountTty(
+      <PanelApp tickMs={FROZEN} now={() => NOW} initialUi={{ focus: "ports" }} />,
+    );
+    await vi.waitFor(() => expect(cursorPort(lastFrame())).toBe("3000"));
+    press(stdin, KEYS.down);
+    await vi.waitFor(() => expect(cursorPort(lastFrame())).toBe("5173"));
+    PORTS.list = [BUN, STEAM];
+    await vi.waitFor(() => expect(lastFrame()).not.toContain(":5173"));
+    expect(portsTitle(lastFrame())).toContain("2 ports");
+    expect(cursorPort(lastFrame())).toBeNull();
+    expect(portsBlock(lastFrame()).some((l) => l.includes("❯"))).toBe(false);
+    // the stale key stays (no state change brings the cursor back on its own)
+    await sleep(200);
+    expect(cursorPort(lastFrame())).toBeNull();
+    press(stdin, KEYS.down);
+    await vi.waitFor(() => expect(cursorPort(lastFrame())).toBe("3000"));
+  });
+
+  it("PgDn with more ports than the window moves the cursor by the drawn window", async () => {
+    // 175x55 focused PORTS fits about 40 one-row ports, so 60 make it overflow
+    PORTS.list = Array.from({ length: 60 }, (_, i) => sp(4000 + i, 100 + i, "node", [100 + i]));
+    const { lastFrame, stdin } = await mountTty(
+      <PanelApp tickMs={FROZEN} now={() => NOW} initialUi={{ focus: "ports" }} />,
+    );
+    await vi.waitFor(() => expect(cursorPort(lastFrame())).toBe("4000"));
+    const drawn = portsBlock(lastFrame()).filter((l) => /:\d{4}/.test(l)).length;
+    expect(drawn).toBeGreaterThan(1);
+    expect(drawn).toBeLessThan(60);
+    press(stdin, PG_DOWN);
+    await vi.waitFor(() => expect(cursorPort(lastFrame())).toBe(String(4000 + drawn)));
+    press(stdin, KEYS.down);
+    await vi.waitFor(() => expect(cursorPort(lastFrame())).toBe(String(4000 + drawn + 1)));
+  });
+
+  it("Enter on a port does nothing: no flash, no frame change, no process signal (T-10-39)", async () => {
+    const { lastFrame, stdin } = await mountTty(
+      <PanelApp tickMs={FROZEN} now={() => NOW} initialUi={{ focus: "ports" }} />,
+    );
+    await vi.waitFor(() => expect(cursorPort(lastFrame())).toBe("3000"));
+    const before = lastFrame();
+    press(stdin, KEYS.enter);
+    await sleep(150);
+    expect(lastFrame()).toBe(before);
+    expect(killPort).not.toHaveBeenCalled();
   });
 });
