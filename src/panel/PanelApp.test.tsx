@@ -867,6 +867,15 @@ describe("PanelApp source (T-09-11, T-09-08c)", () => {
     expect(src).not.toMatch(/\bkillPort\b/);
   });
 
+  it("never imports the SAMPLE fixture: every pane is built from live data (10-16, D-23)", () => {
+    expect(imports.filter((spec) => spec.includes("ui/sample"))).toEqual([]);
+    const code = src
+      .split("\n")
+      .filter((l) => !/^\s*(\/\/|\*|\/\*\*)/.test(l))
+      .join("\n");
+    expect(code).not.toMatch(/\bSAMPLE\b/);
+  });
+
   it("has exactly one input handler and no focus manager", () => {
     expect(src.split("useInput(").length - 1).toBe(1);
     expect(src).not.toMatch(/useFocus|ink-text-input|dimColor/);
@@ -1508,5 +1517,68 @@ describe("PanelApp live PORTS (10-15, KEYS-02, KEYS-03)", () => {
     await sleep(150);
     expect(lastFrame()).toBe(before);
     expect(killPort).not.toHaveBeenCalled();
+  });
+});
+
+// --- Phase 10 plan 10-16: no SAMPLE anywhere (D-23) -------------------------
+
+describe("PanelApp is SAMPLE-free (10-16, D-23)", () => {
+  const phaseRow = (i: number) => ({
+    number: String(i).padStart(2, "0"),
+    name: `live-phase-${i}`,
+    plans: 2,
+    summaries: i < 4 ? 2 : 0,
+    status: i < 4 ? "Complete" : "Pending",
+  });
+  beforeEach(() => {
+    ROWS.list = [
+      makeRow({ session_id: "s-live-a", folder: "liveA", cwd: "/liveA", title: "live alpha", pid: 10, asking: true }),
+      makeRow({ session_id: "s-live-b", folder: "liveA", cwd: "/liveA", title: "live beta", pid: 11, running: true }),
+      makeRow({ session_id: "s-live-c", folder: "liveA", cwd: "/liveA", title: "live gamma" }),
+    ];
+    PORTS.list = [
+      { port: 5173, pid: 20, command: "vite", exposed: false, ancestryPids: [20, 10], origin: "other" },
+      { port: 8080, pid: 90, command: "python3", exposed: true, ancestryPids: [90], origin: "other" },
+    ];
+    PH.roots = ["/liveA"];
+    PH.progress = {
+      "/liveA": { milestone_name: "Live", milestone_version: "v1", percent: 40, phases: Array.from({ length: 8 }, (_, i) => phaseRow(i)) },
+    };
+    SESS.list = [
+      { id: "r-live-1", label: "live resume one", labelKind: "name", folder: "liveA", cwd: "/liveA", slug: "-liveA", mtimeMs: NOW - 60_000, live: false },
+    ];
+  });
+  afterEach(() => {
+    ROWS.list = DEFAULT_ROWS;
+    PORTS.list = [];
+    PH.roots = [];
+    PH.progress = {};
+    SESS.list = [];
+  });
+
+  it("no line of a live frame carries the ` sample ` chip, in every focus and both tabs", async () => {
+    const { lastFrame, stdin } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain(":5173");
+      expect(lastFrame()).toContain("live-phase-4");
+    });
+    const noSample = (label: string) => {
+      for (const l of lines(lastFrame())) expect(l, label).not.toContain(" sample ");
+    };
+    expect(lastFrame()).toContain("live alpha");
+    noSample("AGENTS focused, PHASES tab");
+    press(stdin, KEYS.tab);
+    await vi.waitFor(() => expect(lastFrame()).toContain("▐PHASES▌"));
+    noSample("right focused, PHASES tab");
+    press(stdin, KEYS.r);
+    await vi.waitFor(() => expect(lastFrame()).toContain("live resume one"));
+    noSample("right focused, SESSIONS tab");
+    press(stdin, KEYS.tab);
+    await vi.waitFor(() => expect(lastFrame()).toContain("▐PORTS▌"));
+    noSample("PORTS focused");
+    press(stdin, KEYS.tab);
+    press(stdin, KEYS.down);
+    await vi.waitFor(() => expect(lastFrame()).toContain("┏"));
+    noSample("AGENTS selection with the detail strip");
   });
 });

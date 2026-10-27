@@ -22,7 +22,6 @@ import { contextOf, isIntent, resolve, type HintContext, type Intent, type KeyIn
 import { drawShellFrame, EMPTY_SCROLL, type SampleFlags, type ScrollState } from "./ui/draw/shell.js";
 import { tickerRows } from "./ui/draw/files.js";
 import { visiblePortEntries } from "./ui/draw/ports.js";
-import { SAMPLE } from "./ui/sample.js";
 import { ScreenView } from "./ui/ScreenView.js";
 import { buildAgents, stableOrder } from "./ui/build/agents.js";
 import { buildDetail } from "./ui/build/detail.js";
@@ -40,6 +39,7 @@ import type {
   FileGroup,
   Flash,
   IdleStrip,
+  PanesModel,
   PortEntry,
   Project,
   SessionEntry,
@@ -165,6 +165,12 @@ import type {
  *     port under the cursor, so it must never jump on its own.
  *   - Enter on a port stays the Phase 11 noop; PanelApp imports no scanner or
  *     kill backend (T-10-39), and the footer hides `⏎ actions` (KEYS-03).
+ *
+ * Phase 10 plan 10-16 (D-23, LAYOUT-01..04):
+ *   - PanelApp no longer imports the sample fixture: `panes` is a PanesModel
+ *     built field by field from the live builders, and every sample flag is
+ *     false. sample.ts stays a test fixture. live-sweep.test.ts proves the
+ *     same builders at realistic volume.
  */
 export interface PanelAppProps {
   tickMs?: number;
@@ -365,8 +371,8 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
   const sessionsScanning = resume.rows === null;
   // 10-15 (D-23, KEYS-02): PORTS from the same scan, identity-keyed by portKey
   const ports = buildPorts(scanned, liveRows);
-  const panes = {
-    ...SAMPLE,
+  // 10-16 (D-23): every field comes from a live builder; SAMPLE stays a test fixture
+  const panes: PanesModel = {
     agents: ag.agents,
     idle: ag.idle,
     detail,

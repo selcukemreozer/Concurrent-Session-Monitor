@@ -887,17 +887,17 @@ var require_scheduler_production = __commonJS({
         localSetImmediate(performWorkUntilDeadline);
       };
     else if ("undefined" !== typeof MessageChannel) {
-      channel = new MessageChannel(), port2 = channel.port2;
+      channel = new MessageChannel(), port = channel.port2;
       channel.port1.onmessage = performWorkUntilDeadline;
       schedulePerformWorkUntilDeadline = function() {
-        port2.postMessage(null);
+        port.postMessage(null);
       };
     } else
       schedulePerformWorkUntilDeadline = function() {
         localSetTimeout(performWorkUntilDeadline, 0);
       };
     var channel;
-    var port2;
+    var port;
     function requestHostTimeout(callback, ms) {
       taskTimeoutID = localSetTimeout(function() {
         callback(exports.unstable_now());
@@ -11003,8 +11003,8 @@ var loadYoga = (() => {
     var ea = h.print || console.log.bind(console), v = h.printErr || console.warn.bind(console);
     Object.assign(h, da);
     da = null;
-    var w2;
-    h.wasmBinary && (w2 = h.wasmBinary);
+    var w;
+    h.wasmBinary && (w = h.wasmBinary);
     var noExitRuntime = h.noExitRuntime || true;
     "object" != typeof WebAssembly && x("no native wasm support detected");
     var fa, ha = false;
@@ -11065,7 +11065,7 @@ var loadYoga = (() => {
     function wa() {
       var a = H;
       try {
-        if (a == H && w2) return new Uint8Array(w2);
+        if (a == H && w) return new Uint8Array(w);
         if (ua(a)) try {
           var b = xa(a.slice(37)), c = new Uint8Array(b.length);
           for (a = 0; a < b.length; ++a) c[a] = b.charCodeAt(a);
@@ -11082,7 +11082,7 @@ var loadYoga = (() => {
       }
     }
     function ya() {
-      return w2 || "function" != typeof fetch ? Promise.resolve().then(function() {
+      return w || "function" != typeof fetch ? Promise.resolve().then(function() {
         return wa();
       }) : fetch(H, { credentials: "same-origin" }).then(function(a) {
         if (!a.ok) throw "failed to load wasm binary file at '" + H + "'";
@@ -11404,19 +11404,19 @@ var loadYoga = (() => {
         k = true;
         break;
       }
-      var m = "void" !== b[0].name, l = f - 2, n = Array(l), p = [], r2 = [];
+      var m = "void" !== b[0].name, l = f - 2, n = Array(l), p = [], r = [];
       return function() {
         arguments.length !== l && L("function " + a + " called with " + arguments.length + " arguments, expected " + l + " args!");
-        r2.length = 0;
+        r.length = 0;
         p.length = g ? 2 : 1;
         p[0] = e;
         if (g) {
-          var u = b[1].toWireType(r2, this);
+          var u = b[1].toWireType(r, this);
           p[1] = u;
         }
-        for (var t = 0; t < l; ++t) n[t] = b[t + 2].toWireType(r2, arguments[t]), p.push(n[t]);
+        for (var t = 0; t < l; ++t) n[t] = b[t + 2].toWireType(r, arguments[t]), p.push(n[t]);
         t = d.apply(null, p);
-        if (k) Wa(r2);
+        if (k) Wa(r);
         else for (var y = g ? 1 : 2; y < b.length; y++) {
           var B = 1 === y ? u : n[y - 2];
           null !== b[y].V && b[y].V(B);
@@ -11703,8 +11703,8 @@ var loadYoga = (() => {
         V([a], f, (g) => {
           var k = {};
           e.forEach((m, l) => {
-            var n = g[l], p = m.ra, r2 = m.sa, u = g[l + e.length], t = m.ya, y = m.Aa;
-            k[m.oa] = { read: (B) => n.fromWireType(p(r2, B)), write: (B, ba) => {
+            var n = g[l], p = m.ra, r = m.sa, u = g[l + e.length], t = m.ya, y = m.Aa;
+            k[m.oa] = { read: (B) => n.fromWireType(p(r, B)), write: (B, ba) => {
               var I = [];
               t(
                 y,
@@ -11752,12 +11752,12 @@ var loadYoga = (() => {
           V: null
         });
       },
-      f: function(a, b, c, d, e, f, g, k, m, l, n, p, r2) {
+      f: function(a, b, c, d, e, f, g, k, m, l, n, p, r) {
         n = N(n);
         f = Z(e, f);
         k && (k = Z(g, k));
         l && (l = Z(m, l));
-        r2 = Z(p, r2);
+        r = Z(p, r);
         var u = Aa(n);
         bb(u, function() {
           nb("Cannot construct " + n + " due to unbound types", [d]);
@@ -11777,7 +11777,7 @@ var loadYoga = (() => {
           });
           var ba = Object.create(B, { constructor: { value: t } });
           t.prototype = ba;
-          var I = new cb(n, t, ba, r2, y, f, k, l);
+          var I = new cb(n, t, ba, r, y, f, k, l);
           y = new Y(n, I, true, false);
           B = new Y(n + "*", I, false, false);
           var lb = new Y(n + " const*", I, false, true);
@@ -11802,9 +11802,9 @@ var loadYoga = (() => {
           b.startsWith("@@") && (b = Symbol[b.substring(2)]);
           var p = m.N.constructor;
           void 0 === p[b] ? (l.Z = c - 1, p[b] = l) : (ab(p, b, n), p[b].S[c - 1] = l);
-          V([], k, function(r2) {
-            r2 = ob(n, [r2[0], null].concat(r2.slice(1)), null, f, g);
-            void 0 === p[b].S ? (r2.Z = c - 1, p[b] = r2) : p[b].S[c - 1] = r2;
+          V([], k, function(r) {
+            r = ob(n, [r[0], null].concat(r.slice(1)), null, f, g);
+            void 0 === p[b].S ? (r.Z = c - 1, p[b] = r) : p[b].S[c - 1] = r;
             return [];
           });
           return [];
@@ -11845,11 +11845,11 @@ var loadYoga = (() => {
           var p = l.name + "." + b;
           b.startsWith("@@") && (b = Symbol[b.substring(2)]);
           k && l.N.ja.push(b);
-          var r2 = l.N.X, u = r2[b];
-          void 0 === u || void 0 === u.S && u.className !== l.name && u.Z === c - 2 ? (n.Z = c - 2, n.className = l.name, r2[b] = n) : (ab(r2, b, p), r2[b].S[c - 2] = n);
+          var r = l.N.X, u = r[b];
+          void 0 === u || void 0 === u.S && u.className !== l.name && u.Z === c - 2 ? (n.Z = c - 2, n.className = l.name, r[b] = n) : (ab(r, b, p), r[b].S[c - 2] = n);
           V([], m, function(t) {
             t = ob(p, t, l, f, g);
-            void 0 === r2[b].S ? (t.Z = c - 2, r2[b] = t) : r2[b].S[c - 2] = t;
+            void 0 === r[b].S ? (t.Z = c - 2, r[b] = t) : r[b].S[c - 2] = t;
             return [];
           });
           return [];
@@ -11989,9 +11989,9 @@ var loadYoga = (() => {
           var k = 1;
         } else 4 === b && (d = wb, e = xb, f = yb, g = () => E, k = 2);
         W(a, { name: c, fromWireType: function(m) {
-          for (var l = E[m >> 2], n = g(), p, r2 = m + 4, u = 0; u <= l; ++u) {
+          for (var l = E[m >> 2], n = g(), p, r = m + 4, u = 0; u <= l; ++u) {
             var t = m + 4 + u * b;
-            if (u == l || 0 == n[t >> k]) r2 = d(r2, t - r2), void 0 === p ? p = r2 : (p += String.fromCharCode(0), p += r2), r2 = t + b;
+            if (u == l || 0 == n[t >> k]) r = d(r, t - r), void 0 === p ? p = r : (p += String.fromCharCode(0), p += r), r = t + b;
           }
           S(m);
           return p;
@@ -12152,7 +12152,7 @@ var loadYoga = (() => {
         v("Module.instantiateWasm callback failed with error: " + e), ca(e);
       }
       (function() {
-        return w2 || "function" != typeof WebAssembly.instantiateStreaming || ua(H) || "function" != typeof fetch ? c(b) : fetch(H, { credentials: "same-origin" }).then(function(e) {
+        return w || "function" != typeof WebAssembly.instantiateStreaming || ua(H) || "function" != typeof fetch ? c(b) : fetch(H, { credentials: "same-origin" }).then(function(e) {
           return WebAssembly.instantiateStreaming(e, d).then(b, function(f) {
             v("wasm streaming compile failed: " + f);
             v("falling back to ArrayBuffer instantiation");
@@ -13317,11 +13317,11 @@ var restoreStylesAcrossRows = (preString) => {
         index++;
         continue;
       }
-      const { groups: groups2 } = escape2;
-      if (groups2.sgr !== void 0) {
-        applySgrParameters(groups2.sgr, activeStyles);
-      } else if (groups2.uri !== void 0) {
-        activeHyperlink = groups2.uri.length === 0 ? void 0 : { parameters: groups2.parameters, uri: groups2.uri };
+      const { groups } = escape2;
+      if (groups.sgr !== void 0) {
+        applySgrParameters(groups.sgr, activeStyles);
+      } else if (groups.uri !== void 0) {
+        activeHyperlink = groups.uri.length === 0 ? void 0 : { parameters: groups.parameters, uri: groups.uri };
       }
       index += escape2[0].length;
       continue;
@@ -20752,24 +20752,24 @@ async function scanProgress(root, gsdTools) {
 function buildFocusSet(rows, planningRoots) {
   const seen = /* @__PURE__ */ new Set();
   const out = [];
-  for (const r2 of rows) {
-    if (!r2.alive || typeof r2.cwd !== "string") continue;
-    const root = r2.cwd;
+  for (const r of rows) {
+    if (!r.alive || typeof r.cwd !== "string") continue;
+    const root = r.cwd;
     if (seen.has(root)) continue;
     if (!planningRoots.has(root)) continue;
     seen.add(root);
-    out.push({ root, name: r2.folder });
+    out.push({ root, name: r.folder });
   }
   return out;
 }
 async function resolvePlanningRoots(rows) {
   const roots = [];
   const seen = /* @__PURE__ */ new Set();
-  for (const r2 of rows) {
-    if (!r2.alive || typeof r2.cwd !== "string") continue;
-    if (seen.has(r2.cwd)) continue;
-    seen.add(r2.cwd);
-    roots.push(r2.cwd);
+  for (const r of rows) {
+    if (!r.alive || typeof r.cwd !== "string") continue;
+    if (seen.has(r.cwd)) continue;
+    seen.add(r.cwd);
+    roots.push(r.cwd);
   }
   const out = /* @__PURE__ */ new Set();
   await Promise.all(
@@ -20986,11 +20986,11 @@ function scanPermissionMode(buf, atBoundary, sessionId) {
 }
 async function readPermissionModeAsync(realPath, sessionId) {
   try {
-    const w2 = await readWindowAsync(realPath, "tail", TAIL_BYTES);
-    if (w2 === void 0) return void 0;
-    const first = scanPermissionMode(w2.buf, w2.atBoundary, sessionId);
+    const w = await readWindowAsync(realPath, "tail", TAIL_BYTES);
+    if (w === void 0) return void 0;
+    const first = scanPermissionMode(w.buf, w.atBoundary, sessionId);
     if (first.decided) return first.mode;
-    if (w2.size <= TAIL_BYTES) return void 0;
+    if (w.size <= TAIL_BYTES) return void 0;
     const wide = await readWindowAsync(realPath, "tail", PERMISSION_MODE_BYTES);
     if (wide === void 0) return void 0;
     return scanPermissionMode(wide.buf, wide.atBoundary, sessionId).mode;
@@ -21130,19 +21130,19 @@ async function readWindowAsync(realPath, from, budget) {
 }
 async function readTailFactsAsync(realPath, sessionId, budget = TAIL_BYTES, slug) {
   try {
-    const w2 = await readWindowAsync(realPath, "tail", budget);
-    if (w2 === void 0) return void 0;
-    return { ...scanTailFacts(w2.buf, w2.atBoundary, sessionId, slug), size: w2.size, mtimeMs: w2.mtimeMs };
+    const w = await readWindowAsync(realPath, "tail", budget);
+    if (w === void 0) return void 0;
+    return { ...scanTailFacts(w.buf, w.atBoundary, sessionId, slug), size: w.size, mtimeMs: w.mtimeMs };
   } catch {
     return void 0;
   }
 }
 async function readHeadFactsAsync(realPath, sessionId, slug, budget = HEAD_BYTES) {
   try {
-    const w2 = await readWindowAsync(realPath, "head", budget);
-    if (w2 === void 0) return void 0;
-    const h = scanHeadFacts(w2.buf, sessionId, slug);
-    const final = w2.size > Math.max(0, budget) || h.prompt !== void 0 && h.slugCwd !== void 0;
+    const w = await readWindowAsync(realPath, "head", budget);
+    if (w === void 0) return void 0;
+    const h = scanHeadFacts(w.buf, sessionId, slug);
+    const final = w.size > Math.max(0, budget) || h.prompt !== void 0 && h.slugCwd !== void 0;
     const out = { final };
     if (h.prompt !== void 0) out.prompt = h.prompt;
     if (h.firstCwd !== void 0) out.firstCwd = h.firstCwd;
@@ -21249,17 +21249,17 @@ function readTranscriptTitle(sessionId, transcriptPath, budget = TAIL_BYTES) {
       entry.size = -1;
       entry.mtimeMs = -1;
     }
-    const r2 = readTailTitleAndCard(entry.realPath, sessionId, budget);
-    if (r2 === void 0) return valueOf(entry);
-    if (r2.card.lastPrompt !== void 0) entry.lastPrompt = r2.card.lastPrompt;
-    if (r2.card.model !== void 0) entry.model = r2.card.model;
+    const r = readTailTitleAndCard(entry.realPath, sessionId, budget);
+    if (r === void 0) return valueOf(entry);
+    if (r.card.lastPrompt !== void 0) entry.lastPrompt = r.card.lastPrompt;
+    if (r.card.model !== void 0) entry.model = r.card.model;
     const baseline = entry.size < 0;
-    if (r2.title !== void 0 && r2.title !== entry.title) {
-      entry.title = r2.title;
-      entry.changedAtMs = baseline ? Number.NEGATIVE_INFINITY : r2.mtimeMs;
+    if (r.title !== void 0 && r.title !== entry.title) {
+      entry.title = r.title;
+      entry.changedAtMs = baseline ? Number.NEGATIVE_INFINITY : r.mtimeMs;
     }
-    entry.size = r2.size;
-    entry.mtimeMs = r2.mtimeMs;
+    entry.size = r.size;
+    entry.mtimeMs = r.mtimeMs;
     return valueOf(entry);
   } catch {
     return valueOf(cache2.get(sessionId));
@@ -21320,10 +21320,10 @@ function registryDirs() {
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   const add = (p) => {
-    const r2 = path4.resolve(p);
-    if (seen.has(r2)) return;
-    seen.add(r2);
-    out.push(r2);
+    const r = path4.resolve(p);
+    if (seen.has(r)) return;
+    seen.add(r);
+    out.push(r);
   };
   add(path4.join(os5.homedir(), ".claude", "sessions"));
   const cfg = process.env.CLAUDE_CONFIG_DIR;
@@ -21565,18 +21565,18 @@ async function siblingTitleKey(c, roots) {
   if (hit !== void 0 && hit.size === c.size && hit.mtimeMs === c.mtimeMs) return hit.key;
   const real = isAllowedTranscriptPath(c.id, c.path, roots);
   if (real === void 0) return void 0;
-  const w2 = await readWindowAsync(real, "tail", TAIL_BYTES);
-  if (w2 === void 0) return void 0;
-  const key = resumeNameKey(scanCustomTitle(w2.buf, w2.atBoundary, c.id));
+  const w = await readWindowAsync(real, "tail", TAIL_BYTES);
+  if (w === void 0) return void 0;
+  const key = resumeNameKey(scanCustomTitle(w.buf, w.atBoundary, c.id));
   if (titleKeyCache.size >= TITLE_KEY_CACHE_MAX) titleKeyCache.clear();
-  titleKeyCache.set(c.path, { size: w2.size, mtimeMs: w2.mtimeMs, key });
+  titleKeyCache.set(c.path, { size: w.size, mtimeMs: w.mtimeMs, key });
   return key;
 }
 async function uniqueResumeName(id, slug, cwd2, realPath, gathered, roots, now) {
   try {
-    const w2 = await readWindowAsync(realPath, "tail", TAIL_BYTES);
-    if (w2 === void 0) return void 0;
-    const title = scanCustomTitle(w2.buf, w2.atBoundary, id);
+    const w = await readWindowAsync(realPath, "tail", TAIL_BYTES);
+    if (w === void 0) return void 0;
+    const title = scanCustomTitle(w.buf, w.atBoundary, id);
     if (!isSafeResumeName(title)) return void 0;
     if (typeof cwd2 !== "string" || projectSlug(cwd2) !== slug) return void 0;
     const key = resumeNameKey(title);
@@ -21622,7 +21622,7 @@ async function resumeExtras(row, opts = {}) {
 function reconcileSelection(rows, selId, prevIdx) {
   if (rows.length === 0) return { selId: null, idx: -1 };
   if (selId !== null) {
-    const i = rows.findIndex((r2) => r2.id === selId);
+    const i = rows.findIndex((r) => r.id === selId);
     if (i >= 0) return { selId, idx: i };
   }
   const idx = Math.min(rows.length - 1, Math.max(0, Number.isFinite(prevIdx) ? Math.trunc(prevIdx) : 0));
@@ -21815,8 +21815,8 @@ function splitHostPort(name) {
   if (name.startsWith("[")) {
     const rb = name.lastIndexOf("]");
     const host = name.slice(1, rb);
-    const port2 = Number(name.slice(rb + 2));
-    return { host, port: port2 };
+    const port = Number(name.slice(rb + 2));
+    return { host, port };
   }
   const c = name.lastIndexOf(":");
   return { host: name.slice(0, c), port: Number(name.slice(c + 1)) };
@@ -21830,15 +21830,15 @@ function isExposed(host) {
 }
 function livePidMap(rows) {
   const m = /* @__PURE__ */ new Map();
-  for (const r2 of rows) {
-    if (r2.alive && !r2.readyToPrune && typeof r2.pid === "number") m.set(r2.pid, r2);
+  for (const r of rows) {
+    if (r.alive && !r.readyToPrune && typeof r.pid === "number") m.set(r.pid, r);
   }
   return m;
 }
 function attribute(p, live) {
   for (const pid of p.ancestryPids) {
-    const r2 = live.get(pid);
-    if (r2) return r2;
+    const r = live.get(pid);
+    if (r) return r;
   }
   return null;
 }
@@ -21869,9 +21869,9 @@ async function scanPorts(uid = process.getuid?.()) {
   const byKey = /* @__PURE__ */ new Map();
   for (const s of socks) {
     if (APPLE_AGENT_DENYLIST.has(s.command)) continue;
-    const { host, port: port2 } = splitHostPort(s.name);
-    if (!Number.isInteger(port2)) continue;
-    const key = `${port2} ${s.pid}`;
+    const { host, port } = splitHostPort(s.name);
+    if (!Number.isInteger(port)) continue;
+    const key = `${port} ${s.pid}`;
     const exposed = isExposed(host);
     const prev = byKey.get(key);
     if (prev) {
@@ -21881,7 +21881,7 @@ async function scanPorts(uid = process.getuid?.()) {
     const chain = ancestryChain(s.pid, ppid);
     const { origin, tty: tty3 } = classifyOrigin(chain, procs);
     const entry = {
-      port: port2,
+      port,
       pid: s.pid,
       command: s.command,
       exposed,
@@ -21893,8 +21893,8 @@ async function scanPorts(uid = process.getuid?.()) {
   }
   return [...byKey.values()];
 }
-function portKey(port2, pid) {
-  return `${port2} ${pid}`;
+function portKey(port, pid) {
+  return `${port} ${pid}`;
 }
 
 // src/panel/ui/rowModels.ts
@@ -21939,10 +21939,10 @@ function groupPorts(ports, rows) {
     }
     g.ports.push(p);
   }
-  const groups2 = [...sessionGroups.values()];
-  if (warp.length > 0) groups2.push({ key: " warp", heading: WARP_HEADING, ports: warp });
-  if (other.length > 0) groups2.push({ key: " other", heading: OTHER_HEADING, ports: other });
-  return groups2;
+  const groups = [...sessionGroups.values()];
+  if (warp.length > 0) groups.push({ key: " warp", heading: WARP_HEADING, ports: warp });
+  if (other.length > 0) groups.push({ key: " other", heading: OTHER_HEADING, ports: other });
+  return groups;
 }
 function confirmPrompt(c) {
   const head = c.signal === "SIGKILL" ? "kill SIGKILL :" : "kill :";
@@ -21978,7 +21978,7 @@ function SessionCard({ s }) {
   const reads = s.reads ?? [];
   const name = displayName(s.title);
   const writeParts = s.files.map((f) => splitPath(f.file_path));
-  const readParts = reads.map((r2) => splitPath(r2.file_path));
+  const readParts = reads.map((r) => splitPath(r.file_path));
   const W = Math.max(
     0,
     ...writeParts.map((p) => sanitize(p.name).length),
@@ -22030,14 +22030,14 @@ function SessionCard({ s }) {
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: d })
           ] }, f.file_path);
         }),
-        reads.map((r2, i) => {
+        reads.map((r, i) => {
           const { name: name2, dir } = readParts[i];
           const left = READ_GLYPH + " " + sanitize(name2);
           const d = sanitize(dir);
-          return d === "" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: READ_COLOR, children: "  " + left }, "r:" + r2.file_path) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Text, { color: READ_COLOR, children: [
+          return d === "" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { color: READ_COLOR, children: "  " + left }, "r:" + r.file_path) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Text, { color: READ_COLOR, children: [
             "  " + left.padEnd(W) + " | ",
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: d })
-          ] }, "r:" + r2.file_path);
+          ] }, "r:" + r.file_path);
         })
       ]
     }
@@ -22125,13 +22125,13 @@ function PortsPane({
     1,
     ...ports.map((p) => (p.exposed ? EXPOSED_GLYPH + " exposed" : "local").length)
   );
-  const groups2 = groupPorts(ports, rows);
-  const total = groups2.reduce((n, g) => n + g.ports.length, 0);
+  const groups = groupPorts(ports, rows);
+  const total = groups.reduce((n, g) => n + g.ports.length, 0);
   const more = Math.max(0, total - PORTS_CAP);
   let budget = PORTS_CAP;
   let flat = 0;
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Box_default, { flexDirection: "column", children: [
-    groups2.map((g) => {
+    groups.map((g) => {
       if (budget <= 0) return null;
       const shown = g.ports.slice(0, budget);
       budget -= shown.length;
@@ -22198,23 +22198,23 @@ function PhasesPane({
   if (progress === null || progress.phases.length === 0) {
     return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Box_default, { flexDirection: "column", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: "no roadmap" + hint }) });
   }
-  const phases2 = progress.phases;
-  const total = phases2.length;
-  const completed = phases2.filter(phaseComplete).length;
-  const currentIdx = phases2.findIndex((p) => !phaseComplete(p));
+  const phases = progress.phases;
+  const total = phases.length;
+  const completed = phases.filter(phaseComplete).length;
+  const currentIdx = phases.findIndex((p) => !phaseComplete(p));
   const NAME_CAP2 = 36;
-  const numWidth = Math.max(1, ...phases2.map((p) => sanitize(String(p.number)).length));
-  const nameWidth = Math.min(NAME_CAP2, Math.max(1, ...phases2.map((p) => sanitize(String(p.name)).length)));
+  const numWidth = Math.max(1, ...phases.map((p) => sanitize(String(p.number)).length));
+  const nameWidth = Math.min(NAME_CAP2, Math.max(1, ...phases.map((p) => sanitize(String(p.name)).length)));
   const plansWidth = Math.max(
     1,
-    ...phases2.map((p) => (sanitize(String(p.plans)) + "/" + sanitize(String(p.summaries))).length)
+    ...phases.map((p) => (sanitize(String(p.plans)) + "/" + sanitize(String(p.summaries))).length)
   );
   const name = sanitize(progress.milestone_name);
   const version = sanitize(progress.milestone_version);
   const pct = sanitize(String(progress.percent));
   const milestoneLine = `${name}${version ? " " + version : ""} \xB7 ${completed}/${total} phases \xB7 ${pct}%`;
   const start = Math.min(Math.max(0, scrollOffset), Math.max(0, total - FAZLAR_VISIBLE_ROWS));
-  const windowPhases = phases2.slice(start, start + FAZLAR_VISIBLE_ROWS);
+  const windowPhases = phases.slice(start, start + FAZLAR_VISIBLE_ROWS);
   const above = start;
   const below = total - (start + windowPhases.length);
   const hasMore = total > FAZLAR_VISIBLE_ROWS;
@@ -22283,7 +22283,7 @@ function SessionsPane({
   const indicator = `  ${above > 0 ? "\u25B2" + above + " " : ""}${below > 0 ? "\u25BC" + below + " " : ""}${start + 1}\u2013${start + windowRows.length}/${total}`;
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Box_default, { flexDirection: "column", children: [
     heading,
-    windowRows.map((r2) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SessionRowLine, { row: r2, selected: r2.id === cursorId, now }, r2.id)),
+    windowRows.map((r) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SessionRowLine, { row: r, selected: r.id === cursorId, now }, r.id)),
     hasMore ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Text, { dimColor: true, children: sanitize(indicator) }) : null,
     statusLine
   ] });
@@ -22298,8 +22298,8 @@ function branchScanMs() {
 }
 async function scanBranches(rows) {
   const cwds = /* @__PURE__ */ new Set();
-  for (const r2 of rows) {
-    if (typeof r2.cwd === "string" && r2.cwd.length > 0) cwds.add(r2.cwd);
+  for (const r of rows) {
+    if (typeof r.cwd === "string" && r.cwd.length > 0) cwds.add(r.cwd);
   }
   const out = /* @__PURE__ */ new Map();
   await Promise.all(
@@ -22335,10 +22335,10 @@ function normalizeVersion(v) {
   return VERSION_RE.test(v) ? v : null;
 }
 function isNewer(remote, installed) {
-  const r2 = normalizeVersion(remote);
+  const r = normalizeVersion(remote);
   const i = normalizeVersion(installed);
-  if (r2 === null || i === null) return false;
-  const a = r2.split(".").map(Number);
+  if (r === null || i === null) return false;
+  const a = r.split(".").map(Number);
   const b = i.split(".").map(Number);
   for (let k = 0; k < 3; k++) {
     if (a[k] !== b[k]) return a[k] > b[k];
@@ -22660,8 +22660,8 @@ function readTurn(dir) {
     const parsed = JSON.parse(fs5.readFileSync(path6.join(dir, "turn.json"), "utf8"));
     const state = parsed?.state;
     if ((state === "running" || state === "idle") && typeof parsed.ts === "string" && parsed.ts.length > 0) {
-      const agents2 = parsed.agents;
-      return Number.isSafeInteger(agents2) && agents2 >= 0 ? { turn_state: state, turn_ts: parsed.ts, turn_agents: agents2 } : { turn_state: state, turn_ts: parsed.ts };
+      const agents = parsed.agents;
+      return Number.isSafeInteger(agents) && agents >= 0 ? { turn_state: state, turn_ts: parsed.ts, turn_agents: agents } : { turn_state: state, turn_ts: parsed.ts };
     }
     return {};
   } catch {
@@ -22713,7 +22713,7 @@ function readAll(now = Date.now(), probe = defaultProbe, startedProbe = defaultS
     const card = readTranscriptCard(id);
     const rawReads = activeReads(dir, now);
     const writeSet = new Set(files.map((f) => f.file_path));
-    const reads = rawReads.filter((r2) => !writeSet.has(r2.file_path));
+    const reads = rawReads.filter((r) => !writeSet.has(r.file_path));
     const heartbeatMs = resolveLastSeen(dir);
     const lastSeenMs = heartbeatMs ?? Date.parse(lastActive ?? state.start_time);
     const resumedMs = resolveSidecarMs(dir, "resumed") ?? lastSeenMs;
@@ -22794,7 +22794,7 @@ function readAll(now = Date.now(), probe = defaultProbe, startedProbe = defaultS
     });
   }
   pruneTranscriptTitleCache(new Set(ids));
-  const key = (r2) => Date.parse(r2.last_active ?? r2.start_time) || 0;
+  const key = (r) => Date.parse(r.last_active ?? r.start_time) || 0;
   rows.sort((a, b) => key(b) - key(a));
   return rows;
 }
@@ -22828,34 +22828,34 @@ function resolveRealpath(file_path, cwd2, cache4) {
 function detectConflicts(rows, now = Date.now()) {
   void now;
   const cache4 = /* @__PURE__ */ new Map();
-  const groups2 = /* @__PURE__ */ new Map();
-  for (const r2 of rows) {
-    if (!r2.alive || r2.readyToPrune) continue;
-    for (const f of r2.files) {
-      const rp = resolveRealpath(f.file_path, r2.cwd, cache4);
+  const groups = /* @__PURE__ */ new Map();
+  for (const r of rows) {
+    if (!r.alive || r.readyToPrune) continue;
+    for (const f of r.files) {
+      const rp = resolveRealpath(f.file_path, r.cwd, cache4);
       const touch = Date.parse(f.ts) || 0;
-      let g = groups2.get(rp);
+      let g = groups.get(rp);
       if (!g) {
         g = { realpath: rp, sessions: [], lastActive: 0 };
-        groups2.set(rp, g);
+        groups.set(rp, g);
       }
-      const existing = g.sessions.find((s) => s.session_id === r2.session_id);
+      const existing = g.sessions.find((s) => s.session_id === r.session_id);
       if (existing) {
         existing.lastTouch = Math.max(existing.lastTouch, touch);
       } else {
         g.sessions.push({
-          session_id: r2.session_id,
-          folder: r2.folder,
-          branch: r2.branch,
+          session_id: r.session_id,
+          folder: r.folder,
+          branch: r.branch,
           lastTouch: touch,
-          title: r2.title
+          title: r.title
         });
       }
       g.lastActive = Math.max(g.lastActive, touch);
     }
   }
   const out = [];
-  for (const g of groups2.values()) {
+  for (const g of groups.values()) {
     if (g.sessions.length < 2) continue;
     g.sessions.sort((a, b) => b.lastTouch - a.lastTouch);
     out.push(g);
@@ -22902,11 +22902,11 @@ function graceMs() {
   return numEnv("CSM_GRACE_MS", 1200);
 }
 function reconcile(seen, rows, now) {
-  const live = new Map(rows.map((r2) => [r2.session_id, r2]));
-  for (const [id, r2] of live) {
-    const dead = !r2.alive || r2.readyToPrune;
+  const live = new Map(rows.map((r) => [r.session_id, r]));
+  for (const [id, r] of live) {
+    const dead = !r.alive || r.readyToPrune;
     const prev = seen.get(id);
-    seen.set(id, { row: r2, endedAt: dead ? prev?.endedAt ?? now : void 0 });
+    seen.set(id, { row: r, endedAt: dead ? prev?.endedAt ?? now : void 0 });
   }
   for (const [id, entry] of seen) {
     if (!live.has(id) && entry.endedAt == null) {
@@ -22921,17 +22921,17 @@ function reconcile(seen, rows, now) {
     }
   }
   const display = [];
-  for (const r2 of rows) {
-    const entry = seen.get(r2.session_id);
+  for (const r of rows) {
+    const entry = seen.get(r.session_id);
     if (!entry) continue;
-    display.push({ id: r2.session_id, row: entry.row, ended: entry.endedAt != null });
+    display.push({ id: r.session_id, row: entry.row, ended: entry.endedAt != null });
   }
   for (const [id, entry] of seen) {
     if (live.has(id)) continue;
     display.push({ id, row: entry.row, ended: true });
   }
-  const liveCount = rows.filter((r2) => r2.alive).length;
-  const idleCount = rows.filter((r2) => r2.dotState === "idle").length;
+  const liveCount = rows.filter((r) => r.alive).length;
+  const idleCount = rows.filter((r) => r.dotState === "idle").length;
   const conflicts = detectConflicts(rows, now);
   return { display, live: liveCount, idle: idleCount, conflicts };
 }
@@ -23406,16 +23406,16 @@ function defaultLaunchDeps() {
 }
 async function copyCommand(line, deps) {
   try {
-    const r2 = await deps.run(PBCOPY_BIN, [], { input: line, timeoutMs: PBCOPY_TIMEOUT_MS });
-    return r2?.ok === true;
+    const r = await deps.run(PBCOPY_BIN, [], { input: line, timeoutMs: PBCOPY_TIMEOUT_MS });
+    return r?.ok === true;
   } catch {
     return false;
   }
 }
 async function runOk(deps, cmd, args, timeoutMs) {
   try {
-    const r2 = await deps.run(cmd, args, { timeoutMs });
-    return r2?.ok === true;
+    const r = await deps.run(cmd, args, { timeoutMs });
+    return r?.ok === true;
   } catch {
     return false;
   }
@@ -23499,7 +23499,7 @@ function settleLaunch(holds, id, token, ok) {
 function settleHolds(holds, rows, scanStartedAt) {
   if (holds.size === 0) return false;
   const liveById = /* @__PURE__ */ new Map();
-  for (const r2 of rows) liveById.set(r2.id, r2.live);
+  for (const r of rows) liveById.set(r.id, r.live);
   let dropped = false;
   for (const [id, hold] of holds) {
     if (hold.inFlight) continue;
@@ -23517,10 +23517,10 @@ function applyHolds(rows, holds) {
   if (holds.size === 0) return rows;
   let out = null;
   for (let i = 0; i < rows.length; i++) {
-    const r2 = rows[i];
-    if (r2.live || !holds.has(r2.id)) continue;
+    const r = rows[i];
+    if (r.live || !holds.has(r.id)) continue;
     if (out === null) out = rows.slice();
-    out[i] = { ...r2, live: true };
+    out[i] = { ...r, live: true };
   }
   return out ?? rows;
 }
@@ -23550,7 +23550,7 @@ function useResume(liveRowsRef, visible) {
   selIdRef.current = selId;
   const selIdxRef = import_react43.default.useRef(0);
   if (resumeRows !== null && selId !== null) {
-    const i = resumeRows.findIndex((r2) => r2.id === selId);
+    const i = resumeRows.findIndex((r) => r.id === selId);
     if (i >= 0) selIdxRef.current = i;
   }
   const resumeOffsetRef = import_react43.default.useRef(resumeOffset);
@@ -23578,7 +23578,7 @@ function useResume(liveRowsRef, visible) {
       const startedAt = Date.now();
       discoverSessions({
         n: RESUME_LIST_N,
-        liveIds: new Set((liveRowsRef.current ?? []).map((r2) => r2.session_id))
+        liveIds: new Set((liveRowsRef.current ?? []).map((r) => r.session_id))
       }).then((rows2) => {
         if (!mounted.current || gen !== resumeScanGen.current) return;
         if (settleHolds(launchHolds.current, rows2, startedAt)) bumpHolds();
@@ -23600,12 +23600,12 @@ function useResume(liveRowsRef, visible) {
   }, [visible]);
   import_react43.default.useEffect(() => {
     if (resumeRows === null) return;
-    const r2 = reconcileSelection(resumeRows, selIdRef.current, selIdxRef.current);
-    selIdRef.current = r2.selId;
-    if (r2.idx >= 0) selIdxRef.current = r2.idx;
-    const off = followOffset(Math.max(0, r2.idx), resumeOffsetRef.current, resumeRows.length, RESUME_VISIBLE_ROWS);
+    const r = reconcileSelection(resumeRows, selIdRef.current, selIdxRef.current);
+    selIdRef.current = r.selId;
+    if (r.idx >= 0) selIdxRef.current = r.idx;
+    const off = followOffset(Math.max(0, r.idx), resumeOffsetRef.current, resumeRows.length, RESUME_VISIBLE_ROWS);
     resumeOffsetRef.current = off;
-    setSelId(r2.selId);
+    setSelId(r.selId);
     setResumeOffset(off);
   }, [resumeRows]);
   const clearStatus = () => {
@@ -23613,12 +23613,12 @@ function useResume(liveRowsRef, visible) {
     flashTimer.current = null;
     setResumeStatus(null);
   };
-  const showResult = (r2) => {
+  const showResult = (r) => {
     if (!mounted.current) return;
     if (flashTimer.current) clearTimeout(flashTimer.current);
     flashTimer.current = null;
-    setResumeStatus({ text: r2.message, ok: r2.ok });
-    if (r2.ok) {
+    setResumeStatus({ text: r.message, ok: r.ok });
+    if (r.ok) {
       flashTimer.current = setTimeout(() => {
         flashTimer.current = null;
         if (mounted.current) setResumeStatus(null);
@@ -23630,14 +23630,14 @@ function useResume(liveRowsRef, visible) {
     const rows2 = resumeRowsRef.current;
     const id = selIdRef.current;
     if (rows2 === null || id === null) return null;
-    return rows2.find((r2) => r2.id === id) ?? null;
+    return rows2.find((r) => r.id === id) ?? null;
   };
   const isLive = (row) => row.live || launchHolds.current.has(row.id);
   const enterSeq = import_react43.default.useRef(0);
   const move2 = (delta) => {
     const rows2 = resumeRowsRef.current;
     if (rows2 === null || rows2.length === 0) return;
-    const found = rows2.findIndex((r2) => r2.id === selIdRef.current);
+    const found = rows2.findIndex((r) => r.id === selIdRef.current);
     const cur = found >= 0 ? found : Math.min(rows2.length - 1, Math.max(0, selIdxRef.current));
     const next = Math.min(rows2.length - 1, Math.max(0, cur + delta));
     const id = rows2[next].id;
@@ -23680,13 +23680,13 @@ function useResume(liveRowsRef, visible) {
     bumpHolds();
     readLiveRegistry(registryDirs()).catch(() => /* @__PURE__ */ new Set()).then((registry) => {
       const fresh = new Set(registry);
-      for (const r2 of liveRowsRef.current ?? []) fresh.add(r2.session_id);
+      for (const r of liveRowsRef.current ?? []) fresh.add(r.session_id);
       return openResume({ id, cwd: row.cwd, live: fresh.has(id) });
     }).then(
-      (r2) => {
-        settleLaunch(launchHolds.current, id, token, r2.ok);
+      (r) => {
+        settleLaunch(launchHolds.current, id, token, r.ok);
         bumpHolds();
-        showResult(r2);
+        showResult(r);
       },
       () => {
         settleLaunch(launchHolds.current, id, token, false);
@@ -23965,12 +23965,12 @@ function truncateEnd(s, cells) {
   if (cellWidth(s) <= cells) return s;
   const budget = cells - 1;
   let out = "";
-  let w2 = 0;
+  let w = 0;
   for (const g of graphemes2(s)) {
     const gw = cellWidth(g);
-    if (w2 + gw > budget) break;
+    if (w + gw > budget) break;
     out += g;
-    w2 += gw;
+    w += gw;
   }
   return out + ELLIPSIS;
 }
@@ -23980,13 +23980,13 @@ function truncateStart(s, cells) {
   const budget = cells - 1;
   const gs = graphemes2(s);
   let out = "";
-  let w2 = 0;
+  let w = 0;
   for (let i = gs.length - 1; i >= 0; i--) {
     const g = gs[i];
     const gw = cellWidth(g);
-    if (w2 + gw > budget) break;
+    if (w + gw > budget) break;
     out = g + out;
-    w2 += gw;
+    w += gw;
   }
   return ELLIPSIS + out;
 }
@@ -24051,9 +24051,9 @@ function drawHeader(scr, cols, h) {
   let showUpdate = update !== "";
   const leftEnd = () => showAgents ? BRAND_END + 3 + cellWidth(agentsText) + 1 + chipsW : BRAND_END + 1 + chipsW;
   const rightW = () => {
-    let w2 = showClock ? cellWidth(clock) : 0;
-    if (showUpdate) w2 += cellWidth(update) + (showClock ? SEP2.length : 0);
-    return w2;
+    let w = showClock ? cellWidth(clock) : 0;
+    if (showUpdate) w += cellWidth(update) + (showClock ? SEP2.length : 0);
+    return w;
   };
   const fits = () => {
     const rw2 = rightW();
@@ -24077,13 +24077,13 @@ function drawHeader(scr, cols, h) {
 }
 
 // src/panel/ui/headerModel.ts
-function headerFromRoster(r2, updateTo, nowMs) {
-  const live = r2.display.filter((d) => !d.ended);
+function headerFromRoster(r, updateTo, nowMs) {
+  const live = r.display.filter((d) => !d.ended);
   return {
     agents: live.length,
     asking: live.filter((d) => d.row.asking === true).length,
     waiting: live.filter((d) => d.row.attention === true && d.row.asking !== true).length,
-    conflicts: r2.conflicts.length,
+    conflicts: r.conflicts.length,
     clock: fmtClock24(nowMs),
     update: updateLabel(updateTo)
   };
@@ -24519,19 +24519,19 @@ var Screen = class {
     let cx = x;
     for (const g of graphemes2(String(text))) {
       if (hasControl(g)) continue;
-      const w2 = cellWidth(g);
-      if (w2 <= 0) continue;
-      if (row && cx >= 0 && cx + w2 <= this.cols) this.write(row, cx, g, w2, style);
-      cx += w2;
+      const w = cellWidth(g);
+      if (w <= 0) continue;
+      if (row && cx >= 0 && cx + w <= this.cols) this.write(row, cx, g, w, style);
+      cx += w;
     }
     return cx;
   }
   /** Set the background of the in-range cells [x, x + w) on row y; characters stay. */
-  fill(x, y, w2, bg) {
+  fill(x, y, w, bg) {
     if (y < 0 || y >= this.rows) return;
     const row = this.grid[y];
     const from = Math.max(0, x);
-    const to = Math.min(this.cols, x + w2);
+    const to = Math.min(this.cols, x + w);
     for (let i = from; i < to; i++) {
       const cell = row[i];
       if (cell) row[i] = { ch: cell.ch, st: { ...cell.st, bg } };
@@ -24566,8 +24566,8 @@ var Screen = class {
     return lines;
   }
   /** Place grapheme g (width w) at column x, repairing any wide pair it splits. */
-  write(row, x, g, w2, st) {
-    let q = x + w2;
+  write(row, x, g, w, st) {
+    let q = x + w;
     if (q < this.cols && row[q] === null) {
       let h = q - 1;
       while (h > 0 && row[h] === null) h--;
@@ -24584,7 +24584,7 @@ var Screen = class {
       for (let i = h; i < x; i++) row[i] = { ch: " ", st: { ...headSt } };
     }
     row[x] = { ch: g, st: { ...st } };
-    for (let i = 1; i < w2; i++) row[x + i] = null;
+    for (let i = 1; i < w; i++) row[x + i] = null;
   }
 };
 
@@ -24612,9 +24612,9 @@ function cardsWidth(n) {
 }
 function geometry(cols, rows) {
   const c = toCells(cols);
-  const r2 = toCells(rows);
-  if (c < MIN_COLS || r2 < MIN_ROWS) {
-    return { mode: "small", cols: c, rows: r2, split: false, cardCols: 0, LW: c, RW: c, RX: 0, divX: null, band: null };
+  const r = toCells(rows);
+  if (c < MIN_COLS || r < MIN_ROWS) {
+    return { mode: "small", cols: c, rows: r, split: false, cardCols: 0, LW: c, RW: c, RX: 0, divX: null, band: null };
   }
   if (c >= W2_MIN_COLS) {
     const n = c >= W3_MIN_COLS ? 3 : 2;
@@ -24623,7 +24623,7 @@ function geometry(cols, rows) {
     return {
       mode: n === 3 ? "W3" : "W2",
       cols: c,
-      rows: r2,
+      rows: r,
       split: true,
       cardCols: n,
       LW,
@@ -24640,7 +24640,7 @@ function geometry(cols, rows) {
     return {
       mode: "S2",
       cols: c,
-      rows: r2,
+      rows: r,
       split: false,
       cardCols: Math.min(3, fit),
       LW: c,
@@ -24650,7 +24650,7 @@ function geometry(cols, rows) {
       band: { leftW, divX: leftW + 2, rightX, rightW: c - rightX }
     };
   }
-  return { mode: "S1", cols: c, rows: r2, split: false, cardCols: fit, LW: c, RW: c, RX: 0, divX: null, band: null };
+  return { mode: "S1", cols: c, rows: r, split: false, cardCols: fit, LW: c, RW: c, RX: 0, divX: null, band: null };
 }
 
 // src/panel/ui/layout.ts
@@ -24700,12 +24700,12 @@ function clip(s, cells) {
   if (cells <= 0) return "";
   if (cellWidth(s) <= cells) return s;
   let out = "";
-  let w2 = 0;
+  let w = 0;
   for (const g of graphemes2(s)) {
     const gw = cellWidth(g);
-    if (w2 + gw > cells) break;
+    if (w + gw > cells) break;
     out += g;
-    w2 += gw;
+    w += gw;
   }
   return out;
 }
@@ -24720,8 +24720,8 @@ function putInverse(scr, x, y, label3, end) {
   cx = putIn(scr, cx, y, label3, INVERSE, end);
   return putIn(scr, cx, y, V2.capR, CAP, end);
 }
-function drawTitle(scr, x, y, w2, o) {
-  const end = x + w2;
+function drawTitle(scr, x, y, w, o) {
+  const end = x + w;
   let cx;
   if (o.focused) {
     cx = putInverse(scr, x, y, o.label, end);
@@ -24748,8 +24748,8 @@ var TABS = [
   ["phases", "PHASES"],
   ["sessions", "SESSIONS"]
 ];
-function drawTabs(scr, x, y, w2, o) {
-  const end = x + w2;
+function drawTabs(scr, x, y, w, o) {
+  const end = x + w;
   let cx = x;
   for (const [tab, label3] of TABS) {
     const act = o.active === tab;
@@ -24813,9 +24813,9 @@ function drawCard(scr, x, y, c, o) {
   else scr.put(x, y, V2.edgeTop.repeat(CARD_W), { fg: dim ? PALETTE.edge : sc });
   const side = o.selected ? V2.heavyV : V2.vline;
   const sideSt = { fg: o.selected ? sc : tone(PALETTE.edge) };
-  for (let r2 = 1; r2 < CARD_H - 1; r2++) {
-    scr.put(x, y + r2, side, sideSt);
-    scr.put(x + CARD_W - 1, y + r2, side, sideSt);
+  for (let r = 1; r < CARD_H - 1; r++) {
+    scr.put(x, y + r, side, sideSt);
+    scr.put(x + CARD_W - 1, y + r, side, sideSt);
   }
   if (o.selected) {
     scr.put(x, by, V2.heavyBL + V2.heavyH.repeat(INNER) + V2.heavyBR, c.inConflict ? red : { fg: sc });
@@ -24855,7 +24855,7 @@ function drawCard(scr, x, y, c, o) {
   let cx = x + COUNT_END - pl;
   for (const [t, st] of parts) cx = scr.put(cx, y + 5, t, st) + 1;
   if (c.state === "asking" && !dim) {
-    for (let r2 = 1; r2 < CARD_H - 1; r2++) scr.fill(x + 1, y + r2, INNER, PALETTE.askBg);
+    for (let r = 1; r < CARD_H - 1; r++) scr.fill(x + 1, y + r, INNER, PALETTE.askBg);
   }
 }
 function drawIdleStrip(scr, x, y, s, o) {
@@ -24897,30 +24897,30 @@ function windowAt(first, h, cardRows) {
   }
   return { up, k, downRow };
 }
-function drawAgentsPane(scr, r2, m) {
-  if (r2.h < 1 || r2.w < 1) return { rows: 0, moreBelow: 0, firstRow: 0, visibleRows: 0 };
+function drawAgentsPane(scr, r, m) {
+  if (r.h < 1 || r.w < 1) return { rows: 0, moreBelow: 0, firstRow: 0, visibleRows: 0 };
   const nA = m.agents.length;
   const nI = m.idle.length;
   const right = nA === 0 && nI === 0 ? "0 active" : nA === 0 ? `${nI} idle` : `${nA} active${SEP3}${nI} idle`;
-  drawTitle(scr, r2.x, r2.y, r2.w, { label: "AGENTS", focused: m.focused, sample: m.sample, right });
+  drawTitle(scr, r.x, r.y, r.w, { label: "AGENTS", focused: m.focused, sample: m.sample, right });
   const dimSt = { fg: PALETTE.dim };
   if (nA === 0 && nI === 0) {
     let rows2 = 1;
-    if (r2.h >= 2) {
-      scr.put(r2.x + 2, r2.y + 1, plainText(EMPTY_HEADING, r2.w - 2), dimSt);
+    if (r.h >= 2) {
+      scr.put(r.x + 2, r.y + 1, plainText(EMPTY_HEADING, r.w - 2), dimSt);
       rows2 = 2;
     }
-    if (r2.h >= 3) {
-      scr.put(r2.x + 2, r2.y + 2, plainText(EMPTY_BODY, r2.w - 2), { fg: PALETTE.dim2 });
+    if (r.h >= 3) {
+      scr.put(r.x + 2, r.y + 2, plainText(EMPTY_BODY, r.w - 2), { fg: PALETTE.dim2 });
       rows2 = 3;
     }
     return { rows: rows2, moreBelow: 0, firstRow: 0, visibleRows: 0 };
   }
-  const fit = Math.floor((r2.w + 2) / CARD_PITCH_X);
+  const fit = Math.floor((r.w + 2) / CARD_PITCH_X);
   if (fit === 0) {
     const n = nA + nI;
-    if (r2.h >= 2 && r2.w > 2) {
-      scr.put(r2.x + 2, r2.y + 1, plainText(`${V2.down} ${n} more`, r2.w - 2), dimSt);
+    if (r.h >= 2 && r.w > 2) {
+      scr.put(r.x + 2, r.y + 1, plainText(`${V2.down} ${n} more`, r.w - 2), dimSt);
       return { rows: 2, moreBelow: n, firstRow: 0, visibleRows: 0 };
     }
     return { rows: 1, moreBelow: n, firstRow: 0, visibleRows: 0 };
@@ -24931,8 +24931,8 @@ function drawAgentsPane(scr, r2, m) {
   for (let j = 0; j < nI; j += 3) slots.push({ strips: m.idle.slice(j, j + 3) });
   const cardRows = Math.ceil(slots.length / cols);
   const fr = Number.isFinite(m.firstRow) ? Math.trunc(m.firstRow) : 0;
-  const allFit = cardRows * CARD_PITCH_Y - 1 <= r2.h - 1;
-  const maxStart = allFit ? 0 : Math.max(0, cardRows - Math.max(1, Math.floor((r2.h - 1) / CARD_PITCH_Y)));
+  const allFit = cardRows * CARD_PITCH_Y - 1 <= r.h - 1;
+  const maxStart = allFit ? 0 : Math.max(0, cardRows - Math.max(1, Math.floor((r.h - 1) / CARD_PITCH_Y)));
   const sticky = Math.min(Math.max(0, fr), maxStart);
   const selCard = m.selectedId === null ? -1 : m.agents.findIndex((a) => a.id === m.selectedId);
   const selStrip = m.selectedId === null || selCard >= 0 ? -1 : m.idle.findIndex((s) => s.id === m.selectedId);
@@ -24943,20 +24943,23 @@ function drawAgentsPane(scr, r2, m) {
     const selRow = Math.floor(slot / cols);
     if (selRow < first) {
       first = selRow;
-    } else if (selRow >= first + windowAt(first, r2.h, cardRows).k) {
+    } else if (selRow >= first + windowAt(first, r.h, cardRows).k) {
       let f = first + 1;
-      while (f < selRow && f + windowAt(f, r2.h, cardRows).k <= selRow) f++;
+      while (f < selRow && f + windowAt(f, r.h, cardRows).k <= selRow) f++;
       first = f;
     }
     first = Math.min(Math.max(0, first), maxStart);
   }
-  if (windowAt(first, r2.h, cardRows).k === 0) first = 0;
-  const { up, k, downRow } = windowAt(first, r2.h, cardRows);
+  if (windowAt(first, r.h, cardRows).k === 0) first = 0;
+  const { up, k, downRow } = windowAt(first, r.h, cardRows);
   const above = sumItems(slots, 0, first * cols);
   const below = sumItems(slots, (first + k) * cols, slots.length);
-  let gy = r2.y + 1;
+  let gy = r.y + 1;
+  const bothOnUp = up && !downRow && below > 0;
   if (up) {
-    scr.put(r2.x + 2, gy, `${V2.up} ${above} more`, dimSt);
+    const upText = `${V2.up} ${above} more`;
+    const text = bothOnUp ? `${upText}${SEP3}${V2.down} ${below} more` : upText;
+    scr.put(r.x + 2, gy, plainText(text, r.w - 2), dimSt);
     gy += 1;
   }
   for (let row = first; row < first + k; row++) {
@@ -24964,7 +24967,7 @@ function drawAgentsPane(scr, r2, m) {
     for (let col = 0; col < cols; col++) {
       const slot = slots[row * cols + col];
       if (!slot) continue;
-      const sx = r2.x + col * CARD_PITCH_X;
+      const sx = r.x + col * CARD_PITCH_X;
       if ("card" in slot) {
         const sel = hasSel && slot.card.id === m.selectedId;
         drawCard(scr, sx, sy, slot.card, {
@@ -24984,10 +24987,10 @@ function drawAgentsPane(scr, r2, m) {
   let rows = 1 + (up ? 1 : 0) + Math.max(0, k * CARD_PITCH_Y - 1);
   if (below > 0 && downRow) {
     const dy = k > 0 ? gy + k * CARD_PITCH_Y - 1 : gy;
-    scr.put(r2.x + 2, dy, `${V2.down} ${below} more`, dimSt);
-    rows = dy - r2.y + 1;
+    scr.put(r.x + 2, dy, `${V2.down} ${below} more`, dimSt);
+    rows = dy - r.y + 1;
   }
-  return { rows: Math.min(rows, r2.h), moreBelow: below, firstRow: first, visibleRows: k };
+  return { rows: Math.min(rows, r.h), moreBelow: below, firstRow: first, visibleRows: k };
 }
 
 // src/panel/ui/draw/detail.ts
@@ -25013,12 +25016,12 @@ function clip2(s, cells) {
   if (cells <= 0) return "";
   if (cellWidth(s) <= cells) return s;
   let out = "";
-  let w2 = 0;
+  let w = 0;
   for (const g of graphemes2(s)) {
     const gw = cellWidth(g);
-    if (w2 + gw > cells) break;
+    if (w + gw > cells) break;
     out += g;
-    w2 += gw;
+    w += gw;
   }
   return out;
 }
@@ -25043,15 +25046,15 @@ function wrapPrompt(s, width, max) {
       cur = word;
       continue;
     }
-    let w2 = 0;
+    let w = 0;
     for (const g of graphemes2(word)) {
       const gw = cellWidth(g);
-      if (w2 > 0 && w2 + gw > width) {
+      if (w > 0 && w + gw > width) {
         if (push()) break outer;
-        w2 = 0;
+        w = 0;
       }
       cur += g;
-      w2 += gw;
+      w += gw;
     }
   }
   if (cur !== "" && lines.length <= max) lines.push(cur);
@@ -25059,13 +25062,13 @@ function wrapPrompt(s, width, max) {
   const head = lines.slice(0, max - 1);
   return [...head, truncateEnd(lines.slice(max - 1).join(" "), width)];
 }
-function drawDetail(scr, r2, d) {
-  const h = Math.min(int2(r2.h), DETAIL_ROWS);
-  const w2 = int2(r2.w);
-  if (h === 0 || w2 === 0) return h;
-  const x0 = Number.isFinite(r2.x) ? Math.trunc(r2.x) : 0;
-  const y0 = Number.isFinite(r2.y) ? Math.trunc(r2.y) : 0;
-  const right = x0 + w2;
+function drawDetail(scr, r, d) {
+  const h = Math.min(int2(r.h), DETAIL_ROWS);
+  const w = int2(r.w);
+  if (h === 0 || w === 0) return h;
+  const x0 = Number.isFinite(r.x) ? Math.trunc(r.x) : 0;
+  const y0 = Number.isFinite(r.y) ? Math.trunc(r.y) : 0;
+  const right = x0 + w;
   const put = (x2, y, text, st) => {
     if (text === "") return x2;
     const t = clip2(text, right - x2);
@@ -25074,7 +25077,7 @@ function drawDetail(scr, r2, d) {
   };
   const idle = d.state === "idle";
   const tone = idle ? PALETTE.idle : stateColor(d.state);
-  const name = nameText(d.name, Math.max(1, w2 - 2)) || plainText(d.id, Math.max(1, w2 - 2)) || DASH2;
+  const name = nameText(d.name, Math.max(1, w - 2)) || plainText(d.id, Math.max(1, w - 2)) || DASH2;
   let x = put(x0, y0, V2.capL, { fg: tone });
   x = put(x, y0, name, { fg: idle ? PALETTE.hi : PALETTE.bg, bg: tone, bold: true });
   x = put(x, y0, V2.capR, { fg: tone });
@@ -25122,7 +25125,7 @@ function drawDetail(scr, r2, d) {
     const y = y0 + 2;
     put(x0 + 2, y, V2.prompt, { fg: PALETTE.dim });
     const text = d.prompt === null ? "" : oneLine(d.prompt);
-    const lines = text === "" ? [DASH2] : wrapPrompt(text, Math.max(1, w2 - 5), promptLines);
+    const lines = text === "" ? [DASH2] : wrapPrompt(text, Math.max(1, w - 5), promptLines);
     lines.forEach((l, i) => put(x0 + 4, y + i, l, { fg: PALETTE.fg }));
   }
   return h;
@@ -25138,15 +25141,15 @@ var MAX_TICKER_ROWS = 6;
 var NAME_W = 21;
 var PATH_X = 26;
 var WRITE_PATH_X = 28;
-function countFiles(conflicts, groups2) {
+function countFiles(conflicts, groups) {
   const all = /* @__PURE__ */ new Set();
-  for (const g of groups2) for (const f of g.files) all.add(f.path);
+  for (const g of groups) for (const f of g.files) all.add(f.path);
   for (const c of conflicts) all.add(c.path);
   return all.size;
 }
-function tickerRows(groups2) {
+function tickerRows(groups) {
   const out = [];
-  for (const group of groups2) {
+  for (const group of groups) {
     const files = [
       ...group.files.filter((f) => f.kind === "write"),
       ...group.files.filter((f) => f.kind !== "write")
@@ -25157,29 +25160,29 @@ function tickerRows(groups2) {
 }
 function putIn2(scr, x, y, text, st, end) {
   let out = "";
-  let w2 = 0;
+  let w = 0;
   for (const g of graphemes2(text)) {
     const gw = cellWidth(g);
-    if (x + w2 + gw > end) break;
+    if (x + w + gw > end) break;
     out += g;
-    w2 += gw;
+    w += gw;
   }
   if (out !== "") scr.put(x, y, out, st);
   return x + cellWidth(text);
 }
-function drawFilesPane(scr, r2, m) {
-  if (r2.h < 1 || r2.w < 1) return 0;
+function drawFilesPane(scr, r, m) {
+  if (r.h < 1 || r.w < 1) return 0;
   const rows = tickerRows(m.groups);
   const nConf = m.conflicts.length;
-  const confRows = Math.min(nConf, MAX_CONFLICT_ROWS, r2.h - 1);
-  const H = Math.max(0, Math.min(MAX_TICKER_ROWS, r2.h - 1 - confRows));
+  const confRows = Math.min(nConf, MAX_CONFLICT_ROWS, r.h - 1);
+  const H = Math.max(0, Math.min(MAX_TICKER_ROWS, r.h - 1 - confRows));
   const narrowed = m.narrowed === true;
   const scrolling = !narrowed && H > 0 && rows.length > H;
   const overflow = narrowed && rows.length > H && H > 0;
   const n = countFiles(m.conflicts, m.groups);
   if (narrowed) {
     const dim = { fg: PALETTE.dim };
-    drawTitle(scr, r2.x, r2.y, r2.w, {
+    drawTitle(scr, r.x, r.y, r.w, {
       label: "FILES",
       focused: false,
       sample: m.sample,
@@ -25193,22 +25196,22 @@ function drawFilesPane(scr, r2, m) {
   } else {
     const files = `${n} ${n === 1 ? "file" : "files"}`;
     const right = n === 0 ? "no files" : scrolling && m.paused ? `paused${SEP5}${files}` : files;
-    drawTitle(scr, r2.x, r2.y, r2.w, { label: "FILES", focused: false, sample: m.sample, right });
+    drawTitle(scr, r.x, r.y, r.w, { label: "FILES", focused: false, sample: m.sample, right });
   }
-  const end = r2.x + r2.w;
+  const end = r.x + r.w;
   const pend = end - 1;
   const red = { fg: PALETTE.red };
   const redB = { fg: PALETTE.red, bold: true };
   const hiB = { fg: PALETTE.hi, bold: true };
-  let y = r2.y + 1;
+  let y = r.y + 1;
   for (let i = 0; i < confRows; i++, y++) {
-    putIn2(scr, r2.x, y, V2.rowMark, red, end);
-    putIn2(scr, r2.x + 2, y, V2.conflict, redB, end);
+    putIn2(scr, r.x, y, V2.rowMark, red, end);
+    putIn2(scr, r.x + 2, y, V2.conflict, redB, end);
     const c = m.conflicts[i];
     if (i === confRows - 1 && nConf > confRows) {
-      putIn2(scr, r2.x + 4, y, `+${nConf - i} more conflicts`, { fg: PALETTE.hi }, pend);
+      putIn2(scr, r.x + 4, y, `+${nConf - i} more conflicts`, { fg: PALETTE.hi }, pend);
     } else if (c) {
-      let cx = putIn2(scr, r2.x + 4, y, nameText(c.a, NAME_W) || DASH3, hiB, end);
+      let cx = putIn2(scr, r.x + 4, y, nameText(c.a, NAME_W) || DASH3, hiB, end);
       cx = putIn2(scr, cx, y, JOIN2, redB, end);
       const more = typeof c.more === "number" && Number.isFinite(c.more) ? Math.trunc(c.more) : 0;
       if (more > 0) {
@@ -25218,10 +25221,10 @@ function drawFilesPane(scr, r2, m) {
       } else {
         cx = putIn2(scr, cx, y, nameText(c.b, NAME_W) || DASH3, hiB, end);
       }
-      const px = Math.max(cx + 3, r2.x + PATH_X);
+      const px = Math.max(cx + 3, r.x + PATH_X);
       putIn2(scr, px, y, pathText(c.path, pend - px), { fg: PALETTE.hi }, pend);
     }
-    scr.fill(r2.x, y, r2.w, PALETTE.redBg);
+    scr.fill(r.x, y, r.w, PALETTE.redBg);
   }
   const N = rows.length + 1;
   const step2 = Number.isFinite(m.step) ? Math.trunc(m.step) : 0;
@@ -25233,30 +25236,30 @@ function drawFilesPane(scr, r2, m) {
     const idx = scrolling ? (off + k) % N : k;
     const it = rows[idx];
     if (!it) {
-      putIn2(scr, r2.x + 4, yy, WRAP_ROW, { fg: PALETTE.dim2 }, pend);
+      putIn2(scr, r.x + 4, yy, WRAP_ROW, { fg: PALETTE.dim2 }, pend);
       continue;
     }
     const name = nameText(it.group.name, NAME_W) || DASH3;
     if (it.first) {
       const sq = it.group.state === "idle" ? PALETTE.idle : stateColor(it.group.state);
-      putIn2(scr, r2.x + 2, yy, V2.group, { fg: sq }, pend);
-      putIn2(scr, r2.x + 4, yy, name, hiB, pend);
+      putIn2(scr, r.x + 2, yy, V2.group, { fg: sq }, pend);
+      putIn2(scr, r.x + 4, yy, name, hiB, pend);
     } else if (k === 0) {
-      putIn2(scr, r2.x + 2, yy, V2.group, { fg: PALETTE.dim2 }, pend);
-      putIn2(scr, r2.x + 4, yy, name, { fg: PALETTE.dim2 }, pend);
+      putIn2(scr, r.x + 2, yy, V2.group, { fg: PALETTE.dim2 }, pend);
+      putIn2(scr, r.x + 4, yy, name, { fg: PALETTE.dim2 }, pend);
     }
     if (it.file.kind === "write") {
-      putIn2(scr, r2.x + PATH_X, yy, V2.write, { fg: PALETTE.fg }, pend);
-      const px = r2.x + WRITE_PATH_X;
+      putIn2(scr, r.x + PATH_X, yy, V2.write, { fg: PALETTE.fg }, pend);
+      const px = r.x + WRITE_PATH_X;
       putIn2(scr, px, yy, pathText(it.file.path, pend - px), { fg: PALETTE.fg }, pend);
     } else {
-      const px = r2.x + PATH_X;
+      const px = r.x + PATH_X;
       putIn2(scr, px, yy, pathText(it.file.path, pend - px), { fg: PALETTE.blue }, pend);
     }
   }
   if (overflow) {
     const hidden = rows.length - fileRows;
-    putIn2(scr, r2.x + 4, y + fileRows, `${V2.down} ${hidden} more`, { fg: PALETTE.dim }, pend);
+    putIn2(scr, r.x + 4, y + fileRows, `${V2.down} ${hidden} more`, { fg: PALETTE.dim }, pend);
   }
   if (scrolling) {
     const sx = end - 1;
@@ -25274,17 +25277,17 @@ function drawFilesPane(scr, r2, m) {
 function toInt(n, fallback) {
   return n !== void 0 && Number.isFinite(n) ? Math.trunc(n) : fallback;
 }
-function windowSlice(w2) {
-  const len2 = Math.max(0, toInt(w2.len, 0));
-  const height = Math.max(0, toInt(w2.height, 0));
-  const context = Math.max(0, toInt(w2.context, 1));
-  let cursor = toInt(w2.cursor, -1);
+function windowSlice(w) {
+  const len2 = Math.max(0, toInt(w.len, 0));
+  const height = Math.max(0, toInt(w.height, 0));
+  const context = Math.max(0, toInt(w.context, 1));
+  let cursor = toInt(w.cursor, -1);
   if (cursor < 0 || len2 === 0) cursor = -1;
   else if (cursor >= len2) cursor = len2 - 1;
-  const offset = Math.min(Math.max(0, toInt(w2.offset, 0)), len2);
+  const offset = Math.min(Math.max(0, toInt(w.offset, 0)), len2);
   const h = new Array(len2);
   for (let i = 0; i < len2; i++) {
-    const v = w2.heights?.[i];
+    const v = w.heights?.[i];
     h[i] = v !== void 0 && Number.isFinite(v) && v >= 1 ? Math.trunc(v) : 1;
   }
   const suffix = new Array(len2 + 1);
@@ -25372,12 +25375,12 @@ var DIM = { fg: PALETTE.dim };
 var HI_BOLD = { fg: PALETTE.hi, bold: true };
 function putIn3(scr, x, y, text, st, end) {
   let out = "";
-  let w2 = 0;
+  let w = 0;
   for (const g of graphemes2(text)) {
     const gw = cellWidth(g);
-    if (x + w2 + gw > end) break;
+    if (x + w + gw > end) break;
     out += g;
-    w2 += gw;
+    w += gw;
   }
   if (out !== "" && x >= 0) scr.put(x, y, out, st);
   return x + cellWidth(text);
@@ -25385,50 +25388,50 @@ function putIn3(scr, x, y, text, st, end) {
 function plural2(n, one, many) {
   return `${n} ${n === 1 ? one : many}`;
 }
-function drawPhasesWin(scr, r2, m) {
+function drawPhasesWin(scr, r, m) {
   const none = (rows2) => ({ rows: rows2, visible: 0, offset: 0 });
-  if (r2.w <= 0 || r2.h <= 0) return none(0);
-  const x = r2.x;
-  const end = r2.x + r2.w;
-  const bottom = r2.y + r2.h;
+  if (r.w <= 0 || r.h <= 0) return none(0);
+  const x = r.x;
+  const end = r.x + r.w;
+  const bottom = r.y + r.h;
   const put = (dx, y2, text, st) => {
-    if (y2 < r2.y || y2 >= bottom || dx < 0) return x + dx + cellWidth(text);
+    if (y2 < r.y || y2 >= bottom || dx < 0) return x + dx + cellWidth(text);
     return putIn3(scr, x + dx, y2, text, st, end);
   };
   if (m.projects.length === 0) {
-    put(1, r2.y, plainText("no GSD projects", r2.w - 1), DIM);
+    put(1, r.y, plainText("no GSD projects", r.w - 1), DIM);
     return none(1);
   }
   const pi = Math.min(Math.max(0, Math.trunc(m.projectIndex) || 0), m.projects.length - 1);
   const p = m.projects[pi];
-  const phases2 = p.phases;
-  const total = phases2.length;
-  const compact = m.focused && total > 0 && r2.h < HEADER_ROWS + 2;
-  const tight = !m.focused && total > 1 && r2.h === HEADER_ROWS + 1;
+  const phases = p.phases;
+  const total = phases.length;
+  const compact = m.focused && total > 0 && r.h < HEADER_ROWS + 2;
+  const tight = !m.focused && total > 1 && r.h === HEADER_ROWS + 1;
   const head = compact ? 1 : tight ? HEADER_ROWS - 1 : HEADER_ROWS;
-  const hint = m.focused && m.projects.length > 1 && r2.w >= HINT_MIN_W;
-  put(1, r2.y, plainText(p.name, hint ? r2.w - 7 : r2.w - 1), HI_BOLD);
-  if (hint) put(r2.w - 5, r2.y, `${V2.left} ${V2.right}`, DIM);
+  const hint = m.focused && m.projects.length > 1 && r.w >= HINT_MIN_W;
+  put(1, r.y, plainText(p.name, hint ? r.w - 7 : r.w - 1), HI_BOLD);
+  if (hint) put(r.w - 5, r.y, `${V2.left} ${V2.right}`, DIM);
   if (!compact) {
-    put(1, r2.y + 1, plainText(`${oneLine(p.dir)}${SEP6}project ${pi + 1}/${m.projects.length}`, r2.w - 1), DIM);
+    put(1, r.y + 1, plainText(`${oneLine(p.dir)}${SEP6}project ${pi + 1}/${m.projects.length}`, r.w - 1), DIM);
   }
   if (total === 0) {
-    put(1, r2.y + 2, plainText("no roadmap", r2.w - 1), DIM);
-    return none(Math.min(3, r2.h));
+    put(1, r.y + 2, plainText("no roadmap", r.w - 1), DIM);
+    return none(Math.min(3, r.h));
   }
-  const done = phases2.filter((ph) => ph.status === "done").length;
-  const bw = compact ? 0 : r2.w - 10;
+  const done = phases.filter((ph) => ph.status === "done").length;
+  const bw = compact ? 0 : r.w - 10;
   if (bw >= 1) {
     const f = Math.min(bw, Math.max(0, Math.round(done / total * bw)));
-    put(1, r2.y + 2, V2.heavyH.repeat(f), { fg: PALETTE.running });
-    put(1 + f, r2.y + 2, V2.heavyH.repeat(bw - f), { fg: PALETTE.edge });
+    put(1, r.y + 2, V2.heavyH.repeat(f), { fg: PALETTE.running });
+    put(1 + f, r.y + 2, V2.heavyH.repeat(bw - f), { fg: PALETTE.edge });
   }
-  if (!compact && r2.w - 7 >= 1 + Math.max(0, bw)) put(r2.w - 7, r2.y + 2, `${done}/${total}`, DIM);
-  const curIdx = phases2.findIndex((ph) => ph.status === "current");
+  if (!compact && r.w - 7 >= 1 + Math.max(0, bw)) put(r.w - 7, r.y + 2, `${done}/${total}`, DIM);
+  const curIdx = phases.findIndex((ph) => ph.status === "current");
   const center = curIdx >= 0 ? curIdx : Math.min(done, total - 1);
   const heads = /* @__PURE__ */ new Set();
   const phaseRows = (k, last, contAfter, cursorHere) => {
-    const ph = phases2[k];
+    const ph = phases[k];
     const isDone = ph.status === "done";
     const isCur = ph.status === "current";
     const out = [];
@@ -25439,7 +25442,7 @@ function drawPhasesWin(scr, r2, m) {
       put(MARK_X, y2, mark, markSt);
       const st = isCur || cursorHere ? HI_BOLD : isDone ? { fg: PALETTE.dim2 } : DIM;
       put(NUM_X, y2, plainText(ph.number, NUM_W), st);
-      put(NAME_X, y2, plainText(ph.name, r2.w - NAME_X), st);
+      put(NAME_X, y2, plainText(ph.name, r.w - NAME_X), st);
     });
     heads.add(out[0]);
     if (isCur && ph.plansTotal !== null) {
@@ -25456,7 +25459,7 @@ function drawPhasesWin(scr, r2, m) {
       });
     }
     if (!last) {
-      const next = phases2[k + 1];
+      const next = phases[k + 1];
       const green = isDone && next !== void 0 && next.status !== "pending";
       out.push((y2) => put(MARK_X, y2, V2.vline, { fg: green ? PALETTE.running : PALETTE.edge }));
     }
@@ -25467,7 +25470,7 @@ function drawPhasesWin(scr, r2, m) {
     put(NUM_X, y2, text, DIM);
   };
   const arrowRow = (arrow, n) => (y2) => put(2, y2, `${arrow} ${n} more`, DIM);
-  const budget = Math.max(0, r2.h - head);
+  const budget = Math.max(0, r.h - head);
   let rows = [];
   let offset = 0;
   if (!m.focused) {
@@ -25508,10 +25511,10 @@ function drawPhasesWin(scr, r2, m) {
     }
   }
   rows = rows.slice(0, budget);
-  let y = r2.y + head;
+  let y = r.y + head;
   for (const row of rows) row(y++);
   const visible = rows.filter((row) => heads.has(row)).length;
-  return { rows: Math.min(r2.h, rows.length > 0 ? y - r2.y : 3), offset, visible };
+  return { rows: Math.min(r.h, rows.length > 0 ? y - r.y : 3), offset, visible };
 }
 
 // src/panel/ui/draw/sessions.ts
@@ -25524,32 +25527,32 @@ var LIVE = `${V2.sep} live`;
 var DIM2 = { fg: PALETTE.dim };
 function putIn4(scr, x, y, text, st, end) {
   let out = "";
-  let w2 = 0;
+  let w = 0;
   for (const g of graphemes2(text)) {
     const gw = cellWidth(g);
-    if (x + w2 + gw > end) break;
+    if (x + w + gw > end) break;
     out += g;
-    w2 += gw;
+    w += gw;
   }
   if (out !== "") scr.put(x, y, out, st);
 }
-function drawSessionsWin(scr, r2, m) {
-  if (r2.w <= 0 || r2.h <= 0) return { rows: 0, visible: 0, offset: Math.max(0, Math.trunc(m.offset ?? 0) || 0) };
-  const x = r2.x;
-  const end = r2.x + r2.w;
+function drawSessionsWin(scr, r, m) {
+  if (r.w <= 0 || r.h <= 0) return { rows: 0, visible: 0, offset: Math.max(0, Math.trunc(m.offset ?? 0) || 0) };
+  const x = r.x;
+  const end = r.x + r.w;
   const put = (dx, y2, text, st) => putIn4(scr, x + dx, y2, text, st, end);
-  let y = r2.y;
+  let y = r.y;
   const list2 = m.sessions;
   let statusRows = m.status ? 2 : 0;
   let offset = 0;
   let visible = 0;
-  if (r2.h - statusRows < 1) statusRows = 0;
+  if (r.h - statusRows < 1) statusRows = 0;
   if (list2.length === 0) {
-    put(NAME_X2, y, plainText(m.scanning ? `scanning${V2.ellipsis}` : "no resumable sessions", r2.w - NAME_X2), DIM2);
+    put(NAME_X2, y, plainText(m.scanning ? `scanning${V2.ellipsis}` : "no resumable sessions", r.w - NAME_X2), DIM2);
     y++;
   } else {
     const cursor = m.cursorId === null ? -1 : list2.findIndex((s) => s.id === m.cursorId);
-    const win = windowSlice({ len: list2.length, height: r2.h - statusRows, cursor, offset: m.offset ?? 0 });
+    const win = windowSlice({ len: list2.length, height: r.h - statusRows, cursor, offset: m.offset ?? 0 });
     offset = win.offset;
     visible = win.end - win.start;
     if (win.up) put(NAME_X2, y++, `${V2.up} ${win.above} more`, DIM2);
@@ -25558,27 +25561,27 @@ function drawSessionsWin(scr, r2, m) {
       const cur = i === cursor;
       if (cur) put(0, y, V2.sessionCursor, m.focused ? { fg: PALETTE.hi, bold: true } : DIM2);
       const nameSt = cur && m.focused ? { fg: PALETTE.hi, bold: true } : s.live ? { fg: PALETTE.fg } : DIM2;
-      put(NAME_X2, y, plainText(s.name, Math.min(NAME_MAX, r2.w - NAME_X2 - 1)), nameSt);
+      put(NAME_X2, y, plainText(s.name, Math.min(NAME_MAX, r.w - NAME_X2 - 1)), nameSt);
       const ago = plainText(s.ago, AGO_W);
-      if (ago !== "" && AGO_X + cellWidth(ago) <= r2.w) put(AGO_X, y, ago, DIM2);
-      if (s.live && LIVE_X + cellWidth(LIVE) <= r2.w) put(LIVE_X, y, LIVE, { fg: PALETTE.live });
+      if (ago !== "" && AGO_X + cellWidth(ago) <= r.w) put(AGO_X, y, ago, DIM2);
+      if (s.live && LIVE_X + cellWidth(LIVE) <= r.w) put(LIVE_X, y, LIVE, { fg: PALETTE.live });
       y++;
     }
     if (win.down) put(NAME_X2, y++, `${V2.down} ${win.below} more`, DIM2);
   }
-  if (m.status && statusRows > 0 && y + 1 < r2.y + r2.h) {
+  if (m.status && statusRows > 0 && y + 1 < r.y + r.h) {
     y++;
     if (m.status.ok && m.status.text.includes(V2.ok)) {
-      put(NAME_X2, y, plainText(m.status.text, r2.w - NAME_X2), { fg: PALETTE.running, bold: true });
+      put(NAME_X2, y, plainText(m.status.text, r.w - NAME_X2), { fg: PALETTE.running, bold: true });
     } else if (m.status.ok) {
       put(NAME_X2, y, V2.ok, { fg: PALETTE.running, bold: true });
-      put(NAME_X2 + 2, y, plainText(m.status.text, r2.w - NAME_X2 - 2), { fg: PALETTE.fg });
+      put(NAME_X2 + 2, y, plainText(m.status.text, r.w - NAME_X2 - 2), { fg: PALETTE.fg });
     } else {
-      put(NAME_X2, y, plainText(m.status.text, r2.w - NAME_X2), { fg: PALETTE.fg });
+      put(NAME_X2, y, plainText(m.status.text, r.w - NAME_X2), { fg: PALETTE.fg });
     }
     y++;
   }
-  return { rows: y - r2.y, offset, visible };
+  return { rows: y - r.y, offset, visible };
 }
 
 // src/panel/ui/draw/ports.ts
@@ -25597,12 +25600,12 @@ var RED_BOLD = { fg: PALETTE.red, bold: true };
 var HI_BOLD2 = { fg: PALETTE.hi, bold: true };
 function putIn5(scr, x, y, text, st, end) {
   let out = "";
-  let w2 = 0;
+  let w = 0;
   for (const g of graphemes2(text)) {
     const gw = cellWidth(g);
-    if (x + w2 + gw > end) break;
+    if (x + w + gw > end) break;
     out += g;
-    w2 += gw;
+    w += gw;
   }
   if (out !== "") scr.put(x, y, out, st);
 }
@@ -25613,31 +25616,31 @@ function visiblePortEntries(ports, focused) {
   const shown = [...exposed, ...owned];
   return { shown, others: ports.length - shown.length };
 }
-function drawPortsPane(scr, r2, m) {
-  return drawPortsWin(scr, r2, m).rows;
+function drawPortsPane(scr, r, m) {
+  return drawPortsWin(scr, r, m).rows;
 }
-function drawPortsWin(scr, r2, m) {
+function drawPortsWin(scr, r, m) {
   const prev = m.focused ? Math.max(0, Math.trunc(m.offset ?? 0) || 0) : 0;
   const early = (rows) => ({ rows, visible: 0, offset: prev });
-  if (r2.w <= 0 || r2.h <= 0) return early(0);
+  if (r.w <= 0 || r.h <= 0) return early(0);
   const n = m.ports.length;
-  drawTitle(scr, r2.x, r2.y, r2.w, {
+  drawTitle(scr, r.x, r.y, r.w, {
     label: "PORTS",
     focused: m.focused,
     sample: m.sample,
     right: m.focused ? `${n} ${n === 1 ? "port" : "ports"}` : null
   });
-  if (r2.h < 3) return early(1);
-  const x = r2.x;
-  const end = r2.x + r2.w;
+  if (r.h < 3) return early(1);
+  const x = r.x;
+  const end = r.x + r.w;
   const put = (dx, y2, text, st) => putIn5(scr, x + dx, y2, text, st, end);
-  let y = r2.y + 2;
+  let y = r.y + 2;
   if (n === 0) {
-    put(PORT_X, y, plainText("no listening ports", r2.w - PORT_X), DIM3);
+    put(PORT_X, y, plainText("no listening ports", r.w - PORT_X), DIM3);
     return { rows: 3, visible: 0, offset: 0 };
   }
   const { shown, others } = visiblePortEntries(m.ports, m.focused);
-  const avail = r2.h - 2;
+  const avail = r.h - 2;
   let listH = avail;
   let showOthers = others > 0 && avail >= 2;
   if (showOthers && avail - 1 === 1 && shown.length > 1) showOthers = false;
@@ -25645,7 +25648,7 @@ function drawPortsWin(scr, r2, m) {
   const hiddenOthers = showOthers ? 0 : others;
   if (listH === 1 && (shown.length > 1 || hiddenOthers > 0)) {
     put(PORT_X, y++, `${V2.down} ${shown.length + hiddenOthers} more`, DIM3);
-    return early(y - r2.y);
+    return early(y - r.y);
   }
   const cursor = m.focused && m.cursorKey !== null ? shown.findIndex((p) => p.key === m.cursorKey) : -1;
   const win = windowSlice({
@@ -25655,9 +25658,9 @@ function drawPortsWin(scr, r2, m) {
     offset: prev,
     heights: shown.map((p) => p.owner !== null ? 2 : 1)
   });
-  const itemLimit = r2.y + 2 + listH - (win.down ? 1 : 0);
-  const showPid = m.focused && r2.w >= PID_MIN_W;
-  const showProc = r2.w >= PROC_MIN_W;
+  const itemLimit = r.y + 2 + listH - (win.down ? 1 : 0);
+  const showPid = m.focused && r.w >= PID_MIN_W;
+  const showProc = r.w >= PROC_MIN_W;
   if (win.up) put(PORT_X, y++, `${V2.up} ${win.above} more`, DIM3);
   let visible = 0;
   for (let i = win.start; i < win.end && y < itemLimit; i++) {
@@ -25669,18 +25672,18 @@ function drawPortsWin(scr, r2, m) {
     if (p.exposed) put(showProc ? EXPOSED_X : PROC_X, y, EXPOSED, RED_BOLD);
     if (showPid) {
       const t = `pid ${Math.trunc(p.pid)}`;
-      put(r2.w - cellWidth(t), y, t, DIM22);
+      put(r.w - cellWidth(t), y, t, DIM22);
     }
     y++;
     if (p.owner !== null && y < itemLimit) {
-      const owner = nameText(p.owner, r2.w - OWNER_X - 2) || DASH4;
+      const owner = nameText(p.owner, r.w - OWNER_X - 2) || DASH4;
       put(OWNER_X, y, `${V2.owner} ${owner}`, DIM3);
       y++;
     }
   }
   if (win.down) put(PORT_X, y++, `${V2.down} ${win.below + hiddenOthers} more`, DIM3);
   if (showOthers) put(PORT_X, y++, `+${others} others`, DIM22);
-  return { rows: y - r2.y, offset: win.offset, visible };
+  return { rows: y - r.y, offset: win.offset, visible };
 }
 
 // src/panel/ui/draw/right.ts
@@ -25737,27 +25740,27 @@ function bandFloor(m) {
   }
   return 2 + BODY_MIN;
 }
-function drawTabsBody(scr, r2, m, bodyH) {
+function drawTabsBody(scr, r, m, bodyH) {
   const windows = idleWindows(m);
-  if (r2.w <= 0 || r2.h <= 0) return { end: r2.y - 1, bodyRows: 0, windows };
+  if (r.w <= 0 || r.h <= 0) return { end: r.y - 1, bodyRows: 0, windows };
   const ui = m.ui;
   const rightFocused = ui.focus === "right";
-  drawTabs(scr, r2.x, r2.y, r2.w, { active: ui.rightTab, columnFocused: rightFocused, sample: m.sampleTabs ?? m.sample });
-  const h = Math.max(0, Math.min(Math.trunc(bodyH) || 0, r2.h - 2));
-  const bodyRect = { x: r2.x, y: r2.y + 2, w: r2.w, h };
+  drawTabs(scr, r.x, r.y, r.w, { active: ui.rightTab, columnFocused: rightFocused, sample: m.sampleTabs ?? m.sample });
+  const h = Math.max(0, Math.min(Math.trunc(bodyH) || 0, r.h - 2));
+  const bodyRect = { x: r.x, y: r.y + 2, w: r.w, h };
   let bodyRows;
   if (ui.rightTab === "phases") {
-    const w2 = drawPhasesWin(scr, bodyRect, {
+    const w = drawPhasesWin(scr, bodyRect, {
       projects: m.projects,
       projectIndex: m.projectIndex,
       focused: rightFocused,
       cursor: m.phaseCursor ?? null,
       offset: windows.phases.offset
     });
-    bodyRows = w2.rows;
-    windows.phases = { offset: w2.offset, visible: w2.visible };
+    bodyRows = w.rows;
+    windows.phases = { offset: w.offset, visible: w.visible };
   } else {
-    const w2 = drawSessionsWin(scr, bodyRect, {
+    const w = drawSessionsWin(scr, bodyRect, {
       sessions: m.sessions,
       focused: rightFocused,
       cursorId: m.sessionCursor !== void 0 ? m.sessionCursor : m.sessions[0]?.id ?? null,
@@ -25765,27 +25768,27 @@ function drawTabsBody(scr, r2, m, bodyH) {
       scanning: m.sessionsScanning === true,
       offset: windows.sessions.offset
     });
-    bodyRows = w2.rows;
-    windows.sessions = { offset: w2.offset, visible: w2.visible };
+    bodyRows = w.rows;
+    windows.sessions = { offset: w.offset, visible: w.visible };
   }
-  return { end: bodyRows > 0 ? bodyRect.y + bodyRows - 1 : r2.y, bodyRows, windows };
+  return { end: bodyRows > 0 ? bodyRect.y + bodyRows - 1 : r.y, bodyRows, windows };
 }
-function drawBand(scr, r2, band, m) {
-  if (r2.w <= 0 || r2.h <= 0) return { end: r2.y - 1, windows: idleWindows(m) };
-  const bottom = r2.y + r2.h;
-  const left = drawTabsBody(scr, { x: r2.x, y: r2.y, w: band.leftW, h: r2.h }, m, Math.max(0, r2.h - 2));
-  const ports = drawPortsWin(scr, { x: r2.x + band.rightX, y: r2.y, w: band.rightW, h: r2.h }, portsModel(m));
-  const end = Math.min(bottom - 1, Math.max(r2.y, left.end, r2.y + ports.rows - 1));
-  for (let y = r2.y; y <= end; y++) scr.put(r2.x + band.divX, y, V2.vline, { fg: PALETTE.edge });
+function drawBand(scr, r, band, m) {
+  if (r.w <= 0 || r.h <= 0) return { end: r.y - 1, windows: idleWindows(m) };
+  const bottom = r.y + r.h;
+  const left = drawTabsBody(scr, { x: r.x, y: r.y, w: band.leftW, h: r.h }, m, Math.max(0, r.h - 2));
+  const ports = drawPortsWin(scr, { x: r.x + band.rightX, y: r.y, w: band.rightW, h: r.h }, portsModel(m));
+  const end = Math.min(bottom - 1, Math.max(r.y, left.end, r.y + ports.rows - 1));
+  for (let y = r.y; y <= end; y++) scr.put(r.x + band.divX, y, V2.vline, { fg: PALETTE.edge });
   return { end, windows: { ...left.windows, ports: { offset: ports.offset, visible: ports.visible } } };
 }
-function drawRightColumn(scr, r2, m) {
+function drawRightColumn(scr, r, m) {
   const ui = m.ui;
   const rightFocused = ui.focus === "right";
-  const bottom = r2.y + r2.h;
-  if (r2.w <= 0 || r2.h <= 0) return { end: r2.y - 1, portsY: r2.y, windows: idleWindows(m) };
+  const bottom = r.y + r.h;
+  if (r.w <= 0 || r.h <= 0) return { end: r.y - 1, portsY: r.y, windows: idleWindows(m) };
   const portsFocused = ui.focus === "ports";
-  const avail = Math.max(0, r2.h - CHROME_ROWS);
+  const avail = Math.max(0, r.h - CHROME_ROWS);
   let budget;
   if (portsFocused) {
     const ports2 = { id: "ports", min: PORTS_MIN, max: 2 + portRowsNeeded(m.ports, true) };
@@ -25797,18 +25800,18 @@ function drawRightColumn(scr, r2, m) {
     const body = { id: "body", min: BODY_MIN, max: avail };
     budget = allocate(avail, [body, { id: "ports", min: PORTS_MIN, max: PORTS_MIN }], ["body"]);
   }
-  const { bodyRows, windows } = drawTabsBody(scr, r2, m, budget.body ?? 0);
-  const bodyEnd = r2.y + 2 + bodyRows - 1;
+  const { bodyRows, windows } = drawTabsBody(scr, r, m, budget.body ?? 0);
+  const bodyEnd = r.y + 2 + bodyRows - 1;
   let portsY = Math.max(bodyEnd + 2, Math.trunc(m.portsMinY) || 0);
   const portsNeed = portsFocused ? budget.ports ?? PORTS_MIN : PORTS_MIN;
   if (bottom - portsY < portsNeed) portsY = bodyEnd + 2;
   if (portsFocused && bodyRows === 0 && bottom - portsY === PORTS_MIN && portRowsNeeded(m.ports, true) > 1) {
     portsY -= 1;
   }
-  const ports = drawPortsWin(scr, { x: r2.x, y: portsY, w: r2.w, h: Math.max(0, bottom - portsY) }, portsModel(m));
+  const ports = drawPortsWin(scr, { x: r.x, y: portsY, w: r.w, h: Math.max(0, bottom - portsY) }, portsModel(m));
   const portsRows = ports.rows;
   windows.ports = { offset: ports.offset, visible: ports.visible };
-  const end = Math.min(bottom - 1, portsRows > 0 ? portsY + portsRows - 1 : Math.max(r2.y, bodyEnd));
+  const end = Math.min(bottom - 1, portsRows > 0 ? portsY + portsRows - 1 : Math.max(r.y, bodyEnd));
   return { end, portsY, windows };
 }
 
@@ -25876,15 +25879,15 @@ function drawFooter(scr, y, cols, o) {
 // src/panel/ui/draw/tooSmall.ts
 function drawTooSmall(cols, rows, h) {
   const c = Number.isFinite(cols) ? Math.max(0, Math.trunc(cols)) : 0;
-  const r2 = Number.isFinite(rows) ? Math.max(0, Math.trunc(rows)) : 0;
-  const scr = new Screen(c, r2);
+  const r = Number.isFinite(rows) ? Math.max(0, Math.trunc(rows)) : 0;
+  const scr = new Screen(c, r);
   drawHeader(scr, c, h);
   const cells = c - 1;
-  const size = `now ${c}${V2.times}${r2} ${V2.sep} needs ${MIN_COLS}${V2.times}${MIN_ROWS}`;
+  const size = `now ${c}${V2.times}${r} ${V2.sep} needs ${MIN_COLS}${V2.times}${MIN_ROWS}`;
   scr.put(1, 2, truncateEnd("terminal too small", cells), { fg: PALETTE.hi, bold: true });
   scr.put(1, 3, truncateEnd(size, cells), { fg: PALETTE.dim });
   scr.put(1, 4, truncateEnd("enlarge the window, or press q to quit", cells), { fg: PALETTE.dim2 });
-  return scr.toLines(Math.min(r2, 5));
+  return scr.toLines(Math.min(r, 5));
 }
 
 // src/panel/ui/draw/shell.ts
@@ -26001,16 +26004,20 @@ function gridDemands(m) {
     { id: "agentsSpacer", min: 0, max: 1 }
   ];
 }
+function filesHardFor(m, room) {
+  const keep = Math.min(m.filesHard, 2);
+  return Math.max(keep, Math.min(m.filesHard, room));
+}
 function collapsedGrid(m) {
   const n = Math.min(AGENTS_COLLAPSED, m.agents);
   return { id: "agents", min: n, max: n };
 }
-function measureLeft(input, w2, cardCols) {
+function measureLeft(input, w, cardCols) {
   const p = input.panes;
   const slots = p.agents.length + Math.ceil(p.idle.length / 3);
   const h = CARD_PITCH_Y * (slots + 1) + 2;
-  const a = drawAgentsPane(new Screen(w2, h), { x: 0, y: 0, w: w2, h }, agentsModel(input, cardCols, true));
-  const f = drawFilesPane(new Screen(w2, FILES_MAX_H), { x: 0, y: 0, w: w2, h: FILES_MAX_H }, filesModel(input));
+  const a = drawAgentsPane(new Screen(w, h), { x: 0, y: 0, w, h }, agentsModel(input, cardCols, true));
+  const f = drawFilesPane(new Screen(w, FILES_MAX_H), { x: 0, y: 0, w, h: FILES_MAX_H }, filesModel(input));
   const filesHard = Math.min(f, 1 + Math.min(p.conflicts.length, MAX_CONFLICT_ROWS2));
   return { agents: a.rows, filesHard, filesTicker: f - filesHard };
 }
@@ -26029,14 +26036,14 @@ function bandNatural(rm, leftW, rightW, h) {
   );
   return Math.max(left, ports);
 }
-function drawLeft(scr, input, x, w2, cardCols, h, detail, bottom) {
-  const ar = { x, y: BODY_Y, w: w2, h: h.agents };
+function drawLeft(scr, input, x, w, cardCols, h, detail, bottom) {
+  const ar = { x, y: BODY_Y, w, h: h.agents };
   const a = drawAgentsPane(scr, ar, agentsModel(input, cardCols));
   let end = BODY_Y + a.rows - 1;
   let y = BODY_Y + a.rows + (a.rows < h.agents ? 1 : 0);
   if (detail !== null && h.detail > 0) {
     const dh = Math.max(0, Math.min(h.detail, bottom - y));
-    const d = drawDetail(scr, { x, y, w: w2, h: dh }, detail);
+    const d = drawDetail(scr, { x, y, w, h: dh }, detail);
     if (d > 0) {
       end = y + d - 1;
       y += d + (h.detailSpacer > 0 ? 1 : 0);
@@ -26044,7 +26051,7 @@ function drawLeft(scr, input, x, w2, cardCols, h, detail, bottom) {
   }
   const filesY = y;
   const fh = Math.max(0, Math.min(h.files, bottom - filesY));
-  const f = drawFilesPane(scr, { x, y: filesY, w: w2, h: fh }, filesModel(input));
+  const f = drawFilesPane(scr, { x, y: filesY, w, h: fh }, filesModel(input));
   if (f > 0) end = filesY + f - 1;
   return { filesY, end, grid: { offset: a.firstRow, visible: a.visibleRows } };
 }
@@ -26064,7 +26071,8 @@ function drawShellFrame(input) {
   if (g.split && g.divX !== null) {
     const m = measureLeft(input, g.LW, g.cardCols);
     const [grid0, gridSpacer] = gridDemands(m);
-    const filesHard = { id: "filesHard", min: m.filesHard, max: m.filesHard };
+    const hard = detail === null ? filesHardFor(m, total - cardMinOf(m)) : m.filesHard;
+    const filesHard = { id: "filesHard", min: hard, max: hard };
     const ticker = { id: "ticker", min: Math.min(TICKER_MIN, m.filesTicker), max: m.filesTicker };
     let b;
     if (detail === null) {
@@ -26104,7 +26112,7 @@ function drawShellFrame(input) {
     const focusFloor = Math.min(band !== null ? bandFloor(rm) : focusedFloor(rm), rNat);
     const gridYields = rightFocused && total - cardMin - m.filesHard < focusFloor || detailMin > 0 && total - m.filesHard - detailMin < cardMin;
     const [grid, gridSpacer] = gridDemands(m);
-    const agents2 = gridYields ? collapsedGrid(m) : grid;
+    const agents = gridYields ? collapsedGrid(m) : grid;
     const filesHard = { id: "filesHard", min: m.filesHard, max: m.filesHard };
     const ticker = { id: "ticker", min: Math.min(TICKER_MIN, m.filesTicker), max: m.filesTicker };
     const rightMin = band !== null ? rightFocused ? Math.max(bandFloor(rm), BAND_MIN) : BAND_MIN : rightFocused ? RIGHT_FOCUS_MIN : RIGHT_MIN;
@@ -26114,11 +26122,11 @@ function drawShellFrame(input) {
       gridYields ? { id: "agentsSpacer", min: 0, max: 1 } : gridSpacer,
       { id: "rightSpacer", min: 0, max: 1 }
     ];
-    let demands = rightFocused ? [agents2, filesHard, right, ticker, ...spacers] : [agents2, filesHard, ticker, right, ...spacers];
+    let demands = rightFocused ? [agents, filesHard, right, ticker, ...spacers] : [agents, filesHard, ticker, right, ...spacers];
     let grow = rightFocused ? [rid, "agentsSpacer", "agents", "ticker", "rightSpacer"] : ["agentsSpacer", "agents", "ticker", rid, "rightSpacer"];
     if (detail !== null) {
       const strip = { id: "detail", min: detailMin, max: DETAIL_ROWS };
-      demands = rightFocused ? [agents2, filesHard, right, strip, ticker, ...spacers] : [filesHard, strip, agents2, ticker, right, ...spacers];
+      demands = rightFocused ? [agents, filesHard, right, strip, ticker, ...spacers] : [filesHard, strip, agents, ticker, right, ...spacers];
       demands.push({ id: "detailSpacer", min: 0, max: 1 });
       const at = grow.indexOf("agents");
       grow = [...grow.slice(0, at), "detail", ...grow.slice(at), "detailSpacer"];
@@ -26131,9 +26139,9 @@ function drawShellFrame(input) {
     const rH = Math.max(0, Math.min(b[rid] ?? 0, bottom - ry));
     if (rH > 0) {
       const rect = { x: 0, y: ry, w: cols, h: rH };
-      const r2 = band !== null ? drawBand(scr, rect, band, rm) : drawRightColumn(scr, rect, rm);
-      end = Math.max(end, r2.end);
-      lists = r2.windows;
+      const r = band !== null ? drawBand(scr, rect, band, rm) : drawRightColumn(scr, rect, rm);
+      end = Math.max(end, r.end);
+      lists = r.windows;
     }
   }
   const footerY = Math.min(end + 2, rows - 1);
@@ -26141,222 +26149,6 @@ function drawShellFrame(input) {
   const scroll = { grid: gridWin, ...lists };
   return { lines: scr.toLines(footerY + 1), scroll };
 }
-
-// src/panel/ui/sample.ts
-var ID = {
-  plan: "4be1c07a",
-  api: "3fa9c1d2",
-  checkout: "9c41e2a0",
-  landing: "1d7f5b33",
-  research: "b20e6f19"
-};
-var agents = [
-  {
-    id: ID.plan,
-    name: "csm p8 plan",
-    dir: "CSM",
-    branch: "main",
-    uptime: "3h51m",
-    model: "opus 4.7",
-    prompt: "plan phase 9 from the design file and ask me before picking a branch",
-    state: "asking",
-    waitFor: null,
-    subagents: 0,
-    conflicts: 0,
-    writes: 0,
-    reads: 3,
-    inConflict: false
-  },
-  {
-    id: ID.api,
-    name: "api refactor",
-    dir: "csm-demo",
-    branch: "feat/api",
-    uptime: "12m",
-    model: "sonnet 4.6",
-    prompt: "collapse the cart endpoints into one router and keep the old paths working",
-    state: "waiting",
-    waitFor: "4m",
-    subagents: 0,
-    conflicts: 0,
-    writes: 1,
-    reads: 1,
-    inConflict: false
-  },
-  {
-    id: ID.checkout,
-    name: "checkout screen",
-    dir: "csm-demo",
-    branch: "main",
-    uptime: "6m",
-    model: "opus 4.7",
-    prompt: "move the coupon field into the cart summary, then recompute the total and run the tests",
-    state: "running",
-    waitFor: null,
-    subagents: 0,
-    conflicts: 1,
-    writes: 2,
-    reads: 2,
-    inConflict: true
-  },
-  {
-    id: ID.landing,
-    name: "landing copy",
-    dir: "site",
-    branch: "main",
-    uptime: "22m",
-    model: "haiku 4.5",
-    prompt: "rewrite the hero headline as two shorter variants",
-    state: "running",
-    waitFor: null,
-    subagents: 0,
-    conflicts: 0,
-    writes: 1,
-    reads: 0,
-    inConflict: false
-  },
-  {
-    id: ID.research,
-    name: "dashboard research",
-    dir: "mvp-dash",
-    branch: "main",
-    uptime: "53h",
-    model: "opus 4.7",
-    prompt: "compare the three competitor dashboards and summarize what each one tracks",
-    state: "subagent",
-    waitFor: null,
-    subagents: 2,
-    conflicts: 1,
-    writes: 1,
-    reads: 2,
-    inConflict: true
-  }
-];
-var w = (path12) => ({ path: path12, kind: "write" });
-var r = (path12) => ({ path: path12, kind: "read" });
-var groups = [
-  {
-    agentId: ID.plan,
-    name: "csm p8 plan",
-    state: "asking",
-    files: [r(".planning/ROADMAP.md"), r(".planning/phase-8.md"), r(".planning/phase-9.md")]
-  },
-  {
-    agentId: ID.api,
-    name: "api refactor",
-    state: "waiting",
-    files: [w("src/routes/cart.js"), r("src/db/schema.sql")]
-  },
-  {
-    agentId: ID.checkout,
-    name: "checkout screen",
-    state: "running",
-    files: [w("src/ui/Checkout.jsx"), w("src/ui/styles.css"), r("src/ui/check.jsx"), r("package.json")]
-  },
-  {
-    agentId: ID.landing,
-    name: "landing copy",
-    state: "running",
-    files: [w("content/hero.md")]
-  },
-  {
-    agentId: ID.research,
-    name: "dashboard research",
-    state: "subagent",
-    files: [w("docs/research.md"), r("src/lib/metrics.ts"), r("src/pages/Overview.tsx")]
-  }
-];
-function phases(list2, current, plans) {
-  return list2.map(([number, name], i) => ({
-    number,
-    name,
-    status: i < current ? "done" : i === current ? "current" : "pending",
-    plansDone: i === current ? plans[0] : null,
-    plansTotal: i === current ? plans[1] : null
-  }));
-}
-var port = (p, proc, pid, owner, exposed = false) => ({
-  key: String(p),
-  port: p,
-  proc,
-  pid,
-  exposed,
-  owner
-});
-var sessions = [
-  { id: "4be1c07a", name: "csm p8 plan", ago: "now", live: true },
-  { id: "9c41e2a0", name: "checkout screen", ago: "1m", live: true },
-  { id: "1d7f5b33", name: "landing copy", ago: "3m", live: true },
-  { id: "3fa9c1d2", name: "api refactor", ago: "4m", live: true },
-  { id: "b20e6f19", name: "dashboard research", ago: "9m", live: true },
-  { id: "77c0a8e4", name: "project requirements", ago: "5h", live: true },
-  { id: "e5d21c90", name: "gm country names", ago: "34h", live: true },
-  { id: "0a4b9d17", name: "csm file read write", ago: "53h", live: true },
-  { id: "c81f4e02", name: "mvp-dashboard-beta", ago: "3d", live: false },
-  { id: "5e9a3b6c", name: "port naming spike", ago: "4d", live: false },
-  { id: "d3b7710f", name: "csm p7 execute", ago: "6d", live: false }
-];
-var SAMPLE = {
-  agents,
-  idle: [
-    { id: "77c0a8e4", name: "project requirements", ago: "5h" },
-    { id: "e5d21c90", name: "gm country names", ago: "34h" },
-    { id: "0a4b9d17", name: "csm file read write", ago: "53h" }
-  ],
-  conflicts: [{ a: "dashboard research", b: "checkout screen", path: "src/server.js" }],
-  groups,
-  projects: [
-    {
-      name: "Panel Redesign & Port Navigation v2.0",
-      dir: "CSM",
-      phases: phases(
-        [
-          ["9", "UI Foundation & Design Contract"],
-          ["10", "New Panel Layout & Session Go-to"],
-          ["11", "Port Go-to, Browser & Kill"],
-          ["12", "Port Naming"]
-        ],
-        0,
-        [0, 3]
-      )
-    },
-    {
-      name: "Scale & Insights v2.1",
-      dir: "mvp-dash",
-      phases: phases(
-        [
-          ["31", "auth flow"],
-          ["32", "billing sync"],
-          ["33", "ci pipeline monitoring"],
-          ["34", "v2.0 gate closure"],
-          ["35", "production platform on outplane"],
-          ["35.1", "transactional email via own smtp"],
-          ["35.2", "security network hardening"],
-          ["36", "async cloro measurement"],
-          ["37", "prompt weighting heuristic"],
-          ["38", "dashboard redesign"],
-          ["38.1", "sources tab"],
-          ["39", "research agent"]
-        ],
-        2,
-        [3, 7]
-      )
-    }
-  ],
-  projectIndex: 1,
-  sessions,
-  sessionStatus: null,
-  ports: [
-    port(3e3, "bun", 41822, "checkout screen"),
-    port(5173, "vite", 38810, "dashboard research"),
-    port(27036, "steam_osx", 811, null, true),
-    port(37777, "bun", 4993, null),
-    port(9277, "stable", 72085, null),
-    port(57343, "steam_osx", 811, null),
-    port(57150, "steam_osx", 811, null),
-    port(57152, "steam_osx", 811, null)
-  ]
-};
 
 // src/panel/ui/ScreenView.tsx
 var import_jsx_runtime3 = __toESM(require_jsx_runtime(), 1);
@@ -26389,8 +26181,8 @@ function cardModel(row) {
 
 // src/panel/ui/build/agents.ts
 var DASH5 = "\u2014";
-function startMs(r2) {
-  const t = Date.parse(r2.start_time);
+function startMs(r) {
+  const t = Date.parse(r.start_time);
   return Number.isFinite(t) ? t : 0;
 }
 function byStart(a, b) {
@@ -26400,10 +26192,10 @@ function stableOrder(prev, rows) {
   const next = /* @__PURE__ */ new Map();
   let seq = 0;
   for (const v of prev.values()) if (Number.isFinite(v)) seq = Math.max(seq, v + 1);
-  const live = new Set(rows.map((r2) => r2.session_id));
+  const live = new Set(rows.map((r) => r.session_id));
   for (const [id, s] of prev) if (live.has(id)) next.set(id, s);
-  const fresh = rows.filter((r2) => !next.has(r2.session_id)).sort(byStart);
-  for (const r2 of fresh) if (!next.has(r2.session_id)) next.set(r2.session_id, seq++);
+  const fresh = rows.filter((r) => !next.has(r.session_id)).sort(byStart);
+  for (const r of fresh) if (!next.has(r.session_id)) next.set(r.session_id, seq++);
   return next;
 }
 function cardState(row) {
@@ -26427,7 +26219,7 @@ function ageOf(now, ...times) {
 function buildAgents(i) {
   const rows = i.display.filter((d) => !d.ended).map((d) => d.row);
   const byId = /* @__PURE__ */ new Map();
-  for (const r2 of rows) byId.set(r2.session_id, r2);
+  for (const r of rows) byId.set(r.session_id, r);
   const sorted = [...byId.values()].sort((a, b) => {
     const sa = i.order.get(a.session_id);
     const sb = i.order.get(b.session_id);
@@ -26441,63 +26233,63 @@ function buildAgents(i) {
     const ids = new Set((c.sessions ?? []).map((s) => s.session_id));
     for (const id of ids) conflictCount.set(id, (conflictCount.get(id) ?? 0) + 1);
   }
-  const agents2 = [];
+  const agents = [];
   const idle = [];
-  for (const r2 of sorted) {
-    const name = labelLead({ title: r2.title, folder: r2.folder });
-    const state = cardState(r2);
+  for (const r of sorted) {
+    const name = labelLead({ title: r.title, folder: r.folder });
+    const state = cardState(r);
     if (state === null) {
-      idle.push({ id: r2.session_id, name, ago: ageOf(i.now, r2.last_seen, r2.last_active, r2.start_time) });
+      idle.push({ id: r.session_id, name, ago: ageOf(i.now, r.last_seen, r.last_active, r.start_time) });
       continue;
     }
-    const start = Date.parse(r2.start_time);
-    const attn = typeof r2.attention_ts === "string" ? Date.parse(r2.attention_ts) : NaN;
-    const conflicts = conflictCount.get(r2.session_id) ?? 0;
-    const subs = r2.subagent_count;
-    agents2.push({
-      id: r2.session_id,
+    const start = Date.parse(r.start_time);
+    const attn = typeof r.attention_ts === "string" ? Date.parse(r.attention_ts) : NaN;
+    const conflicts = conflictCount.get(r.session_id) ?? 0;
+    const subs = r.subagent_count;
+    agents.push({
+      id: r.session_id,
       name,
-      dir: r2.folder,
-      branch: liveBranch(r2, i.branches),
+      dir: r.folder,
+      branch: liveBranch(r, i.branches),
       uptime: Number.isFinite(start) ? fmtUptime(start, i.now) : DASH5,
-      model: cardModel(r2),
-      prompt: typeof r2.last_prompt === "string" ? r2.last_prompt : null,
+      model: cardModel(r),
+      prompt: typeof r.last_prompt === "string" ? r.last_prompt : null,
       state,
       waitFor: state === "waiting" && Number.isFinite(attn) ? fmtAge(attn, i.now) : null,
       subagents: typeof subs === "number" && Number.isFinite(subs) ? subs : 0,
       conflicts,
-      writes: len(r2.files),
-      reads: len(r2.reads),
+      writes: len(r.files),
+      reads: len(r.reads),
       inConflict: conflicts > 0
     });
   }
-  return { agents: agents2, idle, byId };
+  return { agents, idle, byId };
 }
 
 // src/panel/ui/build/detail.ts
 var DASH6 = "\u2014";
 function buildDetail(i) {
-  const r2 = i.row;
-  const start = Date.parse(r2.start_time);
+  const r = i.row;
+  const start = Date.parse(r.start_time);
   const live = livePidMap([...i.liveRows]);
   const seen = /* @__PURE__ */ new Set();
   const ports = [];
   for (const p of [...i.ports].sort((a, b) => a.port - b.port)) {
     if (seen.has(p.port)) continue;
-    if (attribute(p, live)?.session_id !== r2.session_id) continue;
+    if (attribute(p, live)?.session_id !== r.session_id) continue;
     seen.add(p.port);
     ports.push({ port: p.port, proc: p.command });
   }
   return {
-    id: r2.session_id,
-    name: labelLead({ title: r2.title, folder: r2.folder }),
-    state: cardState(r2) ?? "idle",
+    id: r.session_id,
+    name: labelLead({ title: r.title, folder: r.folder }),
+    state: cardState(r) ?? "idle",
     uptime: Number.isFinite(start) ? fmtUptime(start, i.now) : DASH6,
-    model: cardModel(r2),
-    intent: typeof r2.intent === "string" && r2.intent !== "" ? r2.intent : null,
-    branch: liveBranch(r2, i.branches),
+    model: cardModel(r),
+    intent: typeof r.intent === "string" && r.intent !== "" ? r.intent : null,
+    branch: liveBranch(r, i.branches),
     ports,
-    prompt: typeof r2.last_prompt === "string" && r2.last_prompt !== "" ? r2.last_prompt : null
+    prompt: typeof r.last_prompt === "string" && r.last_prompt !== "" ? r.last_prompt : null
   };
 }
 
@@ -26530,17 +26322,17 @@ function toConflict(c, cwdOf) {
 }
 function buildFiles(i) {
   const rows = i.display.filter((d) => !d.ended).map((d) => d.row);
-  const live = new Set(rows.map((r2) => r2.session_id));
+  const live = new Set(rows.map((r) => r.session_id));
   const sel = i.selectedId !== null && live.has(i.selectedId) ? i.selectedId : null;
   const narrowed = sel !== null;
-  const cwdOf = new Map(rows.map((r2) => [r2.session_id, r2.cwd]));
+  const cwdOf = new Map(rows.map((r) => [r.session_id, r.cwd]));
   const conflicts = [];
   for (const c of i.conflicts) {
     if (narrowed && !(c.sessions ?? []).some((s) => s.session_id === sel)) continue;
     const fc = toConflict(c, cwdOf);
     if (fc) conflicts.push(fc);
   }
-  const idx = new Map(rows.map((r2, k) => [r2.session_id, k]));
+  const idx = new Map(rows.map((r, k) => [r.session_id, k]));
   const sorted = [...rows].sort((a, b) => {
     const sa = i.order.get(a.session_id);
     const sb = i.order.get(b.session_id);
@@ -26549,22 +26341,22 @@ function buildFiles(i) {
     if (sb !== void 0) return 1;
     return (idx.get(a.session_id) ?? 0) - (idx.get(b.session_id) ?? 0);
   });
-  const groups2 = [];
-  for (const r2 of sorted) {
-    if (narrowed && r2.session_id !== sel) continue;
+  const groups = [];
+  for (const r of sorted) {
+    if (narrowed && r.session_id !== sel) continue;
     const files = [
-      ...list(r2.files).map((f) => ({ path: displayPath(f.file_path, r2.cwd), kind: "write" })),
-      ...list(r2.reads).map((f) => ({ path: displayPath(f.file_path, r2.cwd), kind: "read" }))
+      ...list(r.files).map((f) => ({ path: displayPath(f.file_path, r.cwd), kind: "write" })),
+      ...list(r.reads).map((f) => ({ path: displayPath(f.file_path, r.cwd), kind: "read" }))
     ];
     if (files.length === 0) continue;
-    groups2.push({
-      agentId: r2.session_id,
-      name: labelLead({ title: r2.title, folder: r2.folder }),
-      state: cardState(r2) ?? "idle",
+    groups.push({
+      agentId: r.session_id,
+      name: labelLead({ title: r.title, folder: r.folder }),
+      state: cardState(r) ?? "idle",
       files
     });
   }
-  return { conflicts, groups: groups2, narrowed };
+  return { conflicts, groups, narrowed };
 }
 
 // src/panel/ui/build/right.ts
@@ -26613,7 +26405,7 @@ function currentPhaseNumber(project) {
 }
 function buildSessions(rows, isLive, now) {
   if (rows === null) return [];
-  return rows.map((r2) => ({ id: r2.id, name: r2.label, ago: fmtAge(r2.mtimeMs, now), live: isLive(r2) }));
+  return rows.map((r) => ({ id: r.id, name: r.label, ago: fmtAge(r.mtimeMs, now), live: isLive(r) }));
 }
 
 // src/panel/ui/build/ports.ts
@@ -26700,8 +26492,8 @@ function pageGrid(items2, cols, currentId, rows, dir) {
   const i = currentId === null ? -1 : items2.findIndex((x) => x.id === currentId);
   if (i < 0) return items2[0].id;
   const c = normCols(cols);
-  const r2 = Math.max(1, normInt(rows));
-  const target = items2[i].slot + dir * r2 * c;
+  const r = Math.max(1, normInt(rows));
+  const target = items2[i].slot + dir * r * c;
   if (dir === 1) {
     const hit2 = target <= items2[n - 1].slot ? atSlot(items2, target, "first") : void 0;
     return (hit2 ?? items2[n - 1]).id;
@@ -26794,7 +26586,7 @@ function defaultGotoDeps() {
     probe: defaultProbe,
     startedProbe: (pid) => execText("ps", ["-o", "lstart=", "-p", String(pid)]).then((s) => s === null ? "" : s.trim()),
     procTable: () => execText("ps", ["-axo", "pid=,ppid=,comm="]),
-    open: (url) => defaultRun(OPEN_BIN, [url], { timeoutMs: 3e3 }).then((r2) => r2.ok)
+    open: (url) => defaultRun(OPEN_BIN, [url], { timeoutMs: 3e3 }).then((r) => r.ok)
   };
 }
 function validPid(pid) {
@@ -26871,8 +26663,8 @@ function phasesKey(projects, idx) {
   );
   return `${idx}\x1B${p.join("")}`;
 }
-function sessionsKey(sessions2, status, cursor, scanning) {
-  const s = sessions2.map((x) => [x.id, x.name, x.ago, x.live ? 1 : 0].join(""));
+function sessionsKey(sessions, status, cursor, scanning) {
+  const s = sessions.map((x) => [x.id, x.name, x.ago, x.live ? 1 : 0].join(""));
   const st = status === null ? "" : `${status.ok ? 1 : 0}|${status.text}`;
   return [s.join(""), st, cursor ?? "", scanning ? 1 : 0].join("");
 }
@@ -26890,15 +26682,15 @@ function detailKey(d) {
     d.prompt ?? ""
   ].join("");
 }
-function filesKey(conflicts, groups2, narrowed) {
+function filesKey(conflicts, groups, narrowed) {
   const c = conflicts.map((x) => [x.a, x.b, x.more ?? 0, x.path].join(""));
-  const g = groups2.map(
+  const g = groups.map(
     (x) => [x.agentId, x.name, x.state, x.files.map((f) => `${f.kind[0]}${f.path}`).join("")].join("")
   );
   return `${narrowed ? 1 : 0}${c.join("")}${g.join("")}`;
 }
-function agentsKey(agents2, idle) {
-  const c = agents2.map(
+function agentsKey(agents, idle) {
+  const c = agents.map(
     (a) => [
       a.id,
       a.state,
@@ -26965,11 +26757,10 @@ function PanelApp(props = {}) {
   shownRootRef.current = ph.focusRoot;
   const projects = buildProjects(ph.focusSet, ph.progress);
   const resume = useResume(liveRowsRef, ui.rightTab === "sessions");
-  const sessions2 = buildSessions(resume.rows, resume.isLive, now());
+  const sessions = buildSessions(resume.rows, resume.isLive, now());
   const sessionsScanning = resume.rows === null;
   const ports = buildPorts(scanned, liveRows);
   const panes = {
-    ...SAMPLE,
     agents: ag.agents,
     idle: ag.idle,
     detail,
@@ -26978,7 +26769,7 @@ function PanelApp(props = {}) {
     filesNarrowed: files.narrowed,
     projects,
     projectIndex: ph.idx,
-    sessions: sessions2,
+    sessions,
     sessionStatus: resume.status,
     sessionCursor: resume.selId,
     sessionsScanning,
@@ -26989,7 +26780,7 @@ function PanelApp(props = {}) {
     detailKey(detail),
     filesKey(files.conflicts, files.groups, files.narrowed),
     phasesKey(projects, ph.idx),
-    sessionsKey(sessions2, resume.status, resume.selId, sessionsScanning),
+    sessionsKey(sessions, resume.status, resume.selId, sessionsScanning),
     portsKey(ports)
   ].join("");
   const clearResumeStatus = resume.clearStatus;
@@ -27052,7 +26843,7 @@ function PanelApp(props = {}) {
   ].join("|");
   const flashKey = flash === null ? "" : `${flash.ok ? 1 : 0}|${flash.text}`;
   const sc = scrollRef.current;
-  const scrollKey = [sc.grid, sc.phases, sc.sessions, sc.ports].map((w2) => w2.offset).join("|");
+  const scrollKey = [sc.grid, sc.phases, sc.sessions, sc.ports].map((w) => w.offset).join("|");
   const frame = import_react47.default.useMemo(
     () => drawShellFrame({
       rows,
@@ -27112,8 +26903,8 @@ function PanelApp(props = {}) {
               ended: false
             },
             gotoDeps
-          ).then((r2) => {
-            if (mounted.current) apply({ t: "flash", text: r2.text, ok: r2.ok, at: now() });
+          ).then((r) => {
+            if (mounted.current) apply({ t: "flash", text: r.text, ok: r.ok, at: now() });
           }).catch(() => void 0).finally(() => {
             gotoInFlight.current = false;
           });
