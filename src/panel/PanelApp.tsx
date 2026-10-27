@@ -6,6 +6,8 @@ import { useUiTick, UI_TICK_MS } from "./hooks/useUiTick.js";
 import { useResizeRepaint } from "./hooks/useResizeRepaint.js";
 import { useBranches } from "./hooks/useBranches.js";
 import { usePorts } from "./hooks/usePorts.js";
+import { usePhases } from "./hooks/usePhases.js";
+import { useResume } from "./hooks/useResume.js";
 import { headerFromRoster } from "./ui/headerModel.js";
 import {
   effectiveUi,
@@ -24,11 +26,21 @@ import { ScreenView } from "./ui/ScreenView.js";
 import { buildAgents, stableOrder } from "./ui/build/agents.js";
 import { buildDetail } from "./ui/build/detail.js";
 import { buildFiles } from "./ui/build/files.js";
-import { gridItems, moveGrid, pageGrid } from "./ui/nav.js";
+import { buildProjects, buildSessions, currentPhaseNumber } from "./ui/build/right.js";
+import { cycleId, gridItems, moveGrid, moveList, pageGrid } from "./ui/nav.js";
 import { geometry } from "./ui/geometry.js";
 import { defaultGotoDeps, runGoto, type GotoDeps } from "./actions/goto.js";
 import type { SessionRow } from "../aggregate.js";
-import type { AgentCard, DetailModel, FileConflict, FileGroup, IdleStrip } from "./ui/models.js";
+import type {
+  AgentCard,
+  DetailModel,
+  FileConflict,
+  FileGroup,
+  Flash,
+  IdleStrip,
+  Project,
+  SessionEntry,
+} from "./ui/models.js";
 
 /**
  * The v2 panel root behind `CSM_UI=v2` (Phase 9, plan 09-12). Plan 09-13 wires
@@ -103,7 +115,7 @@ import type { AgentCard, DetailModel, FileConflict, FileGroup, IdleStrip } from 
  *     and the full last prompt. The shell draws it between the grid and
  *     FILES. It carries no go-to reachability marker (D-11).
  *   - usePorts is the slow second timer (lsof/ps off the render path); the
- *     PORTS pane itself still draws SAMPLE until 10-14.
+ *     PORTS pane itself still draws SAMPLE until 10-15.
  *
  * Phase 10 plan 10-12 (LAYOUT-07, LAYOUT-03, LAYOUT-02, D-23):
  *   - The FILES pane is LIVE: `buildFiles` turns the roster's conflicts and
@@ -114,6 +126,26 @@ import type { AgentCard, DetailModel, FileConflict, FileGroup, IdleStrip } from 
  *     the detail strip) FILES narrows to it (`panes.filesNarrowed`): its
  *     group and conflicts only, the ticker stopped. Esc or the 15 s idle drop
  *     clears the selection and every session shows again.
+ *
+ * Phase 10 plan 10-14 (KEYS-05, KEYS-02, KEYS-03, LAYOUT-02, D-16, D-23):
+ *   - The right column is LIVE through the hooks LegacyApp shares (D-23):
+ *     PHASES from `usePhases` (the focus set + cached progress, built by
+ *     `buildProjects`), SESSIONS from `useResume` (its rows, cursor and
+ *     copy/open status, built by `buildSessions`). Their ` sample ` chips are
+ *     gone.
+ *   - KEYS-05: the shown project is chosen by its root. `←`/`→` on PHASES cycle
+ *     the roots (wrapping) into `setProject`; Tab only moves focus. Before any
+ *     `←`/`→` the last shown root is kept (`shownRootRef`), so a re-ordered
+ *     focus set never swaps the project on screen.
+ *   - KEYS-02: the PHASES cursor is a phase number (`setPhaseCursor`); `↑`/`↓`
+ *     move it by one phase and PgUp/PgDn by the drawn window. A project change
+ *     clears it, so the cursor falls back to the current phase.
+ *   - SESSIONS: `↑`/`↓` and PgUp/PgDn move the hook's id cursor, Enter copies
+ *     the resume line and `o` opens a new window. Both go only through
+ *     `useResume` (every Phase 8 guard: claim-before-await, enterSeq, registry
+ *     re-check, launch.ts cwd validation; T-10-34); PanelApp imports no
+ *     launcher. Switching the right tab clears the copy/open status (legacy
+ *     onToggle parity).
  */
 export interface PanelAppProps {
   tickMs?: number;
@@ -139,10 +171,46 @@ interface ViewFacts {
   byId: ReadonlyMap<string, SessionRow>;
   /** The raw card / strip names by session id (10-10; the go-to flash). */
   nameById: ReadonlyMap<string, string>;
+  /** The shown project's phase numbers in timeline order (10-14). */
+  phaseNumbers: readonly string[];
+  /** The shown project's current phase number (the default PHASES cursor; 10-14). */
+  currentPhase: string | null;
+  /** The project roots in focus-set order (10-14, KEYS-05). */
+  roots: readonly string[];
+  /** The index of the shown project in `roots` (10-14). */
+  projectIdx: number;
 }
 
-/** Each flag turns false when its pane goes live (D-23); AGENTS from 10-09, FILES from 10-12. */
-const SAMPLE_FLAGS: SampleFlags = { agents: false, files: false, phases: true, sessions: true, ports: true };
+/**
+ * Each flag turns false when its pane goes live (D-23); AGENTS from 10-09,
+ * FILES from 10-12, PHASES and SESSIONS from 10-14.
+ */
+const SAMPLE_FLAGS: SampleFlags = { agents: false, files: false, phases: false, sessions: false, ports: true };
+
+/** A redraw key over every drawn PHASES field (10-14). */
+function phasesKey(projects: readonly Project[], idx: number): string {
+  const p = projects.map((x) =>
+    [
+      x.root ?? "",
+      x.name,
+      x.dir,
+      x.phases.map((e) => [e.number, e.name, e.status, e.plansDone ?? "", e.plansTotal ?? ""].join("\u001f")).join("\u001e"),
+    ].join("\u001d"),
+  );
+  return `${idx}\u001b${p.join("\u001a")}`;
+}
+
+/** A redraw key over every drawn SESSIONS field (10-14). */
+function sessionsKey(
+  sessions: readonly SessionEntry[],
+  status: Flash | null,
+  cursor: string | null,
+  scanning: boolean,
+): string {
+  const s = sessions.map((x) => [x.id, x.name, x.ago, x.live ? 1 : 0].join("\u001f"));
+  const st = status === null ? "" : `${status.ok ? 1 : 0}|${status.text}`;
+  return [s.join("\u001e"), st, cursor ?? "", scanning ? 1 : 0].join("\u001d");
+}
 
 /** A redraw key over every drawn detail-strip field (10-11). */
 function detailKey(d: DetailModel | null): string {
@@ -252,6 +320,19 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
     order: orderRef.current,
     selectedId: selRow === undefined ? null : selRow.session_id,
   });
+  // 10-14 (D-23, KEYS-05): PHASES from the shared phase scan, the project by
+  // root. Until ←/→ picks a root, the last shown root is kept, so a re-ordered
+  // focus set never swaps the project on screen (an unknown root falls back to
+  // the first project inside usePhases).
+  const shownRootRef = React.useRef<string | null>(null);
+  const ph = usePhases(liveRowsRef, ui.projectRoot ?? shownRootRef.current ?? "");
+  shownRootRef.current = ph.focusRoot;
+  const projects = buildProjects(ph.focusSet, ph.progress);
+  // 10-14 (D-23): SESSIONS from the shared resume picker; its scan runs only
+  // while the SESSIONS tab is shown (08 D-19).
+  const resume = useResume(liveRowsRef, ui.rightTab === "sessions");
+  const sessions = buildSessions(resume.rows, resume.isLive, now());
+  const sessionsScanning = resume.rows === null;
   const panes = {
     ...SAMPLE,
     agents: ag.agents,
@@ -260,12 +341,28 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
     conflicts: files.conflicts,
     groups: files.groups,
     filesNarrowed: files.narrowed,
+    projects,
+    projectIndex: ph.idx,
+    sessions,
+    sessionStatus: resume.status,
+    sessionCursor: resume.selId,
+    sessionsScanning,
   };
   const panesKey = [
     agentsKey(ag.agents, ag.idle),
     detailKey(detail),
     filesKey(files.conflicts, files.groups, files.narrowed),
+    phasesKey(projects, ph.idx),
+    sessionsKey(sessions, resume.status, resume.selId, sessionsScanning),
   ].join("\u001c");
+
+  // Legacy onToggle parity (08 D-15): switching the right tab clears the
+  // copy/open status line.
+  const clearResumeStatus = resume.clearStatus;
+  React.useEffect(() => {
+    clearResumeStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ui.rightTab]);
 
   // the live FILES ticker scrolls only when unnarrowed and longer than its window
   const animating =
@@ -295,7 +392,12 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
     cols: 1,
     byId: new Map(),
     nameById: new Map(),
+    phaseNumbers: [],
+    currentPhase: null,
+    roots: [],
+    projectIdx: 0,
   });
+  const shownProject = projects[ph.idx];
   viewRef.current = {
     agentIds: new Set([...cardIds, ...stripIds]),
     cardIds,
@@ -303,6 +405,10 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
     cols: Math.max(1, geometry(columns, rows).cardCols),
     byId: ag.byId,
     nameById: new Map([...ag.agents, ...ag.idle].map((x) => [x.id, x.name] as const)),
+    phaseNumbers: shownProject === undefined ? [] : shownProject.phases.map((e) => e.number),
+    currentPhase: currentPhaseNumber(shownProject),
+    roots: ph.focusSet.map((f) => f.root),
+    projectIdx: ph.idx,
   };
   const scrollRef = React.useRef<ScrollState>(EMPTY_SCROLL);
   const uiForDraw = effectiveUi(ui, viewRef.current.agentIds);
@@ -368,7 +474,8 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
 
   // The dispatcher's per-context intent handlers, reassigned every render so
   // they read the latest view-model. A handler is added only by the plan that
-  // makes its pane live (T-10-19): AGENTS from 10-09, the rest are no-ops.
+  // makes its pane live (T-10-19): AGENTS from 10-09, PHASES and SESSIONS
+  // from 10-14; the rest are no-ops.
   const intentSpy = props.intentSpy;
   const intentRef = React.useRef<(intent: Intent, ctx: HintContext) => void>(() => undefined);
   intentRef.current = (intent: Intent, ctx: HintContext): void => {
@@ -418,10 +525,47 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
         if (id !== null && id !== cur) apply({ t: "select", id });
         return;
       }
-      case "phases": // browse + project: 10-13
-      case "sessions": // browse + copy + open: 10-13
+      case "phases": {
+        // KEYS-05: the project by root, wrapping; the reducer clears the phase cursor
+        const v = viewRef.current;
+        if (intent.t === "project") {
+          // the current root: a just-picked root (quick successive keys, T-08-11)
+          // when it is still in the set, else the project on screen
+          const picked = uiRef.current.projectRoot;
+          const cur = picked !== null && v.roots.includes(picked) ? picked : (v.roots[v.projectIdx] ?? null);
+          const root = cycleId(v.roots, cur, intent.dir);
+          if (root !== null) apply({ t: "setProject", root });
+          return;
+        }
+        // KEYS-02 / D-16: the phase cursor by number; a cursor that is not in
+        // the shown project starts from the current phase
+        let delta = 0;
+        if (intent.t === "move" && (intent.dir === "up" || intent.dir === "down")) delta = intent.dir === "up" ? -1 : 1;
+        else if (intent.t === "page") delta = intent.dir * Math.max(1, scrollRef.current.phases.visible);
+        if (delta === 0) return;
+        const at = uiRef.current.phaseCursor;
+        const from = at !== null && v.phaseNumbers.includes(at) ? at : v.currentPhase;
+        const n = moveList(v.phaseNumbers, from, delta);
+        if (n !== null) apply({ t: "setPhaseCursor", n });
         return;
-      case "ports": // browse + actions: 10-14
+      }
+      case "sessions": {
+        // 08 D-14..D-19 through the shared hook only (T-10-34): the id cursor,
+        // copy (Enter) and open (`o`) with every Phase 8 guard. The context is
+        // derived from uiRef, so the SESSIONS tab is showing in the state.
+        if (uiRef.current.rightTab !== "sessions") return;
+        if (intent.t === "move" && (intent.dir === "up" || intent.dir === "down")) {
+          resume.move(intent.dir === "up" ? -1 : 1);
+        } else if (intent.t === "page") {
+          resume.move(intent.dir * Math.max(1, scrollRef.current.sessions.visible));
+        } else if (intent.t === "copy") {
+          resume.enter();
+        } else if (intent.t === "open") {
+          resume.open();
+        }
+        return;
+      }
+      case "ports": // browse: 10-15
         return;
       case "menu":
       case "confirm":

@@ -26562,6 +26562,55 @@ function buildFiles(i) {
   return { conflicts, groups: groups2, narrowed };
 }
 
+// src/panel/ui/build/right.ts
+function phaseEntries(progress) {
+  let currentSeen = false;
+  return progress.phases.map((p) => {
+    const plans = Number(p.plans) || 0;
+    const summaries = Number(p.summaries) || 0;
+    let status;
+    if (phaseIsComplete({ status: p.status, plans, summaries })) status = "done";
+    else if (!currentSeen) {
+      status = "current";
+      currentSeen = true;
+    } else status = "pending";
+    return {
+      number: String(p.number),
+      name: String(p.name),
+      status,
+      plansDone: summaries,
+      plansTotal: plans > 0 ? plans : null
+    };
+  });
+}
+function projectName(focus, progress) {
+  if (progress === void 0) return focus.name;
+  const name = String(progress.milestone_name ?? "").trim();
+  if (name === "") return focus.name;
+  const version = String(progress.milestone_version ?? "").trim();
+  return version === "" ? name : `${name} ${version}`;
+}
+function buildProjects(focusSet, progress) {
+  return focusSet.map((f) => {
+    const p = progress.get(f.root);
+    return {
+      root: f.root,
+      name: projectName(f, p),
+      dir: f.name,
+      phases: p === void 0 ? [] : phaseEntries(p)
+    };
+  });
+}
+function currentPhaseNumber(project) {
+  if (project === void 0 || project.phases.length === 0) return null;
+  const cur = project.phases.find((p) => p.status === "current");
+  return (cur ?? project.phases[project.phases.length - 1]).number;
+}
+function buildSessions(rows, isLive, now) {
+  if (rows === null) return [];
+  return rows.map((r2) => ({ id: r2.id, name: r2.label, ago: fmtAge(r2.mtimeMs, now), live: isLive(r2) }));
+}
+
 // src/panel/ui/nav.ts
 var STRIPS_PER_SLOT = 3;
 function normCols(cols) {
@@ -26638,6 +26687,20 @@ function pageGrid(items2, cols, currentId, rows, dir) {
   }
   const hit = target >= 0 ? atSlot(items2, target, "last") : void 0;
   return (hit ?? items2[0]).id;
+}
+function moveList(ids, currentId, delta) {
+  const n = ids.length;
+  if (n === 0) return null;
+  const i = currentId === null ? -1 : ids.indexOf(currentId);
+  if (i < 0) return ids[0];
+  return ids[Math.min(n - 1, Math.max(0, i + normInt(delta)))];
+}
+function cycleId(ids, currentId, dir) {
+  const n = ids.length;
+  if (n === 0) return null;
+  const i = currentId === null ? -1 : ids.indexOf(currentId);
+  if (i < 0) return dir === 1 ? ids[0] : ids[n - 1];
+  return ids[((i + dir) % n + n) % n];
 }
 
 // src/panel/actions/goto.ts
@@ -26772,7 +26835,23 @@ async function runGoto(t, deps = defaultGotoDeps()) {
 
 // src/panel/PanelApp.tsx
 var import_jsx_runtime4 = __toESM(require_jsx_runtime(), 1);
-var SAMPLE_FLAGS = { agents: false, files: false, phases: true, sessions: true, ports: true };
+var SAMPLE_FLAGS = { agents: false, files: false, phases: false, sessions: false, ports: true };
+function phasesKey(projects, idx) {
+  const p = projects.map(
+    (x) => [
+      x.root ?? "",
+      x.name,
+      x.dir,
+      x.phases.map((e) => [e.number, e.name, e.status, e.plansDone ?? "", e.plansTotal ?? ""].join("")).join("")
+    ].join("")
+  );
+  return `${idx}\x1B${p.join("")}`;
+}
+function sessionsKey(sessions2, status, cursor, scanning) {
+  const s = sessions2.map((x) => [x.id, x.name, x.ago, x.live ? 1 : 0].join(""));
+  const st = status === null ? "" : `${status.ok ? 1 : 0}|${status.text}`;
+  return [s.join(""), st, cursor ?? "", scanning ? 1 : 0].join("");
+}
 function detailKey(d) {
   if (d === null) return "";
   return [
@@ -26857,6 +26936,13 @@ function PanelApp(props = {}) {
     order: orderRef.current,
     selectedId: selRow === void 0 ? null : selRow.session_id
   });
+  const shownRootRef = import_react47.default.useRef(null);
+  const ph = usePhases(liveRowsRef, ui.projectRoot ?? shownRootRef.current ?? "");
+  shownRootRef.current = ph.focusRoot;
+  const projects = buildProjects(ph.focusSet, ph.progress);
+  const resume = useResume(liveRowsRef, ui.rightTab === "sessions");
+  const sessions2 = buildSessions(resume.rows, resume.isLive, now());
+  const sessionsScanning = resume.rows === null;
   const panes = {
     ...SAMPLE,
     agents: ag.agents,
@@ -26864,13 +26950,25 @@ function PanelApp(props = {}) {
     detail,
     conflicts: files.conflicts,
     groups: files.groups,
-    filesNarrowed: files.narrowed
+    filesNarrowed: files.narrowed,
+    projects,
+    projectIndex: ph.idx,
+    sessions: sessions2,
+    sessionStatus: resume.status,
+    sessionCursor: resume.selId,
+    sessionsScanning
   };
   const panesKey = [
     agentsKey(ag.agents, ag.idle),
     detailKey(detail),
-    filesKey(files.conflicts, files.groups, files.narrowed)
+    filesKey(files.conflicts, files.groups, files.narrowed),
+    phasesKey(projects, ph.idx),
+    sessionsKey(sessions2, resume.status, resume.selId, sessionsScanning)
   ].join("");
+  const clearResumeStatus = resume.clearStatus;
+  import_react47.default.useEffect(() => {
+    clearResumeStatus();
+  }, [ui.rightTab]);
   const animating = ag.agents.some((a) => a.state === "running") || !files.narrowed && tickerRows(files.groups).length > TICKER_VISIBLE;
   const flash = flashVisible(ui, now());
   const { tick, step: step2 } = useUiTick({
@@ -26889,15 +26987,24 @@ function PanelApp(props = {}) {
     stripIds: [],
     cols: 1,
     byId: /* @__PURE__ */ new Map(),
-    nameById: /* @__PURE__ */ new Map()
+    nameById: /* @__PURE__ */ new Map(),
+    phaseNumbers: [],
+    currentPhase: null,
+    roots: [],
+    projectIdx: 0
   });
+  const shownProject = projects[ph.idx];
   viewRef.current = {
     agentIds: /* @__PURE__ */ new Set([...cardIds, ...stripIds]),
     cardIds,
     stripIds,
     cols: Math.max(1, geometry(columns, rows).cardCols),
     byId: ag.byId,
-    nameById: new Map([...ag.agents, ...ag.idle].map((x) => [x.id, x.name]))
+    nameById: new Map([...ag.agents, ...ag.idle].map((x) => [x.id, x.name])),
+    phaseNumbers: shownProject === void 0 ? [] : shownProject.phases.map((e) => e.number),
+    currentPhase: currentPhaseNumber(shownProject),
+    roots: ph.focusSet.map((f) => f.root),
+    projectIdx: ph.idx
   };
   const scrollRef = import_react47.default.useRef(EMPTY_SCROLL);
   const uiForDraw = effectiveUi(ui, viewRef.current.agentIds);
@@ -26993,10 +27100,38 @@ function PanelApp(props = {}) {
         if (id !== null && id !== cur) apply({ t: "select", id });
         return;
       }
-      case "phases":
-      // browse + project: 10-13
-      case "sessions":
+      case "phases": {
+        const v = viewRef.current;
+        if (intent.t === "project") {
+          const picked = uiRef.current.projectRoot;
+          const cur = picked !== null && v.roots.includes(picked) ? picked : v.roots[v.projectIdx] ?? null;
+          const root = cycleId(v.roots, cur, intent.dir);
+          if (root !== null) apply({ t: "setProject", root });
+          return;
+        }
+        let delta = 0;
+        if (intent.t === "move" && (intent.dir === "up" || intent.dir === "down")) delta = intent.dir === "up" ? -1 : 1;
+        else if (intent.t === "page") delta = intent.dir * Math.max(1, scrollRef.current.phases.visible);
+        if (delta === 0) return;
+        const at = uiRef.current.phaseCursor;
+        const from = at !== null && v.phaseNumbers.includes(at) ? at : v.currentPhase;
+        const n = moveList(v.phaseNumbers, from, delta);
+        if (n !== null) apply({ t: "setPhaseCursor", n });
         return;
+      }
+      case "sessions": {
+        if (uiRef.current.rightTab !== "sessions") return;
+        if (intent.t === "move" && (intent.dir === "up" || intent.dir === "down")) {
+          resume.move(intent.dir === "up" ? -1 : 1);
+        } else if (intent.t === "page") {
+          resume.move(intent.dir * Math.max(1, scrollRef.current.sessions.visible));
+        } else if (intent.t === "copy") {
+          resume.enter();
+        } else if (intent.t === "open") {
+          resume.open();
+        }
+        return;
+      }
       case "ports":
         return;
       case "menu":
