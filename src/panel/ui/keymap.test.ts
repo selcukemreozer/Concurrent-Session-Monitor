@@ -6,6 +6,7 @@ import {
   contextOf,
   hintsFor,
   resolve,
+  BUILT_PHASE,
   isIntent,
   type Intent,
   type HintContext,
@@ -33,8 +34,9 @@ const ALL = Object.keys(CTX) as HintContext[];
 const NORMAL: HintContext[] = ["agents", "agentsSelected", "phases", "sessions", "ports"];
 const OVERLAYS: HintContext[] = ["menu", "confirm", "confirmKill"];
 
+/** The full UI-SPEC hint set (every phase built, i.e. Phase 12). */
 const footer = (ui: UiState): string =>
-  hintsFor(ui)
+  hintsFor(ui, 12)
     .map((h) => `${h.key} ${h.label}`)
     .join(" · ");
 
@@ -62,7 +64,7 @@ describe("contextOf", () => {
   });
 });
 
-describe("footer strings (UI-SPEC footer table)", () => {
+describe("footer strings (UI-SPEC footer table, every phase built)", () => {
   it.each<[string, UiState, string]>([
     [
       "agents, phases tab, not paused",
@@ -88,6 +90,56 @@ describe("footer strings (UI-SPEC footer table)", () => {
     ["edit", CTX.edit, "⏎ save · esc cancel"],
   ])("%s", (_name, ui, expected) => {
     expect(footer(ui)).toBe(expected);
+  });
+});
+
+describe("unbuilt hints are hidden (10-15, KEYS-03)", () => {
+  const live = (ui: UiState): string =>
+    hintsFor(ui)
+      .map((h) => `${h.key} ${h.label}`)
+      .join(" · ");
+
+  it("BUILT_PHASE is 10", () => {
+    expect(BUILT_PHASE).toBe(10);
+  });
+
+  it("the PORTS footer drops the Phase 11 `⏎ actions` hint", () => {
+    expect(live(CTX.ports)).toBe("↑↓ browse ports · esc agents · tab focus · q quit");
+    expect(hintsFor(CTX.ports).map((h) => h.label)).not.toContain("actions");
+    expect(hintsFor(CTX.ports).map((h) => h.binding)).not.toContain("portsActions");
+  });
+
+  it("the built Phase 10 sets are unchanged (agentsSelected still leads with `⏎ go to pane`)", () => {
+    expect(hintsFor(CTX.agentsSelected)[0]).toEqual({ binding: "agentsGoto", key: "⏎", label: "go to pane" });
+    for (const c of ["agents", "agentsSelected", "phases", "sessions"] as const) {
+      expect(live(CTX[c]), c).toBe(footer(CTX[c]));
+    }
+  });
+
+  it("the Phase 11/12 overlays keep only their built keys", () => {
+    expect(live(CTX.menu)).toBe("esc close");
+    expect(hintsFor(CTX.confirm)).toEqual([]);
+    expect(hintsFor(CTX.confirmKill)).toEqual([]);
+    expect(hintsFor(CTX.edit)).toEqual([]);
+  });
+
+  it("raising the built phase restores the later hints", () => {
+    expect(hintsFor(CTX.ports, 11).map((h) => h.binding)).toContain("portsActions");
+    expect(hintsFor(CTX.edit, 11)).toEqual([]);
+    expect(hintsFor(CTX.edit, 12).map((h) => h.binding)).toEqual(["editSave", "editCancel"]);
+  });
+
+  it.each(ALL)("every %s hint returned is active in its context and already built", (c) => {
+    for (const h of hintsFor(CTX[c])) {
+      const row = KEYMAP.find((b) => b.id === h.binding);
+      expect(row, `${c}: ${h.binding}`).toBeDefined();
+      expect(row!.contexts, `${c}: ${h.binding}`).toContain(c);
+      expect(row!.built, `${c}: ${h.binding}`).toBeLessThanOrEqual(BUILT_PHASE);
+    }
+  });
+
+  it("routing is unchanged: Enter in PORTS still resolves to the portsActions noop", () => {
+    expect(resolve("", ENTER, CTX.ports)).toEqual({ t: "noop", binding: "portsActions" });
   });
 });
 
