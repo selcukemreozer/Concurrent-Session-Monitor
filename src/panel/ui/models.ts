@@ -154,6 +154,8 @@ export interface PanesModel {
   // files
   conflicts: FileConflict[];
   groups: FileGroup[];
+  /** 10-12 (LAYOUT-07): FILES shows only the selected session (`FILES · N · esc: all`). */
+  filesNarrowed?: boolean;
   // phases
   projects: Project[];
   projectIndex: number;

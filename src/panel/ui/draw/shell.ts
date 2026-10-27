@@ -259,6 +259,8 @@ function filesModel(input: ShellInput): Parameters<typeof drawFilesPane>[2] {
     paused: input.ui.filesPaused,
     step: input.step,
     sample: flags(input).files,
+    // 10-12 (LAYOUT-07): one model for measureLeft and drawLeft alike
+    narrowed: input.panes.filesNarrowed === true,
   };
 }
 

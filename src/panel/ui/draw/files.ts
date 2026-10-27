@@ -22,8 +22,17 @@ import { drawTitle } from "./title.js";
  *     (500 ms) and freezes it while paused (`space`, D-15); this function stays
  *     pure and only reads it.
  *   - FILES is never focusable (D-13), so its title is always unfocused.
- *   - The Phase 10 narrowing to one selected agent (`FILES . N . esc: all`) is
- *     not drawn here (D-12, P10).
+ *   - Narrowed (Phase 10 plan 10-12, LAYOUT-07 / LAYOUT-02): while a card or
+ *     idle strip is selected the caller passes only that session's rows and
+ *     `narrowed: true`. The title reads `FILES · N · esc: all` (N hi bold, the
+ *     rest dim, no right info), conflict rows still come first, the ticker
+ *     stops (no scrolling, no scrollbar, `step` ignored) and when the rows do
+ *     not fit the last visible row is `↓ N more` (dim, x4) counting the hidden
+ *     file rows.
+ *   - A conflict with `more` > 0 (3+ sessions on the file, RESEARCH open
+ *     question 3) draws ` +N` after `b`; `b` is shortened to leave room so the
+ *     name and the count together stay inside the 21-cell name column and the
+ *     count is never cut.
  *
  * Every name goes through `nameText` (21 cells) and every path through
  * `pathText` (start truncation, the file name stays visible), and every piece
@@ -95,6 +104,7 @@ export function drawFilesPane(
     paused: boolean;
     step: number;
     sample: boolean;
+    narrowed?: boolean;
   },
 ): number {
   if (r.h < 1 || r.w < 1) return 0;
@@ -103,12 +113,30 @@ export function drawFilesPane(
   const nConf = m.conflicts.length;
   const confRows = Math.min(nConf, MAX_CONFLICT_ROWS, r.h - 1);
   const H = Math.max(0, Math.min(MAX_TICKER_ROWS, r.h - 1 - confRows));
-  const scrolling = H > 0 && rows.length > H;
+  const narrowed = m.narrowed === true;
+  // narrowed: the ticker stops; rows that do not fit are announced instead
+  const scrolling = !narrowed && H > 0 && rows.length > H;
+  const overflow = narrowed && rows.length > H && H > 0;
 
   const n = countFiles(m.conflicts, m.groups);
-  const files = `${n} ${n === 1 ? "file" : "files"}`;
-  const right = n === 0 ? "no files" : scrolling && m.paused ? `paused${SEP}${files}` : files;
-  drawTitle(scr, r.x, r.y, r.w, { label: "FILES", focused: false, sample: m.sample, right });
+  if (narrowed) {
+    const dim: Style = { fg: PALETTE.dim };
+    drawTitle(scr, r.x, r.y, r.w, {
+      label: "FILES",
+      focused: false,
+      sample: m.sample,
+      right: null,
+      extra: [
+        { text: SEP, ...dim },
+        { text: `${n}`, fg: PALETTE.hi, bold: true },
+        { text: `${SEP}esc: all`, ...dim },
+      ],
+    });
+  } else {
+    const files = `${n} ${n === 1 ? "file" : "files"}`;
+    const right = n === 0 ? "no files" : scrolling && m.paused ? `paused${SEP}${files}` : files;
+    drawTitle(scr, r.x, r.y, r.w, { label: "FILES", focused: false, sample: m.sample, right });
+  }
 
   const end = r.x + r.w;
   // ticker rows and conflict paths keep the scrollbar column free
@@ -129,7 +157,15 @@ export function drawFilesPane(
     } else if (c) {
       let cx = putIn(scr, r.x + 4, y, nameText(c.a, NAME_W) || DASH, hiB, end);
       cx = putIn(scr, cx, y, JOIN, redB, end);
-      cx = putIn(scr, cx, y, nameText(c.b, NAME_W) || DASH, hiB, end);
+      const more = typeof c.more === "number" && Number.isFinite(c.more) ? Math.trunc(c.more) : 0;
+      if (more > 0) {
+        // open question 3: the count goes inside the name column, never cut
+        const suffix = ` +${more}`;
+        cx = putIn(scr, cx, y, nameText(c.b, NAME_W - cellWidth(suffix)) || DASH, hiB, end);
+        cx = putIn(scr, cx, y, suffix, hiB, end);
+      } else {
+        cx = putIn(scr, cx, y, nameText(c.b, NAME_W) || DASH, hiB, end);
+      }
       const px = Math.max(cx + 3, r.x + PATH_X);
       putIn(scr, px, y, pathText(c.path, pend - px), { fg: PALETTE.hi }, pend);
     }
@@ -141,8 +177,10 @@ export function drawFilesPane(
   const step = Number.isFinite(m.step) ? Math.trunc(m.step) : 0;
   const off = scrolling ? ((step % N) + N) % N : 0;
   const visible = scrolling ? H : Math.min(rows.length, H);
+  // narrowed overflow: H - 1 file rows, then `↓ N more` on the last row
+  const fileRows = overflow ? H - 1 : visible;
 
-  for (let k = 0; k < visible; k++) {
+  for (let k = 0; k < fileRows; k++) {
     const yy = y + k;
     const idx = scrolling ? (off + k) % N : k;
     const it = rows[idx];
@@ -167,6 +205,11 @@ export function drawFilesPane(
       const px = r.x + PATH_X;
       putIn(scr, px, yy, pathText(it.file.path, pend - px), { fg: PALETTE.blue }, pend);
     }
+  }
+
+  if (overflow) {
+    const hidden = rows.length - fileRows;
+    putIn(scr, r.x + 4, y + fileRows, `${V2.down} ${hidden} more`, { fg: PALETTE.dim }, pend);
   }
 
   if (scrolling) {

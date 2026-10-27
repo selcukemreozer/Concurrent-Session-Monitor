@@ -64,7 +64,7 @@ const FRAME_FILES = [
 const M = { conflicts: SAMPLE.conflicts, groups: SAMPLE.groups, paused: false, step: 11, sample: true };
 const RECT = { x: 0, y: 27, w: 96, h: 8 };
 
-function pane(o: Partial<typeof M> = {}, rect = RECT): { scr: Screen; rows: number } {
+function pane(o: Partial<typeof M & { narrowed: boolean }> = {}, rect = RECT): { scr: Screen; rows: number } {
   const scr = new Screen(175, 40);
   const rows = drawFilesPane(scr, rect, { ...M, ...o });
   return { scr, rows };
