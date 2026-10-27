@@ -650,3 +650,24 @@ describe("drawShell: the selection detail strip (10-11, LAYOUT-07, UI-SPEC prior
     }
   });
 });
+
+// Phase 10 plan 10-12 Task 2: the narrowed FILES flag passes through filesModel
+// to both the measure and the draw pass (LAYOUT-07).
+describe("drawShell: narrowed FILES pass-through (10-12)", () => {
+  it("draws the narrowed title and the ↓ N more row when panes.filesNarrowed is set", () => {
+    const panes: PanesModel = { ...SAMPLE, filesNarrowed: true };
+    const t = texts(drawShell(input({ panes })));
+    const files = rowOf(t, (s) => s.startsWith(" FILES "));
+    expect(files).toBeGreaterThan(0);
+    expect(t[files]).toContain(" FILES  sample  · 14 · esc: all ─");
+    expect(t[files]).not.toContain("14 files");
+    expect(t.slice(files + 1, files + 9).some((s) => /^ {4}↓ \d+ more/.test(s))).toBe(true);
+    // the same height as the unnarrowed frame: the measure saw the same model
+    expect(t).toHaveLength(drawShell(input()).length);
+  });
+
+  it("draws the unnarrowed FILES title without the flag", () => {
+    const t = texts(drawShell(input()));
+    expect(t.some((s) => s.includes("esc: all"))).toBe(false);
+  });
+});

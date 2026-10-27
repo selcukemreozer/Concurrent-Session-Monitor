@@ -315,3 +315,127 @@ describe("drawFilesPane: paths and widths", () => {
     }
   });
 });
+
+// Phase 10 plan 10-12 Task 2: the narrowed FILES view (LAYOUT-07, LAYOUT-02)
+// and the ` +N` session count on a 3+-session conflict (open question 3).
+
+const DIM = "#85827a";
+
+describe("drawFilesPane: narrowed (LAYOUT-07)", () => {
+  const five: FileGroup[] = [
+    {
+      agentId: "c",
+      name: "checkout screen",
+      state: "running",
+      files: [w("src/ui/Checkout.jsx"), w("src/ui/styles.css"), r("src/ui/check.jsx"), r("package.json")],
+    },
+  ];
+  const conf: FileConflict[] = [{ a: "dashboard research", b: "checkout screen", path: "src/server.js" }];
+
+  it("titles ` FILES  · N · esc: all` with N hi bold, the rest dim, and no right info", () => {
+    const { scr } = pane({ conflicts: conf, groups: five, narrowed: true, sample: false });
+    const t = text(scr, 27, 0, 96);
+    expect(t.startsWith(" FILES  · 5 · esc: all ─")).toBe(true);
+    expect(t.endsWith("─")).toBe(true);
+    expect(t).not.toMatch(/files/);
+    expect(cellAt(scr, 10, 27)).toMatchObject({ ch: "5", fg: HI, bold: true });
+    expect(cellAt(scr, 8, 27)).toMatchObject({ ch: "·", fg: DIM });
+    expect(cellAt(scr, 14, 27)).toMatchObject({ ch: "e", fg: DIM });
+    expect(cellAt(scr, 14, 27).bold).toBeUndefined();
+  });
+
+  it("keeps the conflict rows first", () => {
+    const { scr } = pane({ conflicts: conf, groups: five, narrowed: true, sample: false });
+    expect(text(scr, 28, 0, 96)).toBe("▌ ! dashboard research ✕ checkout screen   src/server.js");
+    expect(text(scr, 29, 0, 96)).toBe("  ■ checkout screen       ✎ src/ui/Checkout.jsx");
+  });
+
+  it("stops the ticker: `step` changes nothing and no scrollbar is drawn", () => {
+    const many: FileGroup[] = [
+      { agentId: "c", name: "c", state: "running", files: Array.from({ length: 12 }, (_, k) => w(`f${k}.ts`)) },
+    ];
+    const lines = (step: number) => {
+      const { scr } = pane({ conflicts: [], groups: many, narrowed: true, step });
+      return scr.toLines().map((_, y) => text(scr, y));
+    };
+    expect(lines(3)).toEqual(lines(0));
+    expect(lines(17)).toEqual(lines(0));
+    const { scr } = pane({ conflicts: [], groups: many, narrowed: true });
+    for (let y = 28; y < 35; y++) expect(["│", "┃"]).not.toContain(cellAt(scr, 95, y).ch);
+  });
+
+  it("ends with `↓ N more` (dim, x4) counting the hidden file rows", () => {
+    const many: FileGroup[] = [
+      { agentId: "c", name: "c", state: "running", files: Array.from({ length: 12 }, (_, k) => w(`f${k}.ts`)) },
+    ];
+    // h 8: title + 7 rows, ticker capped at 6 -> 5 file rows + the overflow row
+    const { scr, rows } = pane({ conflicts: [], groups: many, narrowed: true });
+    expect(rows).toBe(7);
+    expect(text(scr, 28 + 4, 0, 96)).toBe("                          ✎ f4.ts");
+    expect(text(scr, 28 + 5, 0, 96)).toBe("    ↓ 7 more");
+    expect(cellAt(scr, 4, 33)).toMatchObject({ ch: "↓", fg: DIM });
+  });
+
+  it("counts every hidden row with a conflict taking ticker space", () => {
+    const many: FileGroup[] = [
+      { agentId: "c", name: "c", state: "running", files: Array.from({ length: 9 }, (_, k) => w(`f${k}.ts`)) },
+    ];
+    const { scr } = pane({ conflicts: conf, groups: many, narrowed: true }, { x: 0, y: 27, w: 96, h: 5 });
+    // title + conflict + 3 ticker rows: 2 files + `↓ 7 more`
+    expect(text(scr, 31, 0, 96)).toBe("    ↓ 7 more");
+  });
+
+  it("draws no overflow row when the files fit", () => {
+    const { scr, rows } = pane({ conflicts: [], groups: five, narrowed: true });
+    expect(rows).toBe(5);
+    for (let y = 27; y < 35; y++) expect(text(scr, y)).not.toMatch(/more/);
+  });
+
+  it("is unchanged when `narrowed` is false or absent", () => {
+    const base = pane({});
+    const off = pane({ narrowed: false });
+    expect(off.rows).toBe(base.rows);
+    expect(off.scr.toLines()).toEqual(base.scr.toLines());
+  });
+});
+
+describe("drawFilesPane: 3+ sessions on one conflict (open question 3)", () => {
+  const P = "src/server.js";
+
+  function conflictRow(c: FileConflict): { scr: Screen; row: string } {
+    const { scr } = pane({ conflicts: [c], groups: [] });
+    return { scr, row: text(scr, 28, 0, 96) };
+  }
+
+  it("draws a short second name then ` +N`", () => {
+    const { row } = conflictRow({ a: "dashboard research", b: "checkout screen", more: 2, path: P });
+    expect(row).toBe("▌ ! dashboard research ✕ checkout screen +2   src/server.js");
+  });
+
+  it("shortens a long second name so name + ` +N` fit in 21 cells and the count is never cut", () => {
+    const { scr, row } = conflictRow({
+      a: "dashboard research",
+      b: "a very long checkout screen name",
+      more: 2,
+      path: P,
+    });
+    const bStart = 4 + "dashboard research".length + 3;
+    const seg = text(scr, 28, bStart, bStart + 21);
+    expect(seg.endsWith(" +2")).toBe(true);
+    expect(cellWidth(seg)).toBeLessThanOrEqual(21);
+    expect(row).toContain("… +2");
+    expect(row.endsWith("src/server.js")).toBe(true);
+    // the suffix keeps the name style
+    const plus = row.indexOf("+2");
+    expect(cellAt(scr, plus, 28)).toMatchObject({ fg: HI, bold: true });
+  });
+
+  it("draws exactly as before without `more` or with `more: 0`", () => {
+    const plain = conflictRow({ a: "dashboard research", b: "checkout screen", path: P });
+    const zero = conflictRow({ a: "dashboard research", b: "checkout screen", more: 0, path: P });
+    const nan = conflictRow({ a: "dashboard research", b: "checkout screen", more: Number.NaN, path: P });
+    expect(plain.row).toBe("▌ ! dashboard research ✕ checkout screen   src/server.js");
+    expect(zero.scr.toLines()).toEqual(plain.scr.toLines());
+    expect(nan.scr.toLines()).toEqual(plain.scr.toLines());
+  });
+});
