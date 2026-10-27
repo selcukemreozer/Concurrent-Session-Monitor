@@ -5,6 +5,7 @@ import { useUpdateCheck } from "./hooks/useUpdateCheck.js";
 import { useUiTick, UI_TICK_MS } from "./hooks/useUiTick.js";
 import { useResizeRepaint } from "./hooks/useResizeRepaint.js";
 import { useBranches } from "./hooks/useBranches.js";
+import { usePorts } from "./hooks/usePorts.js";
 import { headerFromRoster } from "./ui/headerModel.js";
 import {
   effectiveUi,
@@ -21,11 +22,12 @@ import { tickerRows } from "./ui/draw/files.js";
 import { SAMPLE } from "./ui/sample.js";
 import { ScreenView } from "./ui/ScreenView.js";
 import { buildAgents, stableOrder } from "./ui/build/agents.js";
+import { buildDetail } from "./ui/build/detail.js";
 import { gridItems, moveGrid, pageGrid } from "./ui/nav.js";
 import { geometry } from "./ui/geometry.js";
 import { defaultGotoDeps, runGoto, type GotoDeps } from "./actions/goto.js";
 import type { SessionRow } from "../aggregate.js";
-import type { AgentCard, IdleStrip } from "./ui/models.js";
+import type { AgentCard, DetailModel, IdleStrip } from "./ui/models.js";
 
 /**
  * The v2 panel root behind `CSM_UI=v2` (Phase 9, plan 09-12). Plan 09-13 wires
@@ -91,6 +93,16 @@ import type { AgentCard, IdleStrip } from "./ui/models.js";
  *     render path never waits on them. A flash after unmount is dropped.
  *   - The selection keeps the normal 15 s idle rule after a go-to (D-09).
  *   - Tests inject `gotoDeps`; production builds `defaultGotoDeps()` once.
+ *
+ * Phase 10 plan 10-11 (LAYOUT-07, 09 D-12, D-06, D-11, D-17):
+ *   - While a card or idle strip is selected (the effective selection, so a
+ *     vanished one never shows), `panes.detail` is built from its live row by
+ *     `buildDetail`: intent, live branch, the ports it owns (the cached
+ *     `usePorts` scan joined through `attribute(livePidMap)`), uptime, model
+ *     and the full last prompt. The shell draws it between the grid and
+ *     FILES. It carries no go-to reachability marker (D-11).
+ *   - usePorts is the slow second timer (lsof/ps off the render path); the
+ *     PORTS pane itself still draws SAMPLE until 10-14.
  */
 export interface PanelAppProps {
   tickMs?: number;
@@ -120,6 +132,22 @@ interface ViewFacts {
 
 /** Each flag turns false when its pane goes live (D-23); AGENTS is live from 10-09. */
 const SAMPLE_FLAGS: SampleFlags = { agents: false, files: true, phases: true, sessions: true, ports: true };
+
+/** A redraw key over every drawn detail-strip field (10-11). */
+function detailKey(d: DetailModel | null): string {
+  if (d === null) return "";
+  return [
+    d.id,
+    d.name,
+    d.state,
+    d.uptime,
+    d.model ?? "",
+    d.intent ?? "",
+    d.branch,
+    d.ports.map((p) => `${p.port}:${p.proc}`).join(","),
+    d.prompt ?? "",
+  ].join("\u001f");
+}
 
 /** A redraw key over every drawn card / strip field, so a live change redraws. */
 function agentsKey(agents: readonly AgentCard[], idle: readonly IdleStrip[]): string {
@@ -181,6 +209,8 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
   const liveRowsRef = React.useRef<SessionRow[]>(liveRows);
   liveRowsRef.current = liveRows;
   const branches = useBranches(liveRowsRef);
+  // 10-11: the cached last-good port scan, for the detail strip's owned ports
+  const scanned = usePorts();
   // D-05: the first-seen start order survives re-sorts and compacts (Pitfall 2)
   const orderRef = React.useRef<Map<string, number>>(new Map());
   orderRef.current = stableOrder(orderRef.current, liveRows);
@@ -191,8 +221,12 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
     order: orderRef.current,
     now: now(),
   });
-  const panes = { ...SAMPLE, agents: ag.agents, idle: ag.idle };
-  const panesKey = agentsKey(ag.agents, ag.idle);
+  // 10-11 (D-12, D-06): the detail strip of the live selection (a card or a strip)
+  const selRow = ui.selectedAgentId === null ? undefined : ag.byId.get(ui.selectedAgentId);
+  const detail: DetailModel | null =
+    selRow === undefined ? null : buildDetail({ row: selRow, branches, ports: scanned, liveRows, now: now() });
+  const panes = { ...SAMPLE, agents: ag.agents, idle: ag.idle, detail };
+  const panesKey = `${agentsKey(ag.agents, ag.idle)}\u001c${detailKey(detail)}`;
 
   // the FILES ticker still draws SAMPLE until 10-12
   const animating =

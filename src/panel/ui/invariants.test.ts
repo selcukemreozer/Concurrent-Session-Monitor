@@ -360,6 +360,11 @@ describe("v2 shell focus visibility (pure, KEYS-01)", () => {
 // happens. vi.mock is hoisted; the pure tests above import none of these.
 vi.mock("../../aggregate.js", () => ({ readAll: vi.fn(() => []) }));
 vi.mock("../../prune.js", () => ({ pruneSession: vi.fn() }));
+// 10-11: PanelApp calls usePorts; no real lsof/ps scan (everything else actual)
+vi.mock("../../ports.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../ports.js")>();
+  return { ...actual, scanPorts: vi.fn(async () => []), portScanMs: vi.fn(() => 10_000_000) };
+});
 vi.mock("../../update.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../update.js")>();
   return {

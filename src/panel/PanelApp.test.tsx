@@ -544,13 +544,13 @@ describe("PanelApp live AGENTS (10-09)", () => {
       }),
     );
     const { lastFrame, stdin } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
-    // the visible card rows = the lines whose left card is a `card NN` name
-    const visible = lines(lastFrame()).filter((l) => /^│ . card \d\d/.test(l)).length;
-    expect(visible).toBeGreaterThan(0);
-    expect(visible).toBeLessThan(6);
-
     press(stdin, KEYS.down);
     await vi.waitFor(() => expect(lastFrame()).toContain("┏"));
+    // the visible card rows = the lines whose left card is a `card NN` name,
+    // counted WITH the selection (10-11: the detail strip takes a card row)
+    const visible = lines(lastFrame()).filter((l) => /^[│┃] . card \d\d/.test(l)).length;
+    expect(visible).toBeGreaterThan(0);
+    expect(visible).toBeLessThan(6);
     press(stdin, PG_DN);
     const target = `card ${String(visible * 2).padStart(2, "0")}`;
     await vi.waitFor(() => {

@@ -17278,7 +17278,7 @@ var intersectBound = (a, b, tighter) => {
   }
   return b === void 0 ? a : tighter(a, b);
 };
-var isClipEmpty = (clip2) => clip2.x1 !== void 0 && clip2.x2 !== void 0 && clip2.x1 >= clip2.x2 || clip2.y1 !== void 0 && clip2.y2 !== void 0 && clip2.y1 >= clip2.y2;
+var isClipEmpty = (clip3) => clip3.x1 !== void 0 && clip3.x2 !== void 0 && clip3.x1 >= clip3.x2 || clip3.y1 !== void 0 && clip3.y2 !== void 0 && clip3.y1 >= clip3.y2;
 var intersectClips = (outer, inner) => {
   if (!outer) {
     return inner;
@@ -17333,7 +17333,7 @@ var Output = class {
     this.width = width;
     this.height = height;
   }
-  applyWriteOperation(output, operation, clip2) {
+  applyWriteOperation(output, operation, clip3) {
     const { text, transformers } = operation;
     let { x, y } = operation;
     const characterLines = [[]];
@@ -17345,42 +17345,42 @@ var Output = class {
       }
     }
     let lines = characterLines.map((line) => styledCharsToString(line));
-    if (clip2) {
-      if (isClipEmpty(clip2)) {
+    if (clip3) {
+      if (isClipEmpty(clip3)) {
         return;
       }
-      const shouldClipHorizontally = typeof clip2?.x1 === "number" && typeof clip2?.x2 === "number";
-      const shouldClipVertically = typeof clip2?.y1 === "number" && typeof clip2?.y2 === "number";
+      const shouldClipHorizontally = typeof clip3?.x1 === "number" && typeof clip3?.x2 === "number";
+      const shouldClipVertically = typeof clip3?.y1 === "number" && typeof clip3?.y2 === "number";
       if (shouldClipHorizontally) {
         const width = this.caches.getWidestLine(text);
-        if (x + width < clip2.x1 || x > clip2.x2) {
+        if (x + width < clip3.x1 || x > clip3.x2) {
           return;
         }
       }
       if (shouldClipVertically) {
         const height = lines.length;
-        if (y + height < clip2.y1 || y > clip2.y2) {
+        if (y + height < clip3.y1 || y > clip3.y2) {
           return;
         }
       }
       if (shouldClipHorizontally) {
         lines = lines.map((line) => {
-          const from = x < clip2.x1 ? clip2.x1 - x : 0;
+          const from = x < clip3.x1 ? clip3.x1 - x : 0;
           const width = this.caches.getStringWidth(line);
-          const to = x + width > clip2.x2 ? clip2.x2 - x : width;
+          const to = x + width > clip3.x2 ? clip3.x2 - x : width;
           return this.sliceLineToColumns(line, from, to);
         });
-        if (x < clip2.x1) {
-          x = clip2.x1;
+        if (x < clip3.x1) {
+          x = clip3.x1;
         }
       }
       if (shouldClipVertically) {
-        const from = y < clip2.y1 ? clip2.y1 - y : 0;
+        const from = y < clip3.y1 ? clip3.y1 - y : 0;
         const height = lines.length;
-        const to = y + height > clip2.y2 ? clip2.y2 - y : height;
+        const to = y + height > clip3.y2 ? clip3.y2 - y : height;
         lines = lines.slice(from, to);
-        if (y < clip2.y1) {
-          y = clip2.y1;
+        if (y < clip3.y1) {
+          y = clip3.y1;
         }
       }
     }
@@ -17434,10 +17434,10 @@ var Output = class {
       transformers
     });
   }
-  clip(clip2) {
+  clip(clip3) {
     this.operations.push({
       type: "clip",
-      clip: clip2
+      clip: clip3
     });
   }
   unclip() {
@@ -24945,6 +24945,7 @@ function drawAgentsPane(scr, r2, m) {
     }
     first = Math.min(Math.max(0, first), maxStart);
   }
+  if (windowAt(first, r2.h, cardRows).k === 0) first = 0;
   const { up, k, downRow } = windowAt(first, r2.h, cardRows);
   const above = sumItems(slots, 0, first * cols);
   const below = sumItems(slots, (first + k) * cols, slots.length);
@@ -24984,9 +24985,147 @@ function drawAgentsPane(scr, r2, m) {
   return { rows: Math.min(rows, r2.h), moreBelow: below, firstRow: first, visibleRows: k };
 }
 
-// src/panel/ui/draw/files.ts
+// src/panel/ui/draw/detail.ts
+var DETAIL_ROWS = 4;
 var DASH2 = "\u2014";
-var SEP4 = " \xB7 ";
+var SEP4 = ` ${V2.sep} `;
+var GAP = 4;
+var INTENT_W = 32;
+var BRANCH_W = 20;
+var PROC_W = 16;
+var META_W = 24;
+var LABEL2 = {
+  asking: "ASKING",
+  waiting: "WAITING",
+  running: "RUNNING",
+  subagent: "SUBAGENT",
+  idle: "IDLE"
+};
+function int2(n) {
+  return Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : 0;
+}
+function clip2(s, cells) {
+  if (cells <= 0) return "";
+  if (cellWidth(s) <= cells) return s;
+  let out = "";
+  let w2 = 0;
+  for (const g of graphemes2(s)) {
+    const gw = cellWidth(g);
+    if (w2 + gw > cells) break;
+    out += g;
+    w2 += gw;
+  }
+  return out;
+}
+function wrapPrompt(s, width, max) {
+  if (max <= 0 || width <= 0) return [];
+  const lines = [];
+  let cur = "";
+  const push = () => {
+    lines.push(cur);
+    cur = "";
+    return lines.length > max;
+  };
+  outer: for (const word of s.split(" ")) {
+    if (word === "") continue;
+    const ww = cellWidth(word);
+    if (cur !== "" && cellWidth(cur) + 1 + ww <= width) {
+      cur += ` ${word}`;
+      continue;
+    }
+    if (cur !== "" && push()) break;
+    if (ww <= width) {
+      cur = word;
+      continue;
+    }
+    let w2 = 0;
+    for (const g of graphemes2(word)) {
+      const gw = cellWidth(g);
+      if (w2 > 0 && w2 + gw > width) {
+        if (push()) break outer;
+        w2 = 0;
+      }
+      cur += g;
+      w2 += gw;
+    }
+  }
+  if (cur !== "" && lines.length <= max) lines.push(cur);
+  if (lines.length <= max) return lines;
+  const head = lines.slice(0, max - 1);
+  return [...head, truncateEnd(lines.slice(max - 1).join(" "), width)];
+}
+function drawDetail(scr, r2, d) {
+  const h = Math.min(int2(r2.h), DETAIL_ROWS);
+  const w2 = int2(r2.w);
+  if (h === 0 || w2 === 0) return h;
+  const x0 = Number.isFinite(r2.x) ? Math.trunc(r2.x) : 0;
+  const y0 = Number.isFinite(r2.y) ? Math.trunc(r2.y) : 0;
+  const right = x0 + w2;
+  const put = (x2, y, text, st) => {
+    if (text === "") return x2;
+    const t = clip2(text, right - x2);
+    if (t !== "") scr.put(x2, y, t, st);
+    return x2 + cellWidth(text);
+  };
+  const idle = d.state === "idle";
+  const tone = idle ? PALETTE.idle : stateColor(d.state);
+  const name = nameText(d.name, Math.max(1, w2 - 2)) || plainText(d.id, Math.max(1, w2 - 2)) || DASH2;
+  let x = put(x0, y0, V2.capL, { fg: tone });
+  x = put(x, y0, name, { fg: idle ? PALETTE.hi : PALETTE.bg, bg: tone, bold: true });
+  x = put(x, y0, V2.capR, { fg: tone });
+  x = put(x + 1, y0, LABEL2[d.state] ?? LABEL2.idle, idle ? { fg: PALETTE.dim } : { fg: tone, bold: true });
+  const up = plainText(d.uptime, META_W) || DASH2;
+  const model = (d.model === null ? "" : plainText(d.model, META_W)) || DASH2;
+  x = put(x, y0, `${SEP4}${up}${SEP4}${model}`, { fg: PALETTE.dim });
+  if (right - x - 1 > 0) put(x + 1, y0, V2.hline.repeat(right - x - 1), { fg: PALETTE.edge });
+  if (h >= 2) {
+    const y = y0 + 1;
+    let cx = x0 + 2;
+    const intent = d.intent === null ? "" : plainText(d.intent, INTENT_W);
+    if (intent === "") {
+      cx = put(cx, y, `${V2.intent} ${DASH2}`, { fg: PALETTE.dim2 });
+    } else {
+      cx = put(cx, y, `${V2.intent} `, { fg: PALETTE.dim });
+      cx = put(cx, y, intent, { fg: PALETTE.fg });
+    }
+    cx = put(cx + GAP, y, `${V2.branch} `, { fg: PALETTE.dim });
+    cx = put(cx, y, plainText(d.branch, BRANCH_W) || DASH2, { fg: PALETTE.fg });
+    const ports = Array.isArray(d.ports) ? d.ports : [];
+    if (ports.length > 0) {
+      cx += GAP;
+      const n = ports.length;
+      for (let k = 0; k < n; k++) {
+        const p = ports[k];
+        const num = `:${int2(p.port)}`;
+        const proc = plainText(p.proc, PROC_W);
+        const sep4 = k > 0 ? ", " : "";
+        const piece = cellWidth(sep4) + cellWidth(num) + (proc === "" ? 0 : 1 + cellWidth(proc));
+        const rest = n - k - 1;
+        const reserve = rest > 0 ? cellWidth(` +${rest}`) : 0;
+        if (cx + piece + reserve > right) {
+          put(cx, y, k > 0 ? ` +${n - k}` : `+${n}`, { fg: PALETTE.dim });
+          break;
+        }
+        cx = put(cx, y, sep4, { fg: PALETTE.dim });
+        cx = put(cx, y, num, { fg: PALETTE.hi, bold: true });
+        if (proc !== "") cx = put(cx, y, ` ${proc}`, { fg: PALETTE.dim });
+      }
+    }
+  }
+  const promptLines = Math.max(0, Math.min(2, h - 2));
+  if (promptLines > 0) {
+    const y = y0 + 2;
+    put(x0 + 2, y, V2.prompt, { fg: PALETTE.dim });
+    const text = d.prompt === null ? "" : oneLine(d.prompt);
+    const lines = text === "" ? [DASH2] : wrapPrompt(text, Math.max(1, w2 - 5), promptLines);
+    lines.forEach((l, i) => put(x0 + 4, y + i, l, { fg: PALETTE.fg }));
+  }
+  return h;
+}
+
+// src/panel/ui/draw/files.ts
+var DASH3 = "\u2014";
+var SEP5 = " \xB7 ";
 var JOIN2 = ` ${V2.join} `;
 var WRAP_ROW = `${V2.dashed}${V2.dashed} back to top ${V2.dashed}${V2.dashed}`;
 var MAX_CONFLICT_ROWS = 3;
@@ -25032,7 +25171,7 @@ function drawFilesPane(scr, r2, m) {
   const scrolling = H > 0 && rows.length > H;
   const n = countFiles(m.conflicts, m.groups);
   const files = `${n} ${n === 1 ? "file" : "files"}`;
-  const right = n === 0 ? "no files" : scrolling && m.paused ? `paused${SEP4}${files}` : files;
+  const right = n === 0 ? "no files" : scrolling && m.paused ? `paused${SEP5}${files}` : files;
   drawTitle(scr, r2.x, r2.y, r2.w, { label: "FILES", focused: false, sample: m.sample, right });
   const end = r2.x + r2.w;
   const pend = end - 1;
@@ -25047,9 +25186,9 @@ function drawFilesPane(scr, r2, m) {
     if (i === confRows - 1 && nConf > confRows) {
       putIn2(scr, r2.x + 4, y, `+${nConf - i} more conflicts`, { fg: PALETTE.hi }, pend);
     } else if (c) {
-      let cx = putIn2(scr, r2.x + 4, y, nameText(c.a, NAME_W) || DASH2, hiB, end);
+      let cx = putIn2(scr, r2.x + 4, y, nameText(c.a, NAME_W) || DASH3, hiB, end);
       cx = putIn2(scr, cx, y, JOIN2, redB, end);
-      cx = putIn2(scr, cx, y, nameText(c.b, NAME_W) || DASH2, hiB, end);
+      cx = putIn2(scr, cx, y, nameText(c.b, NAME_W) || DASH3, hiB, end);
       const px = Math.max(cx + 3, r2.x + PATH_X);
       putIn2(scr, px, y, pathText(c.path, pend - px), { fg: PALETTE.hi }, pend);
     }
@@ -25067,7 +25206,7 @@ function drawFilesPane(scr, r2, m) {
       putIn2(scr, r2.x + 4, yy, WRAP_ROW, { fg: PALETTE.dim2 }, pend);
       continue;
     }
-    const name = nameText(it.group.name, NAME_W) || DASH2;
+    const name = nameText(it.group.name, NAME_W) || DASH3;
     if (it.first) {
       const sq = it.group.state === "idle" ? PALETTE.idle : stateColor(it.group.state);
       putIn2(scr, r2.x + 2, yy, V2.group, { fg: sq }, pend);
@@ -25194,7 +25333,7 @@ var MINI_MAX = 12;
 var PHASES_HEADER_ROWS = 4;
 var HEADER_ROWS = PHASES_HEADER_ROWS;
 var HINT_MIN_W = 9;
-var SEP5 = ` ${V2.sep} `;
+var SEP6 = ` ${V2.sep} `;
 var DIM = { fg: PALETTE.dim };
 var HI_BOLD = { fg: PALETTE.hi, bold: true };
 function putIn3(scr, x, y, text, st, end) {
@@ -25236,7 +25375,7 @@ function drawPhases(scr, r2, m) {
   put(1, r2.y, plainText(p.name, hint ? r2.w - 7 : r2.w - 1), HI_BOLD);
   if (hint) put(r2.w - 5, r2.y, `${V2.left} ${V2.right}`, DIM);
   if (!compact) {
-    put(1, r2.y + 1, plainText(`${oneLine(p.dir)}${SEP5}project ${pi + 1}/${m.projects.length}`, r2.w - 1), DIM);
+    put(1, r2.y + 1, plainText(`${oneLine(p.dir)}${SEP6}project ${pi + 1}/${m.projects.length}`, r2.w - 1), DIM);
   }
   if (total === 0) {
     put(1, r2.y + 2, plainText("no roadmap", r2.w - 1), DIM);
@@ -25393,13 +25532,13 @@ function drawSessions(scr, r2, m) {
 // src/panel/ui/draw/ports.ts
 var PORT_X = 2;
 var PROC_X = 10;
-var PROC_W = 11;
+var PROC_W2 = 11;
 var EXPOSED_X = 22;
 var OWNER_X = 4;
 var PID_MIN_W = 64;
 var PROC_MIN_W = EXPOSED_X + 9;
 var EXPOSED = `${V2.exposed} exposed`;
-var DASH3 = "\u2014";
+var DASH4 = "\u2014";
 var DIM3 = { fg: PALETTE.dim };
 var DIM22 = { fg: PALETTE.dim2 };
 var RED_BOLD = { fg: PALETTE.red, bold: true };
@@ -25467,7 +25606,7 @@ function drawPortsPane(scr, r2, m) {
     const p = shown[i];
     if (i === cursor) put(0, y, V2.cursor, HI_BOLD2);
     put(PORT_X, y, `:${Math.trunc(p.port)}`, p.exposed ? RED_BOLD : HI_BOLD2);
-    if (showProc) put(PROC_X, y, plainText(p.proc, PROC_W), DIM3);
+    if (showProc) put(PROC_X, y, plainText(p.proc, PROC_W2), DIM3);
     if (p.exposed) put(showProc ? EXPOSED_X : PROC_X, y, EXPOSED, RED_BOLD);
     if (showPid) {
       const t = `pid ${Math.trunc(p.pid)}`;
@@ -25475,7 +25614,7 @@ function drawPortsPane(scr, r2, m) {
     }
     y++;
     if (p.owner !== null && y < itemLimit) {
-      const owner = nameText(p.owner, r2.w - OWNER_X - 2) || DASH3;
+      const owner = nameText(p.owner, r2.w - OWNER_X - 2) || DASH4;
       put(OWNER_X, y, `${V2.owner} ${owner}`, DIM3);
       y++;
     }
@@ -25605,7 +25744,7 @@ var READ = "read";
 var CONFLICT = `${V2.conflict} conflict`;
 var LEGEND_END = 1 + cellWidth(V2.write) + cellWidth(WRITTEN) + 3 + cellWidth(READ) + 3 + cellWidth(CONFLICT);
 var FLASH_GAP = 6;
-var GAP = 3;
+var GAP2 = 3;
 var PAIR_GAP = 3;
 var FLASH_MIN = 12;
 function pairsWidth(pairs) {
@@ -25619,7 +25758,7 @@ function drawFooter(scr, y, cols, o) {
   const flashStart = () => legend ? LEGEND_END + FLASH_GAP : 1;
   const hasLeft = () => legend || flash !== "";
   const leftEnd = () => flash !== "" ? flashStart() + cellWidth(flash) : legend ? LEGEND_END : 1;
-  const minStart = () => hasLeft() ? leftEnd() + GAP : 2;
+  const minStart = () => hasLeft() ? leftEnd() + GAP2 : 2;
   const truncFlash = (cells) => {
     if (flash !== "") flash = truncateEnd(flash, Math.max(FLASH_MIN, cells));
   };
@@ -25629,7 +25768,7 @@ function drawFooter(scr, y, cols, o) {
     const nw = cellWidth(KEYS_OFF_NOTICE);
     const fits = () => minStart() + nw <= rightEnd;
     if (!fits()) legend = false;
-    if (!fits()) truncFlash(rightEnd - nw - GAP - flashStart());
+    if (!fits()) truncFlash(rightEnd - nw - GAP2 - flashStart());
     notice = truncateEnd(KEYS_OFF_NOTICE, Math.min(nw, rightEnd - minStart()));
   } else {
     pairs.push(...o.hints);
@@ -25695,6 +25834,21 @@ var RIGHT_MIN = 7;
 var RIGHT_FOCUS_MIN = 10;
 var BAND_MIN = 5;
 var AGENTS_COLLAPSED = 2;
+var DETAIL_MIN = 3;
+function detailOf(input) {
+  const d = input.panes.detail;
+  if (d === void 0 || d === null) return null;
+  const sel = input.ui.selectedAgentId;
+  return sel !== null && sel === d.id ? d : null;
+}
+function leftRows(b) {
+  return {
+    agents: (b.agents ?? 0) + (b.agentsSpacer ?? 0),
+    detail: b.detail ?? 0,
+    detailSpacer: b.detailSpacer ?? 0,
+    files: (b.filesHard ?? 0) + (b.ticker ?? 0)
+  };
+}
 function agentsModel(input, cardCols, natural = false) {
   return {
     agents: input.panes.agents,
@@ -25747,6 +25901,10 @@ function gridDemands(m) {
     { id: "agentsSpacer", min: 0, max: 1 }
   ];
 }
+function collapsedGrid(m) {
+  const n = Math.min(AGENTS_COLLAPSED, m.agents);
+  return { id: "agents", min: n, max: n };
+}
 function measureLeft(input, w2, cardCols) {
   const p = input.panes;
   const slots = p.agents.length + Math.ceil(p.idle.length / 3);
@@ -25771,13 +25929,23 @@ function bandNatural(rm, leftW, rightW, h) {
   );
   return Math.max(left, ports);
 }
-function drawLeft(scr, input, x, w2, cardCols, agentsH, filesH, bottom) {
-  const ar = { x, y: BODY_Y, w: w2, h: agentsH };
+function drawLeft(scr, input, x, w2, cardCols, h, detail, bottom) {
+  const ar = { x, y: BODY_Y, w: w2, h: h.agents };
   const a = drawAgentsPane(scr, ar, agentsModel(input, cardCols));
-  const filesY = BODY_Y + a.rows + (a.rows < agentsH ? 1 : 0);
-  const fh = Math.max(0, Math.min(filesH, bottom - filesY));
+  let end = BODY_Y + a.rows - 1;
+  let y = BODY_Y + a.rows + (a.rows < h.agents ? 1 : 0);
+  if (detail !== null && h.detail > 0) {
+    const dh = Math.max(0, Math.min(h.detail, bottom - y));
+    const d = drawDetail(scr, { x, y, w: w2, h: dh }, detail);
+    if (d > 0) {
+      end = y + d - 1;
+      y += d + (h.detailSpacer > 0 ? 1 : 0);
+    }
+  }
+  const filesY = y;
+  const fh = Math.max(0, Math.min(h.files, bottom - filesY));
   const f = drawFilesPane(scr, { x, y: filesY, w: w2, h: fh }, filesModel(input));
-  const end = f > 0 ? filesY + f - 1 : BODY_Y + a.rows - 1;
+  if (f > 0) end = filesY + f - 1;
   return { filesY, end, grid: { offset: a.firstRow, visible: a.visibleRows } };
 }
 function drawShellFrame(input) {
@@ -25791,26 +25959,32 @@ function drawShellFrame(input) {
   const bottom = BODY_Y + total;
   let end;
   let gridWin = NO_WINDOW;
+  const detail = detailOf(input);
   if (g.split && g.divX !== null) {
     const m = measureLeft(input, g.LW, g.cardCols);
-    const [grid, gridSpacer] = gridDemands(m);
-    const demands = [
-      { id: "filesHard", min: m.filesHard, max: m.filesHard },
-      grid,
-      { id: "ticker", min: Math.min(TICKER_MIN, m.filesTicker), max: m.filesTicker },
-      gridSpacer
-    ];
-    const b = allocate(total, demands, ["agentsSpacer", "agents", "ticker"]);
-    const left = drawLeft(
-      scr,
-      input,
-      0,
-      g.LW,
-      g.cardCols,
-      (b.agents ?? 0) + (b.agentsSpacer ?? 0),
-      (b.filesHard ?? 0) + (b.ticker ?? 0),
-      bottom
-    );
+    const [grid0, gridSpacer] = gridDemands(m);
+    const filesHard = { id: "filesHard", min: m.filesHard, max: m.filesHard };
+    const ticker = { id: "ticker", min: Math.min(TICKER_MIN, m.filesTicker), max: m.filesTicker };
+    let b;
+    if (detail === null) {
+      b = allocate(total, [filesHard, grid0, ticker, gridSpacer], ["agentsSpacer", "agents", "ticker"]);
+    } else {
+      const yields = total - m.filesHard - DETAIL_MIN < cardMinOf(m);
+      const grid = yields ? collapsedGrid(m) : grid0;
+      b = allocate(
+        total,
+        [
+          filesHard,
+          { id: "detail", min: DETAIL_MIN, max: DETAIL_ROWS },
+          grid,
+          ticker,
+          yields ? { id: "agentsSpacer", min: 0, max: 1 } : gridSpacer,
+          { id: "detailSpacer", min: 0, max: 1 }
+        ],
+        ["agentsSpacer", "detail", "detailSpacer", "ticker", "agents"]
+      );
+    }
+    const left = drawLeft(scr, input, 0, g.LW, g.cardCols, leftRows(b), detail, bottom);
     const right = drawRightColumn(scr, { x: g.RX, y: BODY_Y, w: g.RW, h: total }, rightModel(input, left.filesY));
     gridWin = left.grid;
     end = Math.max(left.end, right.end);
@@ -25822,12 +25996,12 @@ function drawShellFrame(input) {
     const rm = rightModel(input, 0);
     const rNat = band !== null ? bandNatural(rm, band.leftW, band.rightW, rh) : drawRightColumn(new Screen(cols, rh), { x: 0, y: 0, w: cols, h: rh }, rm).end + 1;
     const rightFocused = input.ui.focus === "right" || input.ui.focus === "ports";
+    const detailMin = detail !== null && !rightFocused ? DETAIL_MIN : 0;
     const cardMin = cardMinOf(m);
     const focusFloor = Math.min(band !== null ? bandFloor(rm) : focusedFloor(rm), rNat);
-    const gridYields = rightFocused && total - cardMin - m.filesHard < focusFloor;
-    const collapsed = Math.min(AGENTS_COLLAPSED, m.agents);
+    const gridYields = rightFocused && total - cardMin - m.filesHard < focusFloor || detailMin > 0 && total - m.filesHard - detailMin < cardMin;
     const [grid, gridSpacer] = gridDemands(m);
-    const agents2 = gridYields ? { id: "agents", min: collapsed, max: collapsed } : grid;
+    const agents2 = gridYields ? collapsedGrid(m) : grid;
     const filesHard = { id: "filesHard", min: m.filesHard, max: m.filesHard };
     const ticker = { id: "ticker", min: Math.min(TICKER_MIN, m.filesTicker), max: m.filesTicker };
     const rightMin = band !== null ? rightFocused ? Math.max(bandFloor(rm), BAND_MIN) : BAND_MIN : rightFocused ? RIGHT_FOCUS_MIN : RIGHT_MIN;
@@ -25837,19 +26011,17 @@ function drawShellFrame(input) {
       gridYields ? { id: "agentsSpacer", min: 0, max: 1 } : gridSpacer,
       { id: "rightSpacer", min: 0, max: 1 }
     ];
-    const demands = rightFocused ? [agents2, filesHard, right, ticker, ...spacers] : [agents2, filesHard, ticker, right, ...spacers];
-    const grow = rightFocused ? [rid, "agentsSpacer", "agents", "ticker", "rightSpacer"] : ["agentsSpacer", "agents", "ticker", rid, "rightSpacer"];
+    let demands = rightFocused ? [agents2, filesHard, right, ticker, ...spacers] : [agents2, filesHard, ticker, right, ...spacers];
+    let grow = rightFocused ? [rid, "agentsSpacer", "agents", "ticker", "rightSpacer"] : ["agentsSpacer", "agents", "ticker", rid, "rightSpacer"];
+    if (detail !== null) {
+      const strip = { id: "detail", min: detailMin, max: DETAIL_ROWS };
+      demands = rightFocused ? [agents2, filesHard, right, strip, ticker, ...spacers] : [filesHard, strip, agents2, ticker, right, ...spacers];
+      demands.push({ id: "detailSpacer", min: 0, max: 1 });
+      const at = grow.indexOf("agents");
+      grow = [...grow.slice(0, at), "detail", ...grow.slice(at), "detailSpacer"];
+    }
     const b = allocate(total, demands, grow);
-    const left = drawLeft(
-      scr,
-      input,
-      0,
-      cols,
-      g.cardCols,
-      (b.agents ?? 0) + (b.agentsSpacer ?? 0),
-      (b.filesHard ?? 0) + (b.ticker ?? 0),
-      bottom
-    );
+    const left = drawLeft(scr, input, 0, cols, g.cardCols, leftRows(b), detail, bottom);
     gridWin = left.grid;
     end = left.end;
     const ry = left.end + 1 + (b.rightSpacer ?? 0);
@@ -26112,7 +26284,7 @@ function cardModel(row) {
 }
 
 // src/panel/ui/build/agents.ts
-var DASH4 = "\u2014";
+var DASH5 = "\u2014";
 function startMs(r2) {
   const t = Date.parse(r2.start_time);
   return Number.isFinite(t) ? t : 0;
@@ -26146,7 +26318,7 @@ function ageOf(now, ...times) {
     const ms = Date.parse(t);
     if (Number.isFinite(ms)) return fmtAge(ms, now);
   }
-  return DASH4;
+  return DASH5;
 }
 function buildAgents(i) {
   const rows = i.display.filter((d) => !d.ended).map((d) => d.row);
@@ -26183,7 +26355,7 @@ function buildAgents(i) {
       name,
       dir: r2.folder,
       branch: liveBranch(r2, i.branches),
-      uptime: Number.isFinite(start) ? fmtUptime(start, i.now) : DASH4,
+      uptime: Number.isFinite(start) ? fmtUptime(start, i.now) : DASH5,
       model: cardModel(r2),
       prompt: typeof r2.last_prompt === "string" ? r2.last_prompt : null,
       state,
@@ -26196,6 +26368,33 @@ function buildAgents(i) {
     });
   }
   return { agents: agents2, idle, byId };
+}
+
+// src/panel/ui/build/detail.ts
+var DASH6 = "\u2014";
+function buildDetail(i) {
+  const r2 = i.row;
+  const start = Date.parse(r2.start_time);
+  const live = livePidMap([...i.liveRows]);
+  const seen = /* @__PURE__ */ new Set();
+  const ports = [];
+  for (const p of [...i.ports].sort((a, b) => a.port - b.port)) {
+    if (seen.has(p.port)) continue;
+    if (attribute(p, live)?.session_id !== r2.session_id) continue;
+    seen.add(p.port);
+    ports.push({ port: p.port, proc: p.command });
+  }
+  return {
+    id: r2.session_id,
+    name: labelLead({ title: r2.title, folder: r2.folder }),
+    state: cardState(r2) ?? "idle",
+    uptime: Number.isFinite(start) ? fmtUptime(start, i.now) : DASH6,
+    model: cardModel(r2),
+    intent: typeof r2.intent === "string" && r2.intent !== "" ? r2.intent : null,
+    branch: liveBranch(r2, i.branches),
+    ports,
+    prompt: typeof r2.last_prompt === "string" && r2.last_prompt !== "" ? r2.last_prompt : null
+  };
 }
 
 // src/panel/ui/nav.ts
@@ -26409,6 +26608,20 @@ async function runGoto(t, deps = defaultGotoDeps()) {
 // src/panel/PanelApp.tsx
 var import_jsx_runtime4 = __toESM(require_jsx_runtime(), 1);
 var SAMPLE_FLAGS = { agents: false, files: true, phases: true, sessions: true, ports: true };
+function detailKey(d) {
+  if (d === null) return "";
+  return [
+    d.id,
+    d.name,
+    d.state,
+    d.uptime,
+    d.model ?? "",
+    d.intent ?? "",
+    d.branch,
+    d.ports.map((p) => `${p.port}:${p.proc}`).join(","),
+    d.prompt ?? ""
+  ].join("");
+}
 function agentsKey(agents2, idle) {
   const c = agents2.map(
     (a) => [
@@ -26454,6 +26667,7 @@ function PanelApp(props = {}) {
   const liveRowsRef = import_react47.default.useRef(liveRows);
   liveRowsRef.current = liveRows;
   const branches = useBranches(liveRowsRef);
+  const scanned = usePorts();
   const orderRef = import_react47.default.useRef(/* @__PURE__ */ new Map());
   orderRef.current = stableOrder(orderRef.current, liveRows);
   const ag = buildAgents({
@@ -26463,8 +26677,10 @@ function PanelApp(props = {}) {
     order: orderRef.current,
     now: now()
   });
-  const panes = { ...SAMPLE, agents: ag.agents, idle: ag.idle };
-  const panesKey = agentsKey(ag.agents, ag.idle);
+  const selRow = ui.selectedAgentId === null ? void 0 : ag.byId.get(ui.selectedAgentId);
+  const detail = selRow === void 0 ? null : buildDetail({ row: selRow, branches, ports: scanned, liveRows, now: now() });
+  const panes = { ...SAMPLE, agents: ag.agents, idle: ag.idle, detail };
+  const panesKey = `${agentsKey(ag.agents, ag.idle)}${detailKey(detail)}`;
   const animating = ag.agents.some((a) => a.state === "running") || tickerRows(SAMPLE.groups).length > TICKER_VISIBLE;
   const flash = flashVisible(ui, now());
   const { tick, step: step2 } = useUiTick({
