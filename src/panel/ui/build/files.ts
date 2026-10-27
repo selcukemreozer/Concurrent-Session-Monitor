@@ -12,7 +12,9 @@ import { cardState } from "./agents.js";
  *   - Conflict rows come from the roster's conflicts, in the roster's order
  *     (most-recently-active file first) and with the roster's session order
  *     inside each conflict (most-recently-touched first). draw/files.ts keeps
- *     them on top and never scrolls them away (LAYOUT-03).
+ *     them on top and never scrolls them away (LAYOUT-03). The path is shown
+ *     relative to the first session's cwd (as in the UI-SPEC excerpt), so it
+ *     matches that session's group row and FILES counts the file once.
  *   - RESEARCH open question 3 (3+ sessions on one file), resolved here: `a` is
  *     the first session, `b` the second, and `more` counts the rest. Nothing is
  *     glued onto the raw `b` string: the draw adds ` +N` inside the 21-cell
@@ -53,7 +55,7 @@ function list(a: unknown): { file_path: string }[] {
   return a.filter((f): f is { file_path: string } => !!f && typeof f.file_path === "string");
 }
 
-function toConflict(c: Conflict): FileConflict | null {
+function toConflict(c: Conflict, cwdOf: ReadonlyMap<string, string | undefined>): FileConflict | null {
   const ss = Array.isArray(c.sessions) ? c.sessions : [];
   if (ss.length < 2) return null;
   const s0 = ss[0]!;
@@ -61,7 +63,8 @@ function toConflict(c: Conflict): FileConflict | null {
   const out: FileConflict = {
     a: labelLead({ title: s0.title, folder: s0.folder }),
     b: labelLead({ title: s1.title, folder: s1.folder }),
-    path: c.realpath,
+    // relative to the first session's cwd, like that session's own group rows
+    path: displayPath(c.realpath, cwdOf.get(s0.session_id)),
   };
   if (ss.length > 2) out.more = ss.length - 2;
   return out;
@@ -78,10 +81,11 @@ export function buildFiles(i: {
   const sel = i.selectedId !== null && live.has(i.selectedId) ? i.selectedId : null;
   const narrowed = sel !== null;
 
+  const cwdOf = new Map(rows.map((r) => [r.session_id, r.cwd] as const));
   const conflicts: FileConflict[] = [];
   for (const c of i.conflicts) {
     if (narrowed && !(c.sessions ?? []).some((s) => s.session_id === sel)) continue;
-    const fc = toConflict(c);
+    const fc = toConflict(c, cwdOf);
     if (fc) conflicts.push(fc);
   }
 

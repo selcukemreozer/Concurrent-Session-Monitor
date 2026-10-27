@@ -138,6 +138,19 @@ describe("buildFiles conflicts (LAYOUT-03, open question 3)", () => {
     expect(build([s1, s2], { conflicts: [c] }).conflicts[0]).toEqual({ a: "alpha", b: "beta", path: "/repo/x" });
   });
 
+  it("shows the conflict path relative to the first session's cwd, so it matches the group rows", () => {
+    const a = row("s1", { title: "A", cwd: "/repo", files: [f("/repo/src/server.js")] });
+    const bb = row("s2", { title: "B", cwd: "/other", files: [f("/repo/src/server.js")] });
+    const b = build([a, bb], { conflicts: [conflict("/repo/src/server.js", ["s1", "A"], ["s2", "B"])] });
+    expect(b.conflicts[0]!.path).toBe("src/server.js");
+    expect(b.groups[0]!.files[0]!.path).toBe("src/server.js");
+    // the first session outside the file's tree, or unknown: the raw path
+    const c = build([a, bb], { conflicts: [conflict("/repo/src/server.js", ["s2", "B"], ["s1", "A"])] });
+    expect(c.conflicts[0]!.path).toBe("/repo/src/server.js");
+    const d = build([bb], { conflicts: [conflict("/repo/src/server.js", ["zz", "Z"], ["s2", "B"])] });
+    expect(d.conflicts[0]!.path).toBe("/repo/src/server.js");
+  });
+
   it("keeps the roster's conflict order", () => {
     const b = build([s1, s2], {
       conflicts: [conflict("/z", ["s2", "B"], ["s1", "A"]), conflict("/a", ["s1", "A"], ["s2", "B"])],
