@@ -2,6 +2,55 @@
 
 Notable changes to Concurrent Session Monitor, newest release first.
 
+## v1.8.0 (2026-10-28)
+
+### New (candidate, CSM_UI=v2)
+
+- Every pane of the `CSM_UI=v2` panel now shows live data; the ` sample `
+  chips are gone.
+  - AGENTS: one card per active session (asking, waiting, running or
+    subagent) with its folder, branch, uptime, model (`opus 4.7`) and last
+    prompt, plus 2-row idle strips. Cards keep their start order, so a
+    re-sort or a `/compact` never moves the card under the cursor.
+  - Arrow keys select a card or an idle strip; a selection drops after 15 s
+    without a key, and Esc clears it.
+  - The selection opens a detail strip (intent, branch, the ports it owns,
+    uptime, model and the full last prompt) between the grid and FILES.
+  - FILES lists conflicts first, then each session's writes and reads. With a
+    selection it narrows to that session (`FILES · N · esc: all`).
+  - Enter on a selected card or strip goes to that session's Warp pane. The
+    footer shows `focusing <name>`, or one plain reason when it cannot. tmux,
+    screen and other multiplexers, IDE terminals and non-Warp apps are never
+    focused.
+  - PHASES shows your GSD projects; `←`/`→` cycle projects, `↑`/`↓` move
+    through the phases.
+  - SESSIONS lists resumable sessions: Enter copies the resume line, `o` opens
+    it in a new window.
+  - PORTS lists listening ports with their owning session; `↑`/`↓` browse
+    them by port.
+  - PgUp/PgDn page through the grid and every list.
+- At 100–164 columns PHASES/SESSIONS and PORTS sit side by side under FILES.
+- The panel redraws cleanly on every resize, so no repeated header rows are
+  left at the top (the 1.7.0 known issue).
+
+### Changes
+
+- The default panel (`csm` without `CSM_UI=v2`) is unchanged: same look, same
+  keys.
+- Fixes from the 1.7.0 review, in the v2 panel:
+  - a focused PORTS or PHASES pane always shows its content;
+  - FILES says `+N more conflicts` when it cannot draw every conflict;
+  - unfocused PORTS shows exposed ports first;
+  - no pane hides cards, ports or phases without a `↑/↓ N more` row;
+  - `crash.log` entries are size-bounded and the file stays at mode 0600.
+
+### Notes
+
+- After updating, run `/plugin update` and then `/csm-setup` so the global
+  `csm` command points at 1.8.0.
+- v2 becomes the default panel in 2.0.0; `CSM_UI=legacy` will keep the old
+  panel for one release after that.
+
 ## v1.7.0 (2026-10-20)
 
 ### New (preview)
