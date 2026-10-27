@@ -538,3 +538,94 @@ describe("bandFloor (the S2 band's focused floor)", () => {
     expect(bandFloor(model({}))).toBe(5);
   });
 });
+
+// Phase 10 plan 10-13 (LAYOUT-02, KEYS-02): cursors and windows through the column and the band.
+describe("drawRightColumn / drawBand: identity cursors and windows (10-13)", () => {
+  const BAND: Band = { leftW: 47, divX: 49, rightX: 52, rightW: 48 };
+  const SHORT: Rect = { x: X, y: 2, w: 74, h: 16 };
+
+  function cursorRows(scr: Screen, glyph: string): string[] {
+    const out: string[] = [];
+    for (let y = 0; y < 40; y++) {
+      const t = text(scr, y);
+      if (t.includes(glyph)) out.push(t);
+    }
+    return out;
+  }
+
+  it("a focused PORTS with a null portCursor puts ❯ on the first shown port", () => {
+    const scr = new Screen(175, 40);
+    drawRightColumn(scr, RECT, model({ focus: "ports" }, { portCursor: null }));
+    const rows = cursorRows(scr, "❯");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatch(new RegExp(`❯ :${SAMPLE.ports[0]!.port} `));
+  });
+
+  it("a focused PORTS with an absent portCursor draws no ❯ (fails closed, open question 4)", () => {
+    for (const draw of ["column", "band"] as const) {
+      const scr = new Screen(175, 40);
+      const m = model({ focus: "ports" }, { portCursor: "no-such-port" });
+      if (draw === "column") drawRightColumn(scr, RECT, m);
+      else drawBand(scr, { x: 0, y: 20, w: 100, h: 12 }, BAND, m);
+      expect(cursorRows(scr, "❯"), draw).toHaveLength(0);
+    }
+  });
+
+  it("a present portCursor puts ❯ on that port in the column and the band", () => {
+    for (const draw of ["column", "band"] as const) {
+      const scr = new Screen(175, 40);
+      const m = model({ focus: "ports" }, { portCursor: "27036" });
+      if (draw === "column") drawRightColumn(scr, RECT, m);
+      else drawBand(scr, { x: 0, y: 20, w: 100, h: 12 }, BAND, m);
+      const rows = cursorRows(scr, "❯");
+      expect(rows, draw).toHaveLength(1);
+      expect(rows[0]).toMatch(/❯ :27036 /);
+    }
+  });
+
+  it("the phaseCursor index draws ❯ on that phase; the returned window is sticky", () => {
+    const at = (cursor: number, offsets?: RightColumnModel["offsets"]) => {
+      const scr = new Screen(175, 40);
+      const out = drawRightColumn(scr, SHORT, model({ focus: "right" }, { phaseCursor: cursor, ...(offsets ? { offsets } : {}) }));
+      return { rows: cursorRows(scr, "❯"), ...out };
+    };
+    const a = at(10);
+    expect(a.rows).toHaveLength(1);
+    expect(a.rows[0]).toContain("sources tab");
+    expect(a.windows.phases.offset).toBeGreaterThan(0);
+    expect(a.windows.phases.visible).toBeGreaterThan(0);
+    // SESSIONS is not drawn: its previous offset, nothing visible
+    expect(a.windows.sessions).toEqual({ offset: 0, visible: 0 });
+    const b = at(9, { phases: a.windows.phases.offset, sessions: 4, ports: 0 });
+    expect(b.windows.phases.offset).toBe(a.windows.phases.offset);
+    expect(b.windows.sessions).toEqual({ offset: 4, visible: 0 });
+  });
+
+  it("sessionCursor picks the session by id (absent = first, null = none) in the band", () => {
+    const at = (over: Partial<RightColumnModel>) => {
+      const scr = new Screen(100, 40);
+      const out = drawBand(scr, { x: 0, y: 20, w: 100, h: 12 }, BAND, model({ focus: "right", rightTab: "sessions" }, over));
+      return { rows: cursorRows(scr, "▸"), ...out };
+    };
+    expect(at({}).rows[0]).toContain(SAMPLE.sessions[0]!.name);
+    const pick = at({ sessionCursor: SAMPLE.sessions[6]!.id });
+    expect(pick.rows).toHaveLength(1);
+    expect(pick.rows[0]).toContain(SAMPLE.sessions[6]!.name);
+    expect(pick.windows.sessions.visible).toBeGreaterThan(0);
+    expect(at({ sessionCursor: null }).rows).toHaveLength(0);
+  });
+
+  it("without cursors or offsets the frames are unchanged", () => {
+    for (const ui of [{}, { focus: "right" as const }, { focus: "ports" as const }, { rightTab: "sessions" as const }]) {
+      const a = new Screen(175, 40);
+      const b = new Screen(175, 40);
+      drawRightColumn(a, RECT, model(ui));
+      const out = drawRightColumn(b, RECT, model(ui, { offsets: { phases: 0, sessions: 0, ports: 0 } }));
+      expect(b.toLines()).toEqual(a.toLines());
+      // feeding the windows back draws the same frame
+      const c = new Screen(175, 40);
+      drawRightColumn(c, RECT, model(ui, { offsets: { phases: out.windows.phases.offset, sessions: out.windows.sessions.offset, ports: out.windows.ports.offset } }));
+      expect(c.toLines()).toEqual(a.toLines());
+    }
+  });
+});

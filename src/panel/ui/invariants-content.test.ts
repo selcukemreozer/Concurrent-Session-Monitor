@@ -37,6 +37,11 @@
  *     the focused bottom pane keeps its inverse title and its WR-08 / WR-09
  *     content, and with AGENTS focused at 24+ rows the strip's pill row is
  *     drawn.
+ *   - sticky (10-13, LAYOUT-02, KEYS-02, Pitfall 3): walking a cursor down 30
+ *     sessions / 20 ports / 12 phases one step at a time, feeding the
+ *     returned ScrollState back each frame, the cursor row is always drawn,
+ *     drawn items + `↑/↓ N more` equal the list length, and the window start
+ *     never moves on a step that stays inside the 1-item margin.
  *
  * Later plans of Phase 10 append to this file.
  */
@@ -50,7 +55,7 @@ import { geometry } from "./geometry.js";
 import { FOCUS_ORDER, initialUi, type UiState } from "./uiState.js";
 import { SAMPLE, SAMPLE_HEADER } from "./sample.js";
 import type { AgentCard, DetailModel, IdleStrip, PanesModel, PortEntry, Rect } from "./models.js";
-import { drawShell } from "./draw/shell.js";
+import { drawShell, drawShellFrame, type ScrollState } from "./draw/shell.js";
 import { drawAgentsPane } from "./draw/agents.js";
 import { drawFilesPane } from "./draw/files.js";
 import { drawPhases } from "./draw/phases.js";
@@ -679,4 +684,106 @@ describe("v2 content: the selection detail strip (10-11, LAYOUT-07, LAYOUT-03)",
       }
     }
   });
+});
+
+// --- sticky (10-13): identity cursors walk the lists with fed-back windows ---
+
+describe("v2 content: sticky list windows (10-13, LAYOUT-02, KEYS-02)", () => {
+  const STICKY_SIZES: ReadonlyArray<readonly [number, number]> = [
+    [24, 80],
+    [30, 120],
+    [67, 284],
+  ];
+  const SESS = Array.from({ length: 30 }, (_, i) => ({ id: `s${i}`, name: `session ${i}`, ago: `${i}m`, live: false }));
+  const PANES: PanesModel = { ...many(), sessions: SESS };
+  const PHASES = PANES.projects[PANES.projectIndex]!.phases;
+
+  interface Walk {
+    name: string;
+    len: number;
+    pane: "phases" | "sessions" | "ports";
+    ui: (i: number) => UiState;
+    panes: (i: number) => PanesModel;
+    /** The list rows of the frame (region cut, between the pane's title and the next pane). */
+    region: (lines: Line[], rows: number, cols: number) => string[];
+    item: RegExp;
+    cursor: (i: number) => RegExp;
+  }
+
+  function between(rs: string[], top: RegExp, stop: RegExp | null): string[] {
+    const footer = rs.length - 1;
+    const y0 = rs.findIndex((s, y) => y >= 2 && y < footer && top.test(s));
+    if (y0 < 0) return [];
+    let y1 = stop === null ? -1 : rs.findIndex((s, y) => y > y0 && y < footer && stop.test(s));
+    if (y1 < 0) y1 = footer;
+    return rs.slice(y0 + 1, y1);
+  }
+  const TABS_ROW = /PHASES.*SESSIONS/;
+
+  const WALKS: Walk[] = [
+    {
+      name: "sessions",
+      len: SESS.length,
+      pane: "sessions",
+      ui: () => ({ ...initialUi, focus: "right", rightTab: "sessions" }),
+      panes: (i) => ({ ...PANES, sessionCursor: SESS[i]!.id }),
+      region: (lines, rows, cols) => between(regions(lines, rows, cols).tabs, TABS_ROW, PORTS_TITLE),
+      item: /^[▸ ] session \d+/,
+      cursor: (i) => new RegExp(`^▸ session ${i} `),
+    },
+    {
+      name: "ports",
+      len: PANES.ports.length,
+      pane: "ports",
+      ui: (i) => ({ ...initialUi, focus: "ports", portCursor: PANES.ports[i]!.key }),
+      panes: () => PANES,
+      region: (lines, rows, cols) => between(regions(lines, rows, cols).right, PORTS_TITLE, null),
+      item: /(^|\s):\d+/,
+      cursor: (i) => new RegExp(`^❯ :${PANES.ports[i]!.port} `),
+    },
+    {
+      name: "phases",
+      len: PHASES.length,
+      pane: "phases",
+      ui: (i) => ({ ...initialUi, focus: "right", rightTab: "phases", phaseCursor: PHASES[i]!.number }),
+      panes: () => PANES,
+      region: (lines, rows, cols) => between(regions(lines, rows, cols).tabs, TABS_ROW, PORTS_TITLE),
+      item: /^. [●◉○] /,
+      cursor: (i) => new RegExp(`^❯ [●◉○] +${PHASES[i]!.number.replace(".", "\\.")} `),
+    },
+  ];
+
+  for (const w of WALKS) {
+    it.each(STICKY_SIZES)(`sticky ${w.name} %i rows x %i cols: the cursor stays drawn, counts exact, window sticky`, (rows, cols) => {
+      let scroll: ScrollState | undefined;
+      for (let i = 0; i < w.len; i++) {
+        const prev = scroll?.[w.pane];
+        const f = drawShellFrame({
+          rows,
+          cols,
+          ui: w.ui(i),
+          tick: 0,
+          step: 0,
+          header: SAMPLE_HEADER,
+          panes: w.panes(i),
+          keysOff: false,
+          flash: null,
+          sample: true,
+          scroll,
+        });
+        const region = w.region(f.lines, rows, cols);
+        const at = `${w.name} step ${i}: ${JSON.stringify(region)}`;
+        expect(region.filter((s) => w.cursor(i).test(s)), at).toHaveLength(1);
+        const drawn = region.filter((s) => w.item.test(s)).length;
+        expect(drawn + arrowCount(region), at).toBe(w.len);
+        const win = f.scroll[w.pane];
+        expect(win.visible, at).toBe(drawn);
+        // a step that stays inside the previous window's 1-item margin never moves it
+        if (prev !== undefined && prev.visible > 0 && i >= prev.offset + 1 && i + 2 <= prev.offset + prev.visible) {
+          expect(win.offset, at).toBe(prev.offset);
+        }
+        scroll = f.scroll;
+      }
+    });
+  }
 });

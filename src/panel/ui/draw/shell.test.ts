@@ -443,7 +443,14 @@ describe("drawShellFrame: ScrollState feedback (10-08, LAYOUT-02, Pattern 3)", (
   it("returns the drawShell lines and the grid window it drew (175x55: 3 card rows from 0)", () => {
     const f = drawShellFrame(input());
     expect(f.lines).toEqual(drawShell(input()));
-    expect(f.scroll).toEqual({ grid: { offset: 0, visible: 3 }, phases: NO_WIN, sessions: NO_WIN, ports: NO_WIN });
+    // 10-13: the right column's windows are reported too (unfocused PHASES: 5 phases drawn,
+    // SESSIONS not on screen, unfocused PORTS: 3 ports from the top)
+    expect(f.scroll).toEqual({
+      grid: { offset: 0, visible: 3 },
+      phases: { offset: 0, visible: 5 },
+      sessions: NO_WIN,
+      ports: { offset: 0, visible: 3 },
+    });
   });
 
   it("draws ↑ N more under the AGENTS title for a fed-back offset and keeps it (80x40)", () => {
@@ -669,5 +676,133 @@ describe("drawShell: narrowed FILES pass-through (10-12)", () => {
   it("draws the unnarrowed FILES title without the flag", () => {
     const t = texts(drawShell(input()));
     expect(t.some((s) => s.includes("esc: all"))).toBe(false);
+  });
+});
+
+// Phase 10 plan 10-13 (LAYOUT-02, KEYS-02, Pattern 3): identity cursors and
+// sticky PHASES / SESSIONS / PORTS windows through the shell.
+describe("drawShellFrame: identity cursors and sticky list windows (10-13)", () => {
+  const P = SAMPLE.projects[1]!.phases;
+  const SESS30 = Array.from({ length: 30 }, (_, i) => ({ id: `s${i}`, name: `session ${i}`, ago: `${i}m`, live: false }));
+  const SIZES: ReadonlyArray<readonly [string, number, number]> = [
+    ["split", 175, 24],
+    ["S2", 120, 30],
+    ["S1", 80, 34],
+  ];
+
+  /** The cells a frame's right column (split) or whole width (S1/S2) shows. */
+  function rightText(lines: Line[], cols: number, rows: number): string[] {
+    const g = geometry(cols, rows);
+    return texts(lines).map((s) => (g.split ? cut(s, g.RX, g.RW) : s));
+  }
+
+  it.each(SIZES)("%s %ix%i: the PHASES ❯ follows ui.phaseCursor by number and its window is sticky", (_m, cols, rows) => {
+    const at = (num: string, scroll?: ScrollState) =>
+      drawShellFrame(input({ cols, rows, ui: ui({ focus: "right", rightTab: "phases", phaseCursor: num }), scroll }));
+    const a = at(P[9]!.number);
+    const cur = rightText(a.lines, cols, rows).filter((s) => s.includes("❯"));
+    expect(cur).toHaveLength(1);
+    expect(cur[0]).toContain("dashboard redesign");
+    expect(a.scroll.phases.offset).toBeGreaterThan(0);
+    expect(a.scroll.phases.visible).toBeGreaterThan(0);
+    // the same cursor with the window fed back: it does not move
+    expect(at(P[9]!.number, a.scroll).scroll.phases).toEqual(a.scroll.phases);
+    // one phase up: the window stays while the cursor keeps its 1-phase top margin
+    const b = at(P[8]!.number, a.scroll);
+    if (8 >= a.scroll.phases.offset + 1) expect(b.scroll.phases.offset).toBe(a.scroll.phases.offset);
+    else expect(b.scroll.phases.offset).toBeLessThan(a.scroll.phases.offset);
+    expect(rightText(b.lines, cols, rows).find((s) => s.includes("❯"))).toContain("prompt weighting heuristic");
+  });
+
+  it("an unknown ui.phaseCursor falls back to the current phase", () => {
+    const f = drawShellFrame(input({ ui: ui({ focus: "right", rightTab: "phases", phaseCursor: "99" }) }));
+    const cur = rightText(f.lines, 175, 55).filter((s) => s.includes("❯"));
+    expect(cur).toHaveLength(1);
+    expect(cur[0]).toContain("ci pipeline monitoring");
+  });
+
+  it.each(SIZES)("%s %ix%i: the SESSIONS ▸ follows panes.sessionCursor by id; the window is sticky", (_m, cols, rows) => {
+    const at = (id: string, scroll?: ScrollState) =>
+      drawShellFrame(
+        input({
+          cols,
+          rows,
+          ui: ui({ focus: "right", rightTab: "sessions" }),
+          panes: { ...SAMPLE, sessions: SESS30, sessionCursor: id },
+          scroll,
+        }),
+      );
+    const a = at("s25");
+    const cur = rightText(a.lines, cols, rows).filter((s) => s.includes("▸"));
+    expect(cur).toHaveLength(1);
+    expect(cur[0]).toContain("session 25");
+    expect(a.scroll.sessions.offset).toBeGreaterThan(0);
+    const b = at("s24", a.scroll);
+    expect(b.scroll.sessions.offset).toBe(a.scroll.sessions.offset);
+    expect(rightText(b.lines, cols, rows).find((s) => s.includes("▸"))).toContain("session 24");
+  });
+
+  it("panes.sessionCursor absent keeps the first-session cursor; null draws none", () => {
+    const tab = ui({ focus: "right", rightTab: "sessions" });
+    const a = rightText(drawShellFrame(input({ ui: tab })).lines, 175, 55).filter((s) => s.includes("▸"));
+    expect(a).toHaveLength(1);
+    expect(a[0]).toContain(SAMPLE.sessions[0]!.name);
+    const b = drawShellFrame(input({ ui: tab, panes: { ...SAMPLE, sessionCursor: null } }));
+    expect(rightText(b.lines, 175, 55).some((s) => s.includes("▸"))).toBe(false);
+  });
+
+  it("panes.sessionsScanning draws scanning… for an empty list", () => {
+    const f = drawShellFrame(
+      input({ ui: ui({ rightTab: "sessions" }), panes: { ...SAMPLE, sessions: [], sessionsScanning: true } }),
+    );
+    expect(rightText(f.lines, 175, 55).some((s) => s.includes("scanning…"))).toBe(true);
+  });
+
+  it.each(SIZES)("%s %ix%i: ui.portCursor present / null / absent (fails closed, open question 4)", (_m, cols, rows) => {
+    const at = (portCursor: string | null) =>
+      rightText(drawShellFrame(input({ cols, rows, ui: ui({ focus: "ports", portCursor }) })).lines, cols, rows).filter(
+        (s) => s.includes("❯"),
+      );
+    const present = at("5173");
+    expect(present).toHaveLength(1);
+    expect(present[0]).toMatch(/❯ :5173 /);
+    const first = at(null);
+    expect(first).toHaveLength(1);
+    expect(first[0]).toMatch(new RegExp(`❯ :${SAMPLE.ports[0]!.port} `));
+    expect(at("gone")).toHaveLength(0);
+  });
+
+  it.each(SIZES)("%s %ix%i: the PORTS window is sticky", (_m, cols, rows) => {
+    const ports = Array.from({ length: 20 }, (_, i) => ({
+      key: `k${i}`,
+      port: 4000 + i,
+      proc: "node",
+      pid: 100 + i,
+      exposed: false,
+      owner: null,
+    }));
+    const at = (key: string, scroll?: ScrollState) =>
+      drawShellFrame(input({ cols, rows, ui: ui({ focus: "ports", portCursor: key }), panes: { ...SAMPLE, ports }, scroll }));
+    const a = at("k18");
+    expect(rightText(a.lines, cols, rows).find((s) => s.includes("❯"))).toMatch(/❯ :4018 /);
+    expect(a.scroll.ports.offset).toBeGreaterThan(0);
+    const b = at("k17", a.scroll);
+    expect(b.scroll.ports.offset).toBe(a.scroll.ports.offset);
+    expect(rightText(b.lines, cols, rows).find((s) => s.includes("❯"))).toMatch(/❯ :4017 /);
+  });
+
+  it("no cursors: feeding the reported scroll back draws the same frames", () => {
+    for (const [, cols, rows] of [...SIZES, ["primary", 175, 55] as const]) {
+      for (const focus of ["agents", "right", "ports"] as const) {
+        for (const rightTab of ["phases", "sessions"] as const) {
+          const base = input({ cols, rows, ui: ui({ focus, rightTab }) });
+          const a = drawShellFrame(base);
+          const b = drawShellFrame({ ...base, scroll: a.scroll });
+          expect(b.lines).toEqual(a.lines);
+          expect(b.lines).toEqual(drawShell(base));
+          expect(b.scroll).toEqual(a.scroll);
+        }
+      }
+    }
   });
 });
