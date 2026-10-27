@@ -81,6 +81,71 @@ vi.mock("../update.js", async (importOriginal) => {
     installedVersion: vi.fn(() => "1.7.0"),
   };
 });
+// 10-14: PanelApp calls usePhases (gsd-tools, `.planning/` probes) and
+// useResume (transcript scans, the launcher). Mock exactly what App.test.tsx
+// mocks, keeping every pure helper real: the scans return fixtures, the
+// cadences are frozen, and the clipboard / terminal launchers are stubs, so no
+// test ever spawns gsd-tools, reads ~/.claude, runs pbcopy / osascript / open
+// or resumes a real session.
+const PH = vi.hoisted(() => ({
+  roots: [] as string[],
+  progress: {} as Record<string, import("../phases.js").Progress>,
+}));
+vi.mock("../phases.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../phases.js")>();
+  return {
+    ...actual,
+    scanProgress: vi.fn(async (root: string) => PH.progress[root] ?? null),
+    resolvePlanningRoots: vi.fn(async () => new Set(PH.roots)),
+    phaseScanMs: vi.fn(() => 10_000_000),
+    resolveGsdTools: vi.fn(() => "/dummy/gsd-tools.cjs"),
+  };
+});
+const SESS = vi.hoisted(() => ({ list: [] as import("../sessions.js").ResumeRow[] }));
+vi.mock("../sessions.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../sessions.js")>();
+  return {
+    ...actual,
+    discoverSessions: vi.fn(async () => SESS.list),
+    resumeScanMs: vi.fn(() => 10_000_000),
+    readLiveRegistry: vi.fn(async () => new Set<string>()),
+    resumeExtras: vi.fn(async () => ({ bypass: false })),
+  };
+});
+vi.mock("./launch.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./launch.js")>();
+  return {
+    ...actual,
+    copyResume: vi.fn(async () => ({ ok: true, copied: true, message: "copied ✓" })),
+    openResume: vi.fn(async () => ({
+      ok: true,
+      copied: true,
+      message: "opened a new Terminal window · command copied",
+    })),
+  };
+});
+import { scanProgress, resolvePlanningRoots, phaseScanMs, resolveGsdTools } from "../phases.js";
+import { discoverSessions, resumeScanMs, readLiveRegistry, resumeExtras } from "../sessions.js";
+import { copyResume, openResume } from "./launch.js";
+
+// Re-arm the 10-14 mocks before every test (a restore elsewhere could strip a
+// vi.fn implementation) so no test ever reaches a real scan or launcher.
+beforeEach(() => {
+  vi.mocked(scanProgress).mockImplementation(async (root: string) => PH.progress[root] ?? null);
+  vi.mocked(resolvePlanningRoots).mockImplementation(async () => new Set(PH.roots));
+  vi.mocked(phaseScanMs).mockReturnValue(10_000_000);
+  vi.mocked(resolveGsdTools).mockReturnValue("/dummy/gsd-tools.cjs");
+  vi.mocked(discoverSessions).mockImplementation(async () => SESS.list);
+  vi.mocked(resumeScanMs).mockReturnValue(10_000_000);
+  vi.mocked(readLiveRegistry).mockResolvedValue(new Set<string>());
+  vi.mocked(resumeExtras).mockResolvedValue({ bypass: false });
+  vi.mocked(copyResume).mockResolvedValue({ ok: true, copied: true, message: "copied ✓" });
+  vi.mocked(openResume).mockResolvedValue({
+    ok: true,
+    copied: true,
+    message: "opened a new Terminal window · command copied",
+  });
+});
 
 const DEFAULT_ROWS = [
   makeRow({ session_id: "sess-ask", asking: true }),
@@ -190,17 +255,20 @@ describe("PanelApp focus model (KEYS-01, D-13)", () => {
 describe("PanelApp r and space (D-15)", () => {
   it("r with AGENTS focused makes SESSIONS the active tab", async () => {
     const { lastFrame, stdin } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
-    expect(lastFrame()).toContain("ci pipeline monitoring");
+    // 10-14: PHASES is live; these rows have no cwd, so no project qualifies
+    expect(lastFrame()).toContain("no GSD projects");
     press(stdin, KEYS.r);
     await vi.waitFor(() => expect(footer(lastFrame())).toContain("r phases"));
-    // The right column now draws SESSIONS, not the PHASES list.
-    expect(lastFrame()).not.toContain("ci pipeline monitoring");
+    // The right column now draws the live SESSIONS list, not PHASES.
+    await vi.waitFor(() => expect(lastFrame()).toContain("no resumable sessions"));
+    expect(lastFrame()).not.toContain("no GSD projects");
 
     // The tabs row in the frame is exactly the shell's row for rightTab
     // sessions, whose SESSIONS segment carries the active-tab background.
     const display = ROWS.list.map((row) => ({ id: row.session_id, row, ended: false }));
     const header = headerFromRoster({ display, live: 2, idle: 0, conflicts: [] }, null, NOW);
-    // 10-09: AGENTS is live; 10-12: FILES is live (no files here); the rest is SAMPLE
+    // 10-09: AGENTS is live; 10-12: FILES is live (no files here); 10-14:
+    // PHASES and SESSIONS are live (no projects, no sessions); PORTS is SAMPLE
     const ag = buildAgents({
       display,
       conflicts: [],
@@ -215,10 +283,21 @@ describe("PanelApp r and space (D-15)", () => {
       tick: 0,
       step: 0,
       header,
-      panes: { ...SAMPLE, agents: ag.agents, idle: ag.idle, conflicts: [], groups: [] },
+      panes: {
+        ...SAMPLE,
+        agents: ag.agents,
+        idle: ag.idle,
+        conflicts: [],
+        groups: [],
+        projects: [],
+        projectIndex: 0,
+        sessions: [],
+        sessionStatus: null,
+        sessionCursor: null,
+      },
       keysOff: false,
       flash: null,
-      sample: { agents: false, files: false, phases: true, sessions: true, ports: true },
+      sample: { agents: false, files: false, phases: false, sessions: false, ports: true },
     });
     const tabsY = expected.findIndex((l) => lineText(l).includes("[r]"));
     expect(tabsY).toBeGreaterThan(0);
@@ -331,10 +410,10 @@ describe("PanelApp selection idle drop (10-08, D-09)", () => {
     const { lastFrame, stdin } = await mountTty(
       <PanelApp tickMs={20} now={() => clock.t} initialUi={{ selectedAgentId: CARD_ID, lastKeyAt: 0 }} />,
     );
-    expect(lastFrame()).toContain("ci pipeline monitoring");
+    expect(lastFrame()).toContain("no GSD projects");
     press(stdin, KEYS.r);
     // the right column switches to SESSIONS (agentsSelected hints carry no r)
-    await vi.waitFor(() => expect(lastFrame()).not.toContain("ci pipeline monitoring"));
+    await vi.waitFor(() => expect(lastFrame()).not.toContain("no GSD projects"));
     clock.t = 19_999;
     await nextTick(lastFrame);
     expect(lastFrame()).toContain("┏");
@@ -511,15 +590,15 @@ describe("PanelApp live AGENTS (10-09)", () => {
     expect(leftOf(title)).not.toContain("sample");
   });
 
-  it("PHASES / SESSIONS and PORTS keep their sample chips; FILES is live (10-12, D-23)", async () => {
+  it("only PORTS keeps its sample chip; FILES (10-12), PHASES and SESSIONS (10-14) are live (D-23)", async () => {
     const { lastFrame, stdin } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
     const ls = lines(lastFrame());
     expect(leftOf(ls.find((l) => leftOf(l).startsWith(" FILES "))!)).not.toContain("sample");
     expect(ls.find((l) => l.includes("PORTS"))).toContain("sample");
-    expect(ls.find((l) => l.includes("[r]"))).toContain("sample");
+    expect(ls.find((l) => l.includes("[r]"))).not.toContain("sample");
     press(stdin, KEYS.r);
     await vi.waitFor(() => expect(footer(lastFrame())).toContain("r phases"));
-    expect(lines(lastFrame()).find((l) => l.includes("[r]"))).toContain("sample");
+    expect(lines(lastFrame()).find((l) => l.includes("[r]"))).not.toContain("sample");
   });
 
   it("a reversed readAll and a compact (start_time rewritten) never move a card", async () => {
@@ -976,5 +1055,285 @@ describe("PanelApp live FILES (10-12)", () => {
       await nextTick(sel.lastFrame);
       expect(filesBlock(sel.lastFrame()).join("\n")).toBe(fixed);
     }
+  });
+});
+
+// --- Phase 10 plan 10-14: live PHASES and SESSIONS (KEYS-05, KEYS-02, KEYS-03, D-16, D-23)
+
+/** Press keys one input chunk at a time (`press` writes synchronously, so "\t\t" or "oo" would arrive as one chunk). */
+async function pressEach(stdin: NodeJS.ReadStream, ...keys: string[]): Promise<void> {
+  for (const k of keys) {
+    press(stdin, k);
+    await sleep(40);
+  }
+}
+
+describe("PanelApp live PHASES (10-14, KEYS-05, KEYS-02)", () => {
+  const PG_UP = String.fromCharCode(27) + "[5~";
+  const PG_DOWN = String.fromCharCode(27) + "[6~";
+  const phase = (prefix: string, i: number, current: number) => ({
+    number: String(i).padStart(2, "0"),
+    name: `${prefix}-${String(i).padStart(2, "0")}`,
+    plans: 2,
+    summaries: i < current ? 2 : i === current ? 1 : 0,
+    status: i < current ? "Complete" : i === current ? "In Progress" : "Pending",
+  });
+  const projectRows = (): SessionRow[] => [
+    makeRow({ session_id: "s-pa", folder: "projA", cwd: "/projA", title: "work on A" }),
+    makeRow({ session_id: "s-pb", folder: "projB", cwd: "/projB", title: "work on B" }),
+  ];
+  /** The right-column line showing `project i/N` (the dir row). */
+  const projLine = (frame: string): string => lines(frame).find((l) => /project \d\/\d/.test(l)) ?? "";
+  /** The phase name on the PHASES cursor row (`❯`). */
+  const cursorPhase = (frame: string): string | null => {
+    const l = lines(frame).find((x) => x.includes("❯"));
+    return l === undefined ? null : (/(alpha|beta)-\d\d/.exec(l)?.[0] ?? null);
+  };
+
+  beforeEach(() => {
+    ROWS.list = projectRows();
+    PH.roots = ["/projA", "/projB"];
+    PH.progress = {
+      "/projA": {
+        milestone_name: "Alpha",
+        milestone_version: "v1",
+        percent: 15,
+        phases: Array.from({ length: 20 }, (_, i) => phase("alpha", i, 3)),
+      },
+      "/projB": {
+        milestone_name: "Beta",
+        milestone_version: "v2",
+        percent: 33,
+        phases: Array.from({ length: 3 }, (_, i) => phase("beta", i, 1)),
+      },
+    };
+  });
+  afterEach(() => {
+    ROWS.list = DEFAULT_ROWS;
+    PH.roots = [];
+    PH.progress = {};
+  });
+
+  it("shows the live project with no sample chip; →/← cycle projects by root (wrapping); Tab never does", async () => {
+    const { lastFrame, stdin } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
+    await vi.waitFor(() => expect(lastFrame()).toContain("Alpha v1"), { timeout: 3000 });
+    expect(projLine(lastFrame())).toContain("projA");
+    expect(projLine(lastFrame())).toContain("project 1/2");
+    expect(lines(lastFrame()).find((l) => l.includes("[r]"))).not.toContain("sample");
+
+    press(stdin, KEYS.tab);
+    await vi.waitFor(() => expect(lastFrame()).toContain("▐PHASES▌"));
+    press(stdin, KEYS.right);
+    await vi.waitFor(() => expect(projLine(lastFrame())).toContain("project 2/2"));
+    expect(projLine(lastFrame())).toContain("projB");
+    await vi.waitFor(() => expect(lastFrame()).toContain("Beta v2"), { timeout: 3000 });
+    // → again wraps to the first project
+    press(stdin, KEYS.right);
+    await vi.waitFor(() => expect(projLine(lastFrame())).toContain("project 1/2"));
+    expect(projLine(lastFrame())).toContain("projA");
+    // ← wraps back the other way
+    press(stdin, KEYS.left);
+    await vi.waitFor(() => expect(projLine(lastFrame())).toContain("project 2/2"));
+
+    // Tab moves focus to PORTS and round to PHASES; the project never changes
+    press(stdin, KEYS.tab);
+    await vi.waitFor(() => expect(lastFrame()).toContain("▐PORTS▌"));
+    expect(projLine(lastFrame())).toContain("projB");
+    await pressEach(stdin, KEYS.tab, KEYS.tab);
+    await vi.waitFor(() => expect(lastFrame()).toContain("▐PHASES▌"));
+    expect(projLine(lastFrame())).toContain("projB");
+    expect(projLine(lastFrame())).toContain("project 2/2");
+  });
+
+  it("a re-ordered focus set keeps the same project on screen (identity, not index)", async () => {
+    const { lastFrame, stdin } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
+    await vi.waitFor(() => expect(lastFrame()).toContain("Alpha v1"), { timeout: 3000 });
+    expect(projLine(lastFrame())).toContain("project 1/2");
+
+    // before any ←/→: the shown root is kept across the re-order
+    ROWS.list = projectRows().reverse();
+    await vi.waitFor(() => expect(projLine(lastFrame())).toContain("project 2/2"), { timeout: 3000 });
+    expect(projLine(lastFrame())).toContain("projA");
+    expect(lastFrame()).toContain("Alpha v1");
+
+    // after →: the picked root is kept across the next re-order
+    await pressEach(stdin, KEYS.tab, KEYS.right);
+    await vi.waitFor(() => expect(projLine(lastFrame())).toContain("projB"));
+    expect(projLine(lastFrame())).toContain("project 1/2");
+    ROWS.list = projectRows();
+    await vi.waitFor(() => expect(projLine(lastFrame())).toContain("project 2/2"), { timeout: 3000 });
+    expect(projLine(lastFrame())).toContain("projB");
+  });
+
+  it("↑/↓ move the phase cursor by number, PgUp/PgDn by the window; a project change resets it", async () => {
+    const { lastFrame, stdin } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
+    await vi.waitFor(() => expect(lastFrame()).toContain("Alpha v1"), { timeout: 3000 });
+    press(stdin, KEYS.tab);
+    // the default cursor is the current phase
+    await vi.waitFor(() => expect(cursorPhase(lastFrame())).toBe("alpha-03"));
+    press(stdin, KEYS.down);
+    await vi.waitFor(() => expect(cursorPhase(lastFrame())).toBe("alpha-04"));
+    press(stdin, KEYS.up);
+    await vi.waitFor(() => expect(cursorPhase(lastFrame())).toBe("alpha-03"));
+    press(stdin, KEYS.down);
+    await vi.waitFor(() => expect(cursorPhase(lastFrame())).toBe("alpha-04"));
+
+    // PgDn moves by the phases drawn in the window
+    const drawn = new Set(lastFrame().match(/alpha-\d\d/g) ?? []).size;
+    expect(drawn).toBeGreaterThan(1);
+    const target = `alpha-${String(Math.min(19, 4 + drawn)).padStart(2, "0")}`;
+    press(stdin, PG_DOWN);
+    await vi.waitFor(() => expect(cursorPhase(lastFrame())).toBe(target));
+    // PgUp past the top clamps to the first phase
+    await pressEach(stdin, PG_UP, PG_UP, PG_UP, PG_UP, PG_UP);
+    await vi.waitFor(() => expect(cursorPhase(lastFrame())).toBe("alpha-00"));
+
+    // → shows project B with its cursor on B's current phase
+    press(stdin, KEYS.right);
+    await vi.waitFor(() => expect(cursorPhase(lastFrame())).toBe("beta-01"), { timeout: 3000 });
+    // ← back to A: the cursor was cleared, so it rests on A's current phase again
+    press(stdin, KEYS.left);
+    await vi.waitFor(() => expect(cursorPhase(lastFrame())).toBe("alpha-03"));
+  });
+
+  it("the footer shows the PHASES hints from the keymap", async () => {
+    const { lastFrame, stdin } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
+    press(stdin, KEYS.tab);
+    await vi.waitFor(() => expect(lastFrame()).toContain("▐PHASES▌"));
+    const f = footer(lastFrame());
+    expect(f).toContain("↑↓ browse phases");
+    expect(f).toContain("←→ project");
+    expect(f).toContain("r sessions");
+  });
+});
+
+describe("PanelApp live SESSIONS (10-14, 08 D-14..D-19)", () => {
+  const PG_UP = String.fromCharCode(27) + "[5~";
+  const PG_DOWN = String.fromCharCode(27) + "[6~";
+  const resumeRow = (id: string, label: string, ageMs: number) => ({
+    id,
+    label,
+    labelKind: "name" as const,
+    folder: "proj",
+    cwd: "/nx-csm-1014",
+    slug: "-nx-csm-1014",
+    mtimeMs: NOW - ageMs,
+    live: false,
+  });
+  /** The session name on the SESSIONS cursor row (`▸`). */
+  const cursorSession = (frame: string): string | null => {
+    const l = lines(frame).find((x) => x.includes("▸"));
+    return l === undefined ? null : (/(first|second|third) sess/.exec(l)?.[0] ?? null);
+  };
+  const OPENED = "opened a new Terminal window";
+
+  beforeEach(() => {
+    SESS.list = [
+      resumeRow("r-1", "first sess", 60_000),
+      resumeRow("r-2", "second sess", 3_600_000),
+      resumeRow("r-3", "third sess", 86_400_000 * 2),
+    ];
+    vi.mocked(copyResume).mockClear();
+    vi.mocked(openResume).mockClear();
+    vi.mocked(discoverSessions).mockClear();
+  });
+  afterEach(() => {
+    SESS.list = [];
+  });
+
+  /** Mount, focus the right column and switch it to SESSIONS. */
+  async function mountSessions() {
+    const m = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
+    press(m.stdin, KEYS.tab);
+    await vi.waitFor(() => expect(m.lastFrame()).toContain("▐PHASES▌"));
+    press(m.stdin, KEYS.r);
+    await vi.waitFor(() => expect(cursorSession(m.lastFrame())).toBe("first sess"));
+    return m;
+  }
+
+  it("shows the live resume list with ages and the footer's SESSIONS hints; the scan runs only while shown", async () => {
+    const { lastFrame, stdin } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
+    await sleep(50);
+    expect(discoverSessions).not.toHaveBeenCalled();
+    await pressEach(stdin, KEYS.tab, KEYS.r);
+    await vi.waitFor(() => expect(lastFrame()).toContain("third sess"));
+    expect(discoverSessions).toHaveBeenCalledTimes(1);
+    const f = lastFrame();
+    expect(lines(f).find((l) => l.includes("first sess"))).toContain("1m");
+    expect(lines(f).find((l) => l.includes("third sess"))).toContain("2d");
+    expect(lines(f).find((l) => l.includes("[r]"))).not.toContain("sample");
+    const ft = footer(f);
+    expect(ft).toContain("↑↓ select session");
+    expect(ft).toContain("⏎ copy resume");
+    expect(ft).toContain("o new window");
+  });
+
+  it("↓/↑ and PgUp/PgDn move the cursor by id", async () => {
+    const { lastFrame, stdin } = await mountSessions();
+    press(stdin, KEYS.down);
+    await vi.waitFor(() => expect(cursorSession(lastFrame())).toBe("second sess"));
+    press(stdin, KEYS.up);
+    await vi.waitFor(() => expect(cursorSession(lastFrame())).toBe("first sess"));
+    press(stdin, PG_DOWN);
+    await vi.waitFor(() => expect(cursorSession(lastFrame())).toBe("third sess"));
+    press(stdin, PG_UP);
+    await vi.waitFor(() => expect(cursorSession(lastFrame())).toBe("first sess"));
+  });
+
+  it("Enter copies the selected resume line and shows copied ✓; o opens it; r clears the status", async () => {
+    const { lastFrame, stdin } = await mountSessions();
+    press(stdin, KEYS.down);
+    await vi.waitFor(() => expect(cursorSession(lastFrame())).toBe("second sess"));
+
+    press(stdin, KEYS.enter);
+    await vi.waitFor(() => expect(lastFrame()).toContain("copied ✓"));
+    expect(copyResume).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(copyResume).mock.calls[0]![0]).toMatchObject({ id: "r-2", cwd: "/nx-csm-1014", live: false });
+    expect(openResume).not.toHaveBeenCalled();
+
+    press(stdin, "o");
+    await vi.waitFor(() => expect(lastFrame()).toContain(OPENED));
+    expect(openResume).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(openResume).mock.calls[0]![0]).toMatchObject({ id: "r-2", live: false });
+
+    // r back to PHASES clears the status; it is gone when SESSIONS shows again
+    press(stdin, KEYS.r);
+    await vi.waitFor(() => expect(footer(lastFrame())).toContain("r sessions"));
+    press(stdin, KEYS.r);
+    await vi.waitFor(() => expect(footer(lastFrame())).toContain("r phases"));
+    await vi.waitFor(() => expect(lastFrame()).toContain("second sess"));
+    expect(lastFrame()).not.toContain(OPENED);
+    expect(lastFrame()).not.toContain("copied ✓");
+  });
+
+  it("a second o on the just-opened session copies instead of opening again (claim-before-await)", async () => {
+    let release: () => void = () => undefined;
+    vi.mocked(openResume).mockImplementationOnce(
+      () =>
+        new Promise((res) => {
+          release = () => res({ ok: true, copied: true, message: `${OPENED} · command copied` });
+        }),
+    );
+    const { lastFrame, stdin } = await mountSessions();
+    // two separate presses while the first launch is still pending
+    press(stdin, "o");
+    await vi.waitFor(() => expect(openResume).toHaveBeenCalledTimes(1));
+    press(stdin, "o");
+    await vi.waitFor(() => expect(openResume).toHaveBeenCalledTimes(2));
+    // the first press launches (not live); the second sees the hold and only copies (live: true)
+    expect(vi.mocked(openResume).mock.calls[0]![0]).toMatchObject({ id: "r-1", live: false });
+    expect(vi.mocked(openResume).mock.calls[1]![0]).toMatchObject({ id: "r-1", live: true });
+    release();
+    await vi.waitFor(() => expect(lastFrame()).toContain("· live"));
+  });
+
+  it("Enter with PHASES showing never copies", async () => {
+    const { stdin, lastFrame } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
+    press(stdin, KEYS.tab);
+    await vi.waitFor(() => expect(lastFrame()).toContain("▐PHASES▌"));
+    await pressEach(stdin, KEYS.enter, "o");
+    await sleep(100);
+    expect(copyResume).not.toHaveBeenCalled();
+    expect(openResume).not.toHaveBeenCalled();
   });
 });
