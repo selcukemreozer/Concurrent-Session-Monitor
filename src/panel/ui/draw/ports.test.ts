@@ -3,7 +3,7 @@ import { Screen, type Line } from "../screen.js";
 import { cellWidth, graphemes } from "../text.js";
 import { SAMPLE } from "../sample.js";
 import type { PortEntry } from "../models.js";
-import { drawPortsPane, visiblePortEntries } from "./ports.js";
+import { drawPortsPane, drawPortsWin, visiblePortEntries } from "./ports.js";
 
 // Phase 9 plan 09-08 Task 2: the PORTS pane (D-02, D-06): unfocused owned +
 // exposed ports with `+N others`, focused all ports with the cursor and pid,
@@ -341,5 +341,84 @@ describe("drawPortsPane has no Phase 11-12 rows", () => {
       expect(l).not.toMatch(/▌ name/);
       expect(l).not.toContain("▌");
     }
+  });
+});
+
+// Phase 10 plan 10-13 (LAYOUT-02, Pattern 3, RESEARCH open question 4): the
+// window-reporting variant and the fail-closed port cursor.
+describe("drawPortsWin sticky window", () => {
+  const many: PortEntry[] = Array.from({ length: 20 }, (_, i) => ({
+    key: `k${i}`,
+    port: 4000 + i,
+    proc: "node",
+    pid: 100 + i,
+    exposed: false,
+    owner: i % 3 === 0 ? `agent ${i}` : null,
+  }));
+  const r = { x: X, y: 27, w: 74, h: 10 };
+
+  function step(cursorKey: string | null, offset: number): { lines: string[]; win: ReturnType<typeof drawPortsWin> } {
+    const scr = new Screen(175, 40);
+    const win = drawPortsWin(scr, r, { ports: many, focused: true, cursorKey, sample: false, offset });
+    return { lines: paneText(scr, r), win };
+  }
+
+  it("keeps the window while the cursor stays inside it and follows past the edge", () => {
+    let off = 0;
+    for (let c = 0; c < 20; c++) {
+      const { lines, win } = step(`k${c}`, off);
+      expect(lines.find((l) => l.startsWith("❯"))).toMatch(new RegExp(`^❯ :${4000 + c} `));
+      expect(win.offset).toBeGreaterThanOrEqual(off);
+      off = win.offset;
+    }
+    expect(off).toBeGreaterThan(0);
+    // one step back inside the window: no move
+    const back = step("k18", off);
+    expect(back.win.offset).toBe(off);
+  });
+
+  it("reports the ports drawn, and drawn + arrows count every port", () => {
+    const { lines, win } = step("k12", 0);
+    const shown = lines.filter((l) => /^. :\d+/.test(l)).length;
+    expect(win.visible).toBe(shown);
+    const up = Number(/↑ (\d+) more/.exec(lines.find((l) => l.includes("↑")) ?? "")?.[1] ?? 0);
+    const down = Number(/↓ (\d+) more/.exec(lines.find((l) => l.includes("↓")) ?? "")?.[1] ?? 0);
+    expect(up).toBe(win.offset);
+    expect(up + shown + down).toBe(20);
+  });
+
+  it("an absent cursorKey draws no ❯ on any row and keeps the previous offset (fails closed)", () => {
+    const { lines, win } = step("gone", 5);
+    expect(lines.some((l) => l.includes("❯"))).toBe(false);
+    expect(win.offset).toBe(5);
+    const scr = new Screen(175, 40);
+    drawPortsWin(scr, r, { ports: many, focused: true, cursorKey: "gone", sample: false });
+    for (let y = 0; y < 40; y++) expect(text(scr, y).includes("❯")).toBe(false);
+  });
+
+  it("clamps a stale offset after a resize", () => {
+    const scr = new Screen(175, 80);
+    const tall = { x: X, y: 2, w: 74, h: 60 };
+    const win = drawPortsWin(scr, tall, { ports: many, focused: true, cursorKey: "k19", sample: false, offset: 15 });
+    expect(win).toMatchObject({ offset: 0, visible: 20 });
+  });
+
+  it("drawPortsPane returns the rows of drawPortsWin and draws the same frame", () => {
+    for (const focused of [false, true]) {
+      const a = new Screen(175, 40);
+      const b = new Screen(175, 40);
+      const m = { ports: SAMPLE.ports, focused, cursorKey: focused ? "3000" : null, sample: true };
+      const rows = drawPortsPane(a, RECT, m);
+      const win = drawPortsWin(b, RECT, m);
+      expect(win.rows).toBe(rows);
+      expect(b.toLines()).toEqual(a.toLines());
+    }
+  });
+
+  it("unfocused always starts at the top (exposed first, WR-05)", () => {
+    const scr = new Screen(175, 40);
+    const win = drawPortsWin(scr, { ...RECT, h: 5 }, { ports: SAMPLE.ports, focused: false, cursorKey: null, sample: true, offset: 3 });
+    expect(win.offset).toBe(0);
+    expect(text(scr, 29, X, 175)).toMatch(/^ {2}:27036 /);
   });
 });

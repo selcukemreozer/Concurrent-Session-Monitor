@@ -3,7 +3,7 @@ import { Screen, type Line } from "../screen.js";
 import { cellWidth, graphemes } from "../text.js";
 import { SAMPLE } from "../sample.js";
 import type { Flash, SessionEntry } from "../models.js";
-import { drawSessions } from "./sessions.js";
+import { drawSessions, drawSessionsWin } from "./sessions.js";
 
 // Phase 9 plan 09-08 Task 1: the SESSIONS pane, the shipped OTURUMLAR look in
 // English (08 D-15..D-17): cursor, name, ago, `. live`, the in-pane outcome
@@ -125,11 +125,20 @@ describe("drawSessions unfocused", () => {
 
 describe("drawSessions status line", () => {
   it("draws a success status after a spacer row", () => {
-    const { scr, rows } = pane({ status: { text: "copied ✓", ok: true } });
+    const { scr, rows } = pane({ status: { text: "opened", ok: true } });
     expect(text(scr, 15, X, X + 74)).toBe("");
-    expect(text(scr, 16, X, X + 74)).toBe("  ✓ copied ✓");
+    expect(text(scr, 16, X, X + 74)).toBe("  ✓ opened");
     expect(cellAt(scr, X + 2, 16)).toMatchObject({ ch: "✓", fg: GREEN, bold: true });
-    expect(cellAt(scr, X + 4, 16)).toMatchObject({ ch: "c", fg: FG });
+    expect(cellAt(scr, X + 4, 16)).toMatchObject({ ch: "o", fg: FG });
+    expect(rows).toBe(13);
+  });
+
+  // 10-13: a success message that already carries the check gets no second one.
+  it("draws `copied ✓` green bold at x2 with no leading check", () => {
+    const { scr, rows } = pane({ status: { text: "copied ✓", ok: true } });
+    expect(text(scr, 16, X, X + 74)).toBe("  copied ✓");
+    expect(cellAt(scr, X + 2, 16)).toMatchObject({ ch: "c", fg: GREEN, bold: true });
+    expect(cellAt(scr, X + 9, 16)).toMatchObject({ ch: "✓", fg: GREEN, bold: true });
     expect(rows).toBe(13);
   });
 
@@ -196,5 +205,84 @@ describe("drawSessions narrow width", () => {
     const evil = [{ id: "a", name: "ev\u001b[2Jil\u0007", ago: "1m", live: false }];
     const { scr } = pane({ sessions: evil, cursorId: "a" });
     expect(text(scr, 4, X, X + 74)).not.toMatch(/[\u0000-\u001f\u007f]/);
+  });
+});
+
+// Phase 10 plan 10-13 (LAYOUT-02, Pattern 3): the window-reporting variant.
+describe("drawSessionsWin sticky window", () => {
+  const many: SessionEntry[] = Array.from({ length: 30 }, (_, i) => ({
+    id: `s${i}`,
+    name: `session ${i}`,
+    ago: `${i}m`,
+    live: false,
+  }));
+  const r = { x: X, y: 4, w: 74, h: 10 };
+
+  function step(cursor: number, offset: number): { scr: Screen; win: ReturnType<typeof drawSessionsWin> } {
+    const scr = new Screen(200, 40);
+    const win = drawSessionsWin(scr, r, {
+      sessions: many,
+      focused: true,
+      cursorId: many[cursor]!.id,
+      status: null,
+      scanning: false,
+      offset,
+    });
+    return { scr, win };
+  }
+
+  it("does not move until the cursor needs the margin, then moves by one, and stays on the way back", () => {
+    const seen: Array<[number, number]> = [];
+    let off = 0;
+    for (const c of [0, 7, 8, 9, 7]) {
+      const { scr, win } = step(c, off);
+      off = win.offset;
+      seen.push([win.offset, win.visible]);
+      const lines = paneText(scr, r);
+      const at = lines.findIndex((l) => l.startsWith("▸ "));
+      expect(lines[at]).toBe(`▸ session ${c}`.padEnd(30) + `${c}m`);
+    }
+    expect(seen).toEqual([
+      [0, 9],
+      [0, 9],
+      [2, 8],
+      [3, 8],
+      [3, 8],
+    ]);
+  });
+
+  it("reports the items drawn and keeps the counts exact", () => {
+    const { scr, win } = step(9, 3);
+    const lines = paneText(scr, r);
+    const up = Number(/↑ (\d+) more/.exec(lines[0]!)?.[1]);
+    const down = Number(/↓ (\d+) more/.exec(lines.find((l) => l.includes("↓"))!)?.[1]);
+    expect(up).toBe(win.offset);
+    expect(up + win.visible + down).toBe(30);
+  });
+
+  it("clamps a stale offset after a resize instead of keeping it", () => {
+    const scr = new Screen(200, 60);
+    const tall = { x: X, y: 4, w: 74, h: 40 };
+    const win = drawSessionsWin(scr, tall, {
+      sessions: many,
+      focused: true,
+      cursorId: "s29",
+      status: null,
+      scanning: false,
+      offset: 25,
+    });
+    expect(win).toMatchObject({ offset: 0, visible: 30 });
+    expect(text(scr, 4, X, X + 74)).toMatch(/^ {2}session 0 /);
+  });
+
+  it("drawSessions returns the rows of drawSessionsWin and draws the same frame", () => {
+    const a = new Screen(200, 40);
+    const b = new Screen(200, 40);
+    const m = { sessions: SAMPLE.sessions, focused: true, cursorId: SAMPLE.sessions[0]!.id, status: null, scanning: false };
+    const rows = drawSessions(a, RECT, m);
+    const win = drawSessionsWin(b, RECT, m);
+    expect(win.rows).toBe(rows);
+    expect(b.toLines()).toEqual(a.toLines());
+    expect(win).toMatchObject({ offset: 0, visible: SAMPLE.sessions.length });
   });
 });

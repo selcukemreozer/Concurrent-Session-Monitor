@@ -3,7 +3,7 @@ import { Screen, type Line } from "../screen.js";
 import { cellWidth, graphemes } from "../text.js";
 import { SAMPLE } from "../sample.js";
 import type { PhaseEntry, Project } from "../models.js";
-import { drawPhases } from "./phases.js";
+import { drawPhases, drawPhasesWin } from "./phases.js";
 
 // Phase 9 plan 09-08 Task 1: the PHASES pane (D-02): project header, progress
 // bar and the windowed timeline, reproduced cell-exactly from the approved
@@ -454,5 +454,84 @@ describe("drawPhases: a short focused rect keeps phase rows (Phase 10 plan 10-01
     const r = { x: 101, y: 4, w: 74, h: 4 };
     const { scr } = pane({ focused: false }, r);
     expect(paneText(scr, r)[1]).toBe(" mvp-dash · project 2/2");
+  });
+});
+
+// Phase 10 plan 10-13 (LAYOUT-02, Pattern 3): the window-reporting variant.
+describe("drawPhasesWin sticky window", () => {
+  const p12 = project(12, 4, [1, 3]);
+  const r = { x: 101, y: 4, w: 74, h: 12 };
+
+  function step(cursor: number, offset: number): { lines: string[]; win: ReturnType<typeof drawPhasesWin> } {
+    const scr = new Screen(175, 40);
+    const win = drawPhasesWin(scr, r, { projects: [p12], projectIndex: 0, focused: true, cursor, offset });
+    return { lines: paneText(scr, r), win };
+  }
+
+  it("keeps the window while the cursor stays inside it and follows past the edge", () => {
+    let off = 0;
+    const offsets: number[] = [];
+    for (let c = 0; c < 12; c++) {
+      const { lines, win } = step(c, off);
+      // the cursor row is always drawn
+      expect(lines.find((l) => l.startsWith("❯"))).toMatch(new RegExp(`^❯ [●◉○]  ${c + 1} +phase ${c + 1}$`));
+      expect(win.offset).toBeGreaterThanOrEqual(off);
+      off = win.offset;
+      offsets.push(off);
+    }
+    expect(offsets[0]).toBe(0);
+    expect(offsets[11]).toBeGreaterThan(0);
+    // back up one phase at a time: the window stays until the cursor reaches its top margin
+    for (let c = 10; c >= 0; c--) {
+      const { lines, win } = step(c, off);
+      expect(lines.some((l) => l.startsWith("❯"))).toBe(true);
+      // variable item heights: past the margin the window may move by more than one phase
+      if (c - 1 >= off) expect(win.offset).toBe(off);
+      else expect(win.offset).toBeLessThanOrEqual(Math.max(0, c - 1) + 1);
+      expect(win.offset).toBeLessThanOrEqual(off);
+      off = win.offset;
+    }
+    expect(off).toBe(0);
+  });
+
+  it("reports the phase items drawn, and drawn + arrows count every phase", () => {
+    const { lines, win } = step(11, 0);
+    const shown = lines.filter((l) => /^. [●◉○] /.test(l)).length;
+    expect(win.visible).toBe(shown);
+    const up = Number(/↑ (\d+) more/.exec(lines.find((l) => l.includes("↑")) ?? "")?.[1] ?? 0);
+    const down = Number(/↓ (\d+) more/.exec(lines.find((l) => l.includes("↓")) ?? "")?.[1] ?? 0);
+    expect(up).toBe(win.offset);
+    expect(up + shown + down).toBe(12);
+  });
+
+  it("clamps a stale offset after a resize", () => {
+    const scr = new Screen(175, 60);
+    const tall = { x: 101, y: 4, w: 74, h: 40 };
+    const win = drawPhasesWin(scr, tall, { projects: [p12], projectIndex: 0, focused: true, cursor: 11, offset: 9 });
+    expect(win).toMatchObject({ offset: 0, visible: 12 });
+  });
+
+  it("unfocused: offset 0, the phase items drawn, and the same frame as drawPhases", () => {
+    for (const h of [5, 6, 9, 20]) {
+      const rr = { ...RECT, h };
+      const a = new Screen(175, 40);
+      const b = new Screen(175, 40);
+      const m = { projects: SAMPLE.projects, projectIndex: 1, focused: false, cursor: null, offset: 7 };
+      const rows = drawPhases(a, rr, m);
+      const win = drawPhasesWin(b, rr, m);
+      expect(b.toLines()).toEqual(a.toLines());
+      expect(win.rows).toBe(rows);
+      expect(win.offset).toBe(0);
+      expect(win.visible).toBe(paneText(b, rr).filter((l) => /^. [●◉○] /.test(l)).length);
+    }
+  });
+
+  it("focused with no offset draws the same frame as drawPhases", () => {
+    const a = new Screen(175, 40);
+    const b = new Screen(175, 40);
+    const m = { projects: SAMPLE.projects, projectIndex: 1, focused: true, cursor: null };
+    const rows = drawPhases(a, RECT, m);
+    expect(drawPhasesWin(b, RECT, m).rows).toBe(rows);
+    expect(b.toLines()).toEqual(a.toLines());
   });
 });
