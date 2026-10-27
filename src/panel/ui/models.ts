@@ -59,6 +59,11 @@ export interface IdleStrip {
 export interface FileConflict {
   a: string;
   b: string;
+  /**
+   * Sessions on this file beyond `a` and `b` (10-12, RESEARCH open question 3);
+   * drawn as ` +N` after `b`, inside the name column so the count is never cut.
+   */
+  more?: number;
   path: string;
 }
 
