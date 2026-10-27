@@ -200,7 +200,7 @@ describe("PanelApp r and space (D-15)", () => {
     // sessions, whose SESSIONS segment carries the active-tab background.
     const display = ROWS.list.map((row) => ({ id: row.session_id, row, ended: false }));
     const header = headerFromRoster({ display, live: 2, idle: 0, conflicts: [] }, null, NOW);
-    // 10-09: AGENTS is live; every other pane is still SAMPLE
+    // 10-09: AGENTS is live; 10-12: FILES is live (no files here); the rest is SAMPLE
     const ag = buildAgents({
       display,
       conflicts: [],
@@ -215,10 +215,10 @@ describe("PanelApp r and space (D-15)", () => {
       tick: 0,
       step: 0,
       header,
-      panes: { ...SAMPLE, agents: ag.agents, idle: ag.idle },
+      panes: { ...SAMPLE, agents: ag.agents, idle: ag.idle, conflicts: [], groups: [] },
       keysOff: false,
       flash: null,
-      sample: { agents: false, files: true, phases: true, sessions: true, ports: true },
+      sample: { agents: false, files: false, phases: true, sessions: true, ports: true },
     });
     const tabsY = expected.findIndex((l) => lineText(l).includes("[r]"));
     expect(tabsY).toBeGreaterThan(0);
@@ -228,12 +228,26 @@ describe("PanelApp r and space (D-15)", () => {
     expect(lines(lastFrame())[tabsY]).toBe(lineText(expected[tabsY]!));
   });
 
+  // 10-12: FILES is live, so the scrolling ticker needs live files (> 6 rows)
   it("space pauses the FILES ticker and flips its hint", async () => {
-    const { lastFrame, stdin } = await mountTty();
-    expect(lastFrame()).not.toContain("paused · 14 files");
-    press(stdin, KEYS.space);
-    await vi.waitFor(() => expect(lastFrame()).toContain("paused · 14 files"));
-    expect(footer(lastFrame())).toContain("space resume files");
+    ROWS.list = [
+      makeRow({
+        session_id: "sess-ask",
+        asking: true,
+        files: Array.from({ length: 10 }, (_, k) => ({ file_path: `/nx-csm-1012/f${k}.ts`, ts: new Date().toISOString() })),
+      }),
+      makeRow({ session_id: "sess-wait", attention: true }),
+    ];
+    try {
+      const { lastFrame, stdin } = await mountTty();
+      await vi.waitFor(() => expect(lastFrame()).toContain("10 files"));
+      expect(lastFrame()).not.toContain("paused · 10 files");
+      press(stdin, KEYS.space);
+      await vi.waitFor(() => expect(lastFrame()).toContain("paused · 10 files"));
+      expect(footer(lastFrame())).toContain("space resume files");
+    } finally {
+      ROWS.list = DEFAULT_ROWS;
+    }
   });
 });
 
@@ -488,10 +502,10 @@ describe("PanelApp live AGENTS (10-09)", () => {
     expect(leftOf(title)).not.toContain("sample");
   });
 
-  it("FILES, PHASES / SESSIONS and PORTS keep their sample chips", async () => {
+  it("PHASES / SESSIONS and PORTS keep their sample chips; FILES is live (10-12, D-23)", async () => {
     const { lastFrame, stdin } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
     const ls = lines(lastFrame());
-    expect(ls.find((l) => leftOf(l).includes("FILES"))).toContain("sample");
+    expect(leftOf(ls.find((l) => leftOf(l).startsWith(" FILES "))!)).not.toContain("sample");
     expect(ls.find((l) => l.includes("PORTS"))).toContain("sample");
     expect(ls.find((l) => l.includes("[r]"))).toContain("sample");
     press(stdin, KEYS.r);
@@ -841,5 +855,117 @@ describe("PanelApp detail strip (10-11, LAYOUT-07)", () => {
     clock.t = 15_000;
     await vi.waitFor(() => expect(pill(lastFrame(), "alpha task")).toBeUndefined(), { timeout: 5000 });
     expect(lastFrame()).not.toContain("» checkout screen");
+  });
+});
+
+// --- Phase 10 plan 10-12: the live FILES pane (LAYOUT-07, LAYOUT-03, LAYOUT-02, D-23)
+// Two live rows write the same absolute path, so useRoster's detectConflicts
+// (lexical fallback for a missing file) reports one conflict.
+
+describe("PanelApp live FILES (10-12)", () => {
+  const ROOT = "/nonexistent-csm-1012";
+  const SHARED = `${ROOT}/src/server.js`;
+  const at = (min: number) => new Date(NOW - min * 60_000).toISOString();
+  const fileRows = (alphaExtra = 0): SessionRow[] => {
+    const r = liveRows();
+    r[0] = {
+      ...r[0]!,
+      cwd: ROOT,
+      files: [
+        { file_path: SHARED, ts: at(1) },
+        { file_path: `${ROOT}/src/alpha.ts`, ts: at(2) },
+        ...Array.from({ length: alphaExtra }, (_, k) => ({ file_path: `${ROOT}/src/extra${k}.ts`, ts: at(3) })),
+      ],
+      reads: [{ file_path: `${ROOT}/README.md`, ts: at(1) }],
+    };
+    r[1] = {
+      ...r[1]!,
+      cwd: ROOT,
+      files: [
+        { file_path: SHARED, ts: at(5) },
+        { file_path: `${ROOT}/src/beta.ts`, ts: at(5) },
+      ],
+    };
+    return r;
+  };
+  const filesY = (f: string): number => lines(f).findIndex((l) => leftOf(l).startsWith(" FILES "));
+  /** The FILES title and the next `n` lines of the left column. */
+  const filesBlock = (f: string, n = 8): string[] => {
+    const ls = lines(f);
+    const y = filesY(f);
+    return ls.slice(y, y + 1 + n).map((l) => leftOf(l).trimEnd());
+  };
+  afterEach(() => {
+    ROWS.list = DEFAULT_ROWS;
+  });
+
+  it("shows the live conflict row and each session's files under its group; no FILES sample chip", async () => {
+    ROWS.list = fileRows();
+    const { lastFrame } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
+    await vi.waitFor(() => expect(lastFrame()).toContain("alpha task ✕ beta task"));
+    const b = filesBlock(lastFrame());
+    expect(b[0]).not.toContain("sample");
+    expect(b[0]).toMatch(/ 4 files$/);
+    expect(b[1]).toBe("▌ ! alpha task ✕ beta task   src/server.js");
+    expect(b[2]).toBe("  ■ alpha task            ✎ src/server.js");
+    expect(b[3]).toBe("                          ✎ src/alpha.ts");
+    expect(b[4]).toBe("                          README.md");
+    expect(b[5]).toBe("  ■ beta task             ✎ src/server.js");
+    expect(b[6]).toBe("                          ✎ src/beta.ts");
+    // gamma has no files: no group
+    expect(b.join("\n")).not.toContain("gamma idle");
+  });
+
+  it("selecting a card narrows FILES to it (`FILES · N · esc: all`); Esc shows every session again", async () => {
+    ROWS.list = fileRows();
+    const { lastFrame, stdin } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
+    await vi.waitFor(() => expect(lastFrame()).toContain("alpha task ✕ beta task"));
+    press(stdin, KEYS.down);
+    await vi.waitFor(() => expect(filesBlock(lastFrame())[0]).toContain("esc: all"));
+    const b = filesBlock(lastFrame());
+    expect(b[0]).toMatch(/^ FILES {2}· 3 · esc: all ─+$/);
+    expect(b[1]).toBe("▌ ! alpha task ✕ beta task   src/server.js");
+    expect(b[2]).toBe("  ■ alpha task            ✎ src/server.js");
+    expect(b.join("\n")).not.toContain("■ beta task");
+    expect(b.join("\n")).not.toContain("src/beta.ts");
+
+    press(stdin, KEYS.esc);
+    await vi.waitFor(() => expect(filesBlock(lastFrame())[0]).not.toContain("esc: all"));
+    expect(filesBlock(lastFrame()).join("\n")).toContain("■ beta task");
+  });
+
+  it("the 15 s idle drop restores the full FILES list (D-09)", async () => {
+    ROWS.list = fileRows();
+    const clock = { t: NOW + 14_999 };
+    const { lastFrame } = await mountTty(
+      <PanelApp tickMs={20} now={() => clock.t} initialUi={{ selectedAgentId: "s-alpha", lastKeyAt: NOW }} />,
+    );
+    await vi.waitFor(() => expect(filesBlock(lastFrame())[0]).toContain("esc: all"));
+    clock.t = NOW + 15_000;
+    await vi.waitFor(() => expect(filesBlock(lastFrame())[0]).not.toContain("esc: all"), { timeout: 5000 });
+    expect(filesBlock(lastFrame()).join("\n")).toContain("■ beta task");
+  });
+
+  it("the unnarrowed ticker scrolls on UI ticks; narrowed it stops and counts the hidden rows", async () => {
+    ROWS.list = fileRows(8);
+    const free = await mountTty(<PanelApp tickMs={20} now={() => NOW} />);
+    await vi.waitFor(() => expect(free.lastFrame()).toContain("alpha task ✕ beta task"));
+    const first = filesBlock(free.lastFrame()).slice(2).join("\n");
+    await vi.waitFor(() => expect(filesBlock(free.lastFrame()).slice(2).join("\n")).not.toBe(first), {
+      timeout: 5000,
+    });
+    free.inst.unmount();
+
+    const sel = await mountTty(
+      <PanelApp tickMs={20} now={() => NOW} initialUi={{ selectedAgentId: "s-alpha", lastKeyAt: NOW }} />,
+    );
+    await vi.waitFor(() => expect(filesBlock(sel.lastFrame())[0]).toContain("esc: all"));
+    const fixed = filesBlock(sel.lastFrame()).join("\n");
+    expect(fixed).toMatch(/\n {4}↓ \d+ more/);
+    // the card spinner keeps the clock running: several frames go by, FILES never moves
+    for (let k = 0; k < 3; k++) {
+      await nextTick(sel.lastFrame);
+      expect(filesBlock(sel.lastFrame()).join("\n")).toBe(fixed);
+    }
   });
 });
