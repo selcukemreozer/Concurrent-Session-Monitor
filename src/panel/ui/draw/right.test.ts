@@ -189,7 +189,8 @@ describe("drawRightColumn tab state", () => {
       sample: true,
       portsMinY: 27,
     });
-    expect(text(scr, 16, X, 175)).toBe("  ✓ copied ✓");
+    // 10-13: the message carries its own check, so no second leading one
+    expect(text(scr, 16, X, 175)).toBe("  copied ✓");
   });
 });
 

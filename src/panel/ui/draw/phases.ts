@@ -86,8 +86,29 @@ function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
+/** The window a list draw used (10-13, Pattern 3): feed `offset` back next draw. */
+export interface ListWindow {
+  /** Rows used, counted from `r.y`. */
+  rows: number;
+  /** The window start (sticky offset) the draw used. */
+  offset: number;
+  /** Items fully or partly drawn in the window (used for PgUp / PgDn). */
+  visible: number;
+}
+
 export function drawPhases(scr: Screen, r: Rect, m: PhasesModel): number {
-  if (r.w <= 0 || r.h <= 0) return 0;
+  return drawPhasesWin(scr, r, m).rows;
+}
+
+/**
+ * drawPhases plus the window it used (Phase 10 plan 10-13, LAYOUT-02). The
+ * focused list continues from `m.offset` (the previous window start; clamped by
+ * `windowSlice`), so a cursor move inside the margins does not move the window.
+ * Unfocused, the +-2 window is fixed: offset 0 and the phase items drawn.
+ */
+export function drawPhasesWin(scr: Screen, r: Rect, m: PhasesModel & { offset?: number }): ListWindow {
+  const none = (rows: number): ListWindow => ({ rows, visible: 0, offset: 0 });
+  if (r.w <= 0 || r.h <= 0) return none(0);
   const x = r.x;
   const end = r.x + r.w;
   const bottom = r.y + r.h;
@@ -100,7 +121,7 @@ export function drawPhases(scr: Screen, r: Rect, m: PhasesModel): number {
 
   if (m.projects.length === 0) {
     put(1, r.y, plainText("no GSD projects", r.w - 1), DIM);
-    return 1;
+    return none(1);
   }
 
   const pi = Math.min(Math.max(0, Math.trunc(m.projectIndex) || 0), m.projects.length - 1);
@@ -126,7 +147,7 @@ export function drawPhases(scr: Screen, r: Rect, m: PhasesModel): number {
 
   if (total === 0) {
     put(1, r.y + 2, plainText("no roadmap", r.w - 1), DIM);
-    return Math.min(3, r.h);
+    return none(Math.min(3, r.h));
   }
 
   // Row +2: the progress bar.
@@ -143,6 +164,8 @@ export function drawPhases(scr: Screen, r: Rect, m: PhasesModel): number {
   const curIdx = phases.findIndex((ph) => ph.status === "current");
   const center = curIdx >= 0 ? curIdx : Math.min(done, total - 1);
 
+  /** The first row of every phase item, so the items drawn can be counted. */
+  const heads = new Set<Row>();
   /** The rows of phase k: the phase, its plan row (current only) and its connector. */
   const phaseRows = (k: number, last: boolean, contAfter: boolean, cursorHere: boolean): Row[] => {
     const ph = phases[k]!;
@@ -158,6 +181,7 @@ export function drawPhases(scr: Screen, r: Rect, m: PhasesModel): number {
       put(NUM_X, y, plainText(ph.number, NUM_W), st);
       put(NAME_X, y, plainText(ph.name, r.w - NAME_X), st);
     });
+    heads.add(out[0]!);
     if (isCur && ph.plansTotal !== null) {
       out.push((y) => {
         if (contAfter) put(MARK_X, y, V2.vline, { fg: PALETTE.edge });
@@ -192,6 +216,7 @@ export function drawPhases(scr: Screen, r: Rect, m: PhasesModel): number {
 
   const budget = Math.max(0, r.h - head);
   let rows: Row[] = [];
+  let offset = 0;
 
   if (!m.focused) {
     for (const radius of [2, 1, 0]) {
@@ -219,7 +244,14 @@ export function drawPhases(scr: Screen, r: Rect, m: PhasesModel): number {
     const cursor = m.cursor === null ? center : Math.min(total - 1, Math.max(0, Math.trunc(m.cursor)));
     const items: Row[][] = [];
     for (let k = 0; k < total; k++) items.push(phaseRows(k, k === total - 1, k < total - 1, k === cursor));
-    const win = windowSlice({ len: total, height: budget, cursor, offset: 0, heights: items.map((i) => i.length) });
+    const win = windowSlice({
+      len: total,
+      height: budget,
+      cursor,
+      offset: m.offset ?? 0,
+      heights: items.map((i) => i.length),
+    });
+    offset = win.offset;
     if (win.up) rows.push(arrowRow(V2.up, win.above));
     for (let k = win.start; k < win.end; k++) rows.push(...items[k]!);
     if (win.down) {
@@ -232,5 +264,6 @@ export function drawPhases(scr: Screen, r: Rect, m: PhasesModel): number {
   rows = rows.slice(0, budget);
   let y = r.y + head;
   for (const row of rows) row(y++);
-  return Math.min(r.h, rows.length > 0 ? y - r.y : 3);
+  const visible = rows.filter((row) => heads.has(row)).length;
+  return { rows: Math.min(r.h, rows.length > 0 ? y - r.y : 3), offset, visible };
 }

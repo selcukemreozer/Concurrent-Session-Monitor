@@ -5,6 +5,7 @@ import { V2 } from "../glyphs.js";
 import type { PortEntry, Rect } from "../models.js";
 import { windowSlice } from "../viewport.js";
 import { drawTitle } from "./title.js";
+import type { ListWindow } from "./phases.js";
 
 /**
  * The v2 PORTS pane (Phase 9, plan 09-08; D-02, D-06; UI-SPEC section PORTS,
@@ -98,7 +99,22 @@ export function visiblePortEntries(
 }
 
 export function drawPortsPane(scr: Screen, r: Rect, m: PortsModel): number {
-  if (r.w <= 0 || r.h <= 0) return 0;
+  return drawPortsWin(scr, r, m).rows;
+}
+
+/**
+ * drawPortsPane plus the window it used (Phase 10 plan 10-13, LAYOUT-02).
+ * Focused, the list continues from `m.offset` (the previous window start,
+ * clamped by `windowSlice`); unfocused it always starts at the top, so the
+ * exposed ports (first, WR-05) are never scrolled out of the summary. A
+ * `cursorKey` that is not among the shown ports draws no cursor at all: the
+ * draw never moves the `❯` to another port on its own (fails closed, RESEARCH
+ * open question 4; T-10-32).
+ */
+export function drawPortsWin(scr: Screen, r: Rect, m: PortsModel & { offset?: number }): ListWindow {
+  const prev = m.focused ? Math.max(0, Math.trunc(m.offset ?? 0) || 0) : 0;
+  const early = (rows: number): ListWindow => ({ rows, visible: 0, offset: prev });
+  if (r.w <= 0 || r.h <= 0) return early(0);
   const n = m.ports.length;
   drawTitle(scr, r.x, r.y, r.w, {
     label: "PORTS",
@@ -106,7 +122,7 @@ export function drawPortsPane(scr: Screen, r: Rect, m: PortsModel): number {
     sample: m.sample,
     right: m.focused ? `${n} ${n === 1 ? "port" : "ports"}` : null,
   });
-  if (r.h < 3) return 1;
+  if (r.h < 3) return early(1);
 
   const x = r.x;
   const end = r.x + r.w;
@@ -115,7 +131,7 @@ export function drawPortsPane(scr: Screen, r: Rect, m: PortsModel): number {
 
   if (n === 0) {
     put(PORT_X, y, plainText("no listening ports", r.w - PORT_X), DIM);
-    return 3;
+    return { rows: 3, visible: 0, offset: 0 };
   }
 
   const { shown, others } = visiblePortEntries(m.ports, m.focused);
@@ -132,7 +148,7 @@ export function drawPortsPane(scr: Screen, r: Rect, m: PortsModel): number {
   // WR-05: never spend the only list row on an item while ports are hidden.
   if (listH === 1 && (shown.length > 1 || hiddenOthers > 0)) {
     put(PORT_X, y++, `${V2.down} ${shown.length + hiddenOthers} more`, DIM);
-    return y - r.y;
+    return early(y - r.y);
   }
 
   const cursor = m.focused && m.cursorKey !== null ? shown.findIndex((p) => p.key === m.cursorKey) : -1;
@@ -140,7 +156,7 @@ export function drawPortsPane(scr: Screen, r: Rect, m: PortsModel): number {
     len: shown.length,
     height: listH,
     cursor,
-    offset: 0,
+    offset: prev,
     heights: shown.map((p) => (p.owner !== null ? 2 : 1)),
   });
   // Item rows stop before the down row so a clipped item never pushes it out.
@@ -149,8 +165,10 @@ export function drawPortsPane(scr: Screen, r: Rect, m: PortsModel): number {
   const showProc = r.w >= PROC_MIN_W;
 
   if (win.up) put(PORT_X, y++, `${V2.up} ${win.above} more`, DIM);
+  let visible = 0;
   for (let i = win.start; i < win.end && y < itemLimit; i++) {
     const p = shown[i]!;
+    visible++;
     if (i === cursor) put(0, y, V2.cursor, HI_BOLD);
     put(PORT_X, y, `:${Math.trunc(p.port)}`, p.exposed ? RED_BOLD : HI_BOLD);
     if (showProc) put(PROC_X, y, plainText(p.proc, PROC_W), DIM);
@@ -169,5 +187,5 @@ export function drawPortsPane(scr: Screen, r: Rect, m: PortsModel): number {
   if (win.down) put(PORT_X, y++, `${V2.down} ${win.below + hiddenOthers} more`, DIM);
   if (showOthers) put(PORT_X, y++, `+${others} others`, DIM2);
 
-  return y - r.y;
+  return { rows: y - r.y, offset: win.offset, visible };
 }

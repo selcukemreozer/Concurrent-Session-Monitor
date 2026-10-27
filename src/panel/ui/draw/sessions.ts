@@ -4,6 +4,7 @@ import { PALETTE } from "../palette.js";
 import { V2 } from "../glyphs.js";
 import type { Flash, Rect, SessionEntry } from "../models.js";
 import { windowSlice } from "../viewport.js";
+import type { ListWindow } from "./phases.js";
 
 /**
  * The v2 SESSIONS pane (Phase 9, plan 09-08; UI-SPEC section SESSIONS). The
@@ -18,8 +19,10 @@ import { windowSlice } from "../viewport.js";
  *   - The list is windowed with `windowSlice` and `^ N more` / `v N more`
  *     (dim, x2). The cursor is found by session id, never by index.
  *   - The outcome line sits in the pane after a spacer row: a success draws
- *     the check (green bold, x2) and the message (fg, x4); any other outcome
- *     draws the message at x2 with no glyph. The outcome strings are the 1.6.x
+ *     the check (green bold, x2) and the message (fg, x4); a success whose
+ *     text already carries the check (`copied ✓`, Phase 10 plan 10-13) is
+ *     drawn green bold at x2 with no second glyph; any other outcome draws
+ *     the message at x2 with no glyph. The outcome strings are the 1.6.x
  *     `launch.ts` copy, verbatim (UI-SPEC); Phase 10 passes them in as `status`.
  *   - With no sessions: `scanning...` while the first scan runs, otherwise
  *     `no resumable sessions` (dim, x2).
@@ -60,7 +63,16 @@ function putIn(scr: Screen, x: number, y: number, text: string, st: Style, end: 
 }
 
 export function drawSessions(scr: Screen, r: Rect, m: SessionsModel): number {
-  if (r.w <= 0 || r.h <= 0) return 0;
+  return drawSessionsWin(scr, r, m).rows;
+}
+
+/**
+ * drawSessions plus the window it used (Phase 10 plan 10-13, LAYOUT-02): the
+ * list continues from `m.offset` (the previous window start, clamped by
+ * `windowSlice`) and reports the start it used and the sessions drawn.
+ */
+export function drawSessionsWin(scr: Screen, r: Rect, m: SessionsModel & { offset?: number }): ListWindow {
+  if (r.w <= 0 || r.h <= 0) return { rows: 0, visible: 0, offset: Math.max(0, Math.trunc(m.offset ?? 0) || 0) };
   const x = r.x;
   const end = r.x + r.w;
   const put = (dx: number, y: number, text: string, st: Style): void => putIn(scr, x + dx, y, text, st, end);
@@ -68,6 +80,8 @@ export function drawSessions(scr: Screen, r: Rect, m: SessionsModel): number {
   let y = r.y;
   const list = m.sessions;
   let statusRows = m.status ? 2 : 0;
+  let offset = 0;
+  let visible = 0;
   if (r.h - statusRows < 1) statusRows = 0;
 
   if (list.length === 0) {
@@ -75,7 +89,9 @@ export function drawSessions(scr: Screen, r: Rect, m: SessionsModel): number {
     y++;
   } else {
     const cursor = m.cursorId === null ? -1 : list.findIndex((s) => s.id === m.cursorId);
-    const win = windowSlice({ len: list.length, height: r.h - statusRows, cursor, offset: 0 });
+    const win = windowSlice({ len: list.length, height: r.h - statusRows, cursor, offset: m.offset ?? 0 });
+    offset = win.offset;
+    visible = win.end - win.start;
     if (win.up) put(NAME_X, y++, `${V2.up} ${win.above} more`, DIM);
     for (let i = win.start; i < win.end; i++) {
       const s = list[i]!;
@@ -94,7 +110,10 @@ export function drawSessions(scr: Screen, r: Rect, m: SessionsModel): number {
 
   if (m.status && statusRows > 0 && y + 1 < r.y + r.h) {
     y++;
-    if (m.status.ok) {
+    if (m.status.ok && m.status.text.includes(V2.ok)) {
+      // 10-13: the message carries its own check; never draw a second one.
+      put(NAME_X, y, plainText(m.status.text, r.w - NAME_X), { fg: PALETTE.running, bold: true });
+    } else if (m.status.ok) {
       put(NAME_X, y, V2.ok, { fg: PALETTE.running, bold: true });
       put(NAME_X + 2, y, plainText(m.status.text, r.w - NAME_X - 2), { fg: PALETTE.fg });
     } else {
@@ -103,5 +122,5 @@ export function drawSessions(scr: Screen, r: Rect, m: SessionsModel): number {
     y++;
   }
 
-  return y - r.y;
+  return { rows: y - r.y, offset, visible };
 }
