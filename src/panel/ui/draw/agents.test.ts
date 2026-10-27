@@ -775,3 +775,21 @@ describe("drawAgentsPane: a rect with no room for a card row (10-11)", () => {
     }
   });
 });
+
+describe("drawAgentsPane: a scrolled 9-row window (10-16, LAYOUT-01)", () => {
+  it("puts `↑ A more · ↓ B more` on the up row when the `↓` row has no room, so nothing hides silently", () => {
+    const cards: AgentCard[] = Array.from({ length: 5 }, (_, i) => ({ ...SAMPLE.agents[i % SAMPLE.agents.length]!, id: `c${i}`, name: `card ${i}` }));
+    // 1 column: 5 card rows; a selection on c2 starts the window at row 2
+    const scr = new Screen(96, 12);
+    const res = drawAgentsPane(scr, { x: 0, y: 0, w: 96, h: 9 }, { ...PANE, agents: cards, idle: [], cardCols: 1, selectedId: "c2" });
+    expect(res.firstRow).toBe(2);
+    expect(res.visibleRows).toBe(1);
+    expect(res.rows).toBeLessThanOrEqual(9);
+    expect(text(scr, 1)).toBe("  ↑ 2 more · ↓ 2 more");
+    expect(res.moreBelow).toBe(2);
+    // an up row with nothing below keeps its Phase 10 text
+    const last = new Screen(96, 12);
+    drawAgentsPane(last, { x: 0, y: 0, w: 96, h: 9 }, { ...PANE, agents: cards, idle: [], cardCols: 1, selectedId: "c4" });
+    expect(text(last, 1)).toBe("  ↑ 4 more");
+  });
+});

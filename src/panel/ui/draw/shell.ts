@@ -358,6 +358,15 @@ function gridDemands(m: Measured): [Demand, Demand] {
   ];
 }
 
+/**
+ * FILES title + conflict rows cut to `room` rows, never below the title + one
+ * conflict row (LAYOUT-03) nor above the measured height (10-16).
+ */
+function filesHardFor(m: Measured, room: number): number {
+  const keep = Math.min(m.filesHard, 2);
+  return Math.max(keep, Math.min(m.filesHard, room));
+}
+
 /** The grid collapsed to its title + the `↓ N more` row (09-16; 10-11). */
 function collapsedGrid(m: Measured): Demand {
   const n = Math.min(AGENTS_COLLAPSED, m.agents);
@@ -462,7 +471,13 @@ export function drawShellFrame(input: ShellInput): { lines: Line[]; scroll: Scro
     const m = measureLeft(input, g.LW, g.cardCols);
     // WR-02: FILES title + conflicts, then the grid's card row, then the ticker
     const [grid0, gridSpacer] = gridDemands(m);
-    const filesHard: Demand = { id: "filesHard", min: m.filesHard, max: m.filesHard };
+    // 10-16 (LAYOUT-01): with no strip, FILES conflict rows past the first give
+    // way to the grid's card row + `↓ N more` row (a 16-row split frame with 3+
+    // conflicts otherwise left the grid one row short and hid every other card
+    // silently). drawFilesPane counts the rest on its last drawn conflict row
+    // (`+N more conflicts`, WR-05); the title + one conflict row stay (LAYOUT-03).
+    const hard = detail === null ? filesHardFor(m, total - cardMinOf(m)) : m.filesHard;
+    const filesHard: Demand = { id: "filesHard", min: hard, max: hard };
     const ticker: Demand = { id: "ticker", min: Math.min(TICKER_MIN, m.filesTicker), max: m.filesTicker };
     let b: Record<string, number>;
     if (detail === null) {

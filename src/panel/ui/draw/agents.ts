@@ -376,8 +376,15 @@ export function drawAgentsPane(
   const below = sumItems(slots, (first + k) * cols, slots.length);
 
   let gy = r.y + 1;
+  // 10-16 (LAYOUT-01): a scrolled window with room for its `↑` row and one
+  // card row but not the `↓` row (the grid's 9-row minimum under a selection
+  // or a fed-back offset) puts both counts on the `↑` row, so the items below
+  // are never hidden silently.
+  const bothOnUp = up && !downRow && below > 0;
   if (up) {
-    scr.put(r.x + 2, gy, `${V2.up} ${above} more`, dimSt);
+    const upText = `${V2.up} ${above} more`;
+    const text = bothOnUp ? `${upText}${SEP}${V2.down} ${below} more` : upText;
+    scr.put(r.x + 2, gy, plainText(text, r.w - 2), dimSt);
     gy += 1;
   }
 
