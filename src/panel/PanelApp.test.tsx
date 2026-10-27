@@ -304,6 +304,15 @@ describe("PanelApp footer flash slot (10-08, D-12)", () => {
 });
 
 describe("PanelApp selection idle drop (10-08, D-09)", () => {
+  // 10-12: FILES is live (no SAMPLE ticker scrolling any more), so a running
+  // card's spinner is what makes a UI tick produce a new frame for nextTick.
+  beforeEach(() => {
+    ROWS.list = [...DEFAULT_ROWS, makeRow({ session_id: "sess-run", running: true })];
+  });
+  afterEach(() => {
+    ROWS.list = DEFAULT_ROWS;
+  });
+
   it("keeps the selection at 14 999 ms and drops it at 15 000 ms after one tick", async () => {
     const clock = { t: 14_999 };
     const { lastFrame } = await mountTty(

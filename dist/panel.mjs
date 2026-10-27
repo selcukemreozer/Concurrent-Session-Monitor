@@ -1799,34 +1799,34 @@ var require_react_reconciler_production = __commonJS({
         var fiber = workInProgress2.child;
         null !== fiber && (fiber.return = workInProgress2);
         for (; null !== fiber; ) {
-          var list = fiber.dependencies;
-          if (null !== list) {
+          var list2 = fiber.dependencies;
+          if (null !== list2) {
             var nextFiber = fiber.child;
-            list = list.firstContext;
-            a: for (; null !== list; ) {
-              var dependency = list;
-              list = fiber;
+            list2 = list2.firstContext;
+            a: for (; null !== list2; ) {
+              var dependency = list2;
+              list2 = fiber;
               for (var i = 0; i < contexts.length; i++)
                 if (dependency.context === contexts[i]) {
-                  list.lanes |= renderLanes2;
-                  dependency = list.alternate;
+                  list2.lanes |= renderLanes2;
+                  dependency = list2.alternate;
                   null !== dependency && (dependency.lanes |= renderLanes2);
                   scheduleContextWorkOnParentPath(
-                    list.return,
+                    list2.return,
                     renderLanes2,
                     workInProgress2
                   );
                   forcePropagateEntireTree || (nextFiber = null);
                   break a;
                 }
-              list = dependency.next;
+              list2 = dependency.next;
             }
           } else if (18 === fiber.tag) {
             nextFiber = fiber.return;
             if (null === nextFiber) throw Error(formatProdErrorMessage(341));
             nextFiber.lanes |= renderLanes2;
-            list = nextFiber.alternate;
-            null !== list && (list.lanes |= renderLanes2);
+            list2 = nextFiber.alternate;
+            null !== list2 && (list2.lanes |= renderLanes2);
             scheduleContextWorkOnParentPath(nextFiber, renderLanes2, workInProgress2);
             nextFiber = null;
           } else
@@ -25168,11 +25168,28 @@ function drawFilesPane(scr, r2, m) {
   const nConf = m.conflicts.length;
   const confRows = Math.min(nConf, MAX_CONFLICT_ROWS, r2.h - 1);
   const H = Math.max(0, Math.min(MAX_TICKER_ROWS, r2.h - 1 - confRows));
-  const scrolling = H > 0 && rows.length > H;
+  const narrowed = m.narrowed === true;
+  const scrolling = !narrowed && H > 0 && rows.length > H;
+  const overflow = narrowed && rows.length > H && H > 0;
   const n = countFiles(m.conflicts, m.groups);
-  const files = `${n} ${n === 1 ? "file" : "files"}`;
-  const right = n === 0 ? "no files" : scrolling && m.paused ? `paused${SEP5}${files}` : files;
-  drawTitle(scr, r2.x, r2.y, r2.w, { label: "FILES", focused: false, sample: m.sample, right });
+  if (narrowed) {
+    const dim = { fg: PALETTE.dim };
+    drawTitle(scr, r2.x, r2.y, r2.w, {
+      label: "FILES",
+      focused: false,
+      sample: m.sample,
+      right: null,
+      extra: [
+        { text: SEP5, ...dim },
+        { text: `${n}`, fg: PALETTE.hi, bold: true },
+        { text: `${SEP5}esc: all`, ...dim }
+      ]
+    });
+  } else {
+    const files = `${n} ${n === 1 ? "file" : "files"}`;
+    const right = n === 0 ? "no files" : scrolling && m.paused ? `paused${SEP5}${files}` : files;
+    drawTitle(scr, r2.x, r2.y, r2.w, { label: "FILES", focused: false, sample: m.sample, right });
+  }
   const end = r2.x + r2.w;
   const pend = end - 1;
   const red = { fg: PALETTE.red };
@@ -25188,7 +25205,14 @@ function drawFilesPane(scr, r2, m) {
     } else if (c) {
       let cx = putIn2(scr, r2.x + 4, y, nameText(c.a, NAME_W) || DASH3, hiB, end);
       cx = putIn2(scr, cx, y, JOIN2, redB, end);
-      cx = putIn2(scr, cx, y, nameText(c.b, NAME_W) || DASH3, hiB, end);
+      const more = typeof c.more === "number" && Number.isFinite(c.more) ? Math.trunc(c.more) : 0;
+      if (more > 0) {
+        const suffix = ` +${more}`;
+        cx = putIn2(scr, cx, y, nameText(c.b, NAME_W - cellWidth(suffix)) || DASH3, hiB, end);
+        cx = putIn2(scr, cx, y, suffix, hiB, end);
+      } else {
+        cx = putIn2(scr, cx, y, nameText(c.b, NAME_W) || DASH3, hiB, end);
+      }
       const px = Math.max(cx + 3, r2.x + PATH_X);
       putIn2(scr, px, y, pathText(c.path, pend - px), { fg: PALETTE.hi }, pend);
     }
@@ -25198,7 +25222,8 @@ function drawFilesPane(scr, r2, m) {
   const step2 = Number.isFinite(m.step) ? Math.trunc(m.step) : 0;
   const off = scrolling ? (step2 % N + N) % N : 0;
   const visible = scrolling ? H : Math.min(rows.length, H);
-  for (let k = 0; k < visible; k++) {
+  const fileRows = overflow ? H - 1 : visible;
+  for (let k = 0; k < fileRows; k++) {
     const yy = y + k;
     const idx = scrolling ? (off + k) % N : k;
     const it = rows[idx];
@@ -25223,6 +25248,10 @@ function drawFilesPane(scr, r2, m) {
       const px = r2.x + PATH_X;
       putIn2(scr, px, yy, pathText(it.file.path, pend - px), { fg: PALETTE.blue }, pend);
     }
+  }
+  if (overflow) {
+    const hidden = rows.length - fileRows;
+    putIn2(scr, r2.x + 4, y + fileRows, `${V2.down} ${hidden} more`, { fg: PALETTE.dim }, pend);
   }
   if (scrolling) {
     const sx = end - 1;
@@ -25437,12 +25466,12 @@ function drawPhases(scr, r2, m) {
       const a0 = Math.max(0, center - radius);
       const z = Math.min(total - 1, center + radius);
       const more = total - 1 - z;
-      const list = [];
-      if (a0 > 0) list.push(moreRow(plural2(a0, "earlier phase", "earlier phases")));
-      for (let k = a0; k <= z; k++) list.push(...phaseRows(k, k === z, k < z || more > 0, false));
-      if (more > 0) list.push(moreRow(plural2(more, "more phase", "more phases")));
-      rows = list;
-      if (list.length <= budget) break;
+      const list2 = [];
+      if (a0 > 0) list2.push(moreRow(plural2(a0, "earlier phase", "earlier phases")));
+      for (let k = a0; k <= z; k++) list2.push(...phaseRows(k, k === z, k < z || more > 0, false));
+      if (more > 0) list2.push(moreRow(plural2(more, "more phase", "more phases")));
+      rows = list2;
+      if (list2.length <= budget) break;
       if (radius === 0) {
         const cur = phaseRows(center, true, false, false).slice(0, 1);
         const tail = more > 0 && budget >= 2 ? [moreRow(plural2(more, "more phase", "more phases"))] : [];
@@ -25493,18 +25522,18 @@ function drawSessions(scr, r2, m) {
   const end = r2.x + r2.w;
   const put = (dx, y2, text, st) => putIn4(scr, x + dx, y2, text, st, end);
   let y = r2.y;
-  const list = m.sessions;
+  const list2 = m.sessions;
   let statusRows = m.status ? 2 : 0;
   if (r2.h - statusRows < 1) statusRows = 0;
-  if (list.length === 0) {
+  if (list2.length === 0) {
     put(NAME_X2, y, plainText(m.scanning ? `scanning${V2.ellipsis}` : "no resumable sessions", r2.w - NAME_X2), DIM2);
     y++;
   } else {
-    const cursor = m.cursorId === null ? -1 : list.findIndex((s) => s.id === m.cursorId);
-    const win = windowSlice({ len: list.length, height: r2.h - statusRows, cursor, offset: 0 });
+    const cursor = m.cursorId === null ? -1 : list2.findIndex((s) => s.id === m.cursorId);
+    const win = windowSlice({ len: list2.length, height: r2.h - statusRows, cursor, offset: 0 });
     if (win.up) put(NAME_X2, y++, `${V2.up} ${win.above} more`, DIM2);
     for (let i = win.start; i < win.end; i++) {
-      const s = list[i];
+      const s = list2[i];
       const cur = i === cursor;
       if (cur) put(0, y, V2.sessionCursor, m.focused ? { fg: PALETTE.hi, bold: true } : DIM2);
       const nameSt = cur && m.focused ? { fg: PALETTE.hi, bold: true } : s.live ? { fg: PALETTE.fg } : DIM2;
@@ -25867,7 +25896,9 @@ function filesModel(input) {
     groups: input.panes.groups,
     paused: input.ui.filesPaused,
     step: input.step,
-    sample: flags(input).files
+    sample: flags(input).files,
+    // 10-12 (LAYOUT-07): one model for measureLeft and drawLeft alike
+    narrowed: input.panes.filesNarrowed === true
   };
 }
 function rightModel(input, portsMinY) {
@@ -26162,8 +26193,8 @@ var groups = [
     files: [w("docs/research.md"), r("src/lib/metrics.ts"), r("src/pages/Overview.tsx")]
   }
 ];
-function phases(list, current, plans) {
-  return list.map(([number, name], i) => ({
+function phases(list2, current, plans) {
+  return list2.map(([number, name], i) => ({
     number,
     name,
     status: i < current ? "done" : i === current ? "current" : "pending",
@@ -26397,6 +26428,72 @@ function buildDetail(i) {
   };
 }
 
+// src/panel/ui/build/files.ts
+function displayPath(filePath, cwd2) {
+  if (typeof filePath !== "string") return "";
+  if (typeof cwd2 !== "string" || cwd2 === "") return filePath;
+  const base = cwd2.endsWith("/") ? cwd2 : `${cwd2}/`;
+  if (base === "/" || !filePath.startsWith(base)) return filePath;
+  const rest = filePath.slice(base.length);
+  return rest === "" ? filePath : rest;
+}
+function list(a) {
+  if (!Array.isArray(a)) return [];
+  return a.filter((f) => !!f && typeof f.file_path === "string");
+}
+function toConflict(c, cwdOf) {
+  const ss = Array.isArray(c.sessions) ? c.sessions : [];
+  if (ss.length < 2) return null;
+  const s0 = ss[0];
+  const s1 = ss[1];
+  const out = {
+    a: labelLead({ title: s0.title, folder: s0.folder }),
+    b: labelLead({ title: s1.title, folder: s1.folder }),
+    // relative to the first session's cwd, like that session's own group rows
+    path: displayPath(c.realpath, cwdOf.get(s0.session_id))
+  };
+  if (ss.length > 2) out.more = ss.length - 2;
+  return out;
+}
+function buildFiles(i) {
+  const rows = i.display.filter((d) => !d.ended).map((d) => d.row);
+  const live = new Set(rows.map((r2) => r2.session_id));
+  const sel = i.selectedId !== null && live.has(i.selectedId) ? i.selectedId : null;
+  const narrowed = sel !== null;
+  const cwdOf = new Map(rows.map((r2) => [r2.session_id, r2.cwd]));
+  const conflicts = [];
+  for (const c of i.conflicts) {
+    if (narrowed && !(c.sessions ?? []).some((s) => s.session_id === sel)) continue;
+    const fc = toConflict(c, cwdOf);
+    if (fc) conflicts.push(fc);
+  }
+  const idx = new Map(rows.map((r2, k) => [r2.session_id, k]));
+  const sorted = [...rows].sort((a, b) => {
+    const sa = i.order.get(a.session_id);
+    const sb = i.order.get(b.session_id);
+    if (sa !== void 0 && sb !== void 0) return sa - sb;
+    if (sa !== void 0) return -1;
+    if (sb !== void 0) return 1;
+    return (idx.get(a.session_id) ?? 0) - (idx.get(b.session_id) ?? 0);
+  });
+  const groups2 = [];
+  for (const r2 of sorted) {
+    if (narrowed && r2.session_id !== sel) continue;
+    const files = [
+      ...list(r2.files).map((f) => ({ path: displayPath(f.file_path, r2.cwd), kind: "write" })),
+      ...list(r2.reads).map((f) => ({ path: displayPath(f.file_path, r2.cwd), kind: "read" }))
+    ];
+    if (files.length === 0) continue;
+    groups2.push({
+      agentId: r2.session_id,
+      name: labelLead({ title: r2.title, folder: r2.folder }),
+      state: cardState(r2) ?? "idle",
+      files
+    });
+  }
+  return { conflicts, groups: groups2, narrowed };
+}
+
 // src/panel/ui/nav.ts
 var STRIPS_PER_SLOT = 3;
 function normCols(cols) {
@@ -26607,7 +26704,7 @@ async function runGoto(t, deps = defaultGotoDeps()) {
 
 // src/panel/PanelApp.tsx
 var import_jsx_runtime4 = __toESM(require_jsx_runtime(), 1);
-var SAMPLE_FLAGS = { agents: false, files: true, phases: true, sessions: true, ports: true };
+var SAMPLE_FLAGS = { agents: false, files: false, phases: true, sessions: true, ports: true };
 function detailKey(d) {
   if (d === null) return "";
   return [
@@ -26621,6 +26718,13 @@ function detailKey(d) {
     d.ports.map((p) => `${p.port}:${p.proc}`).join(","),
     d.prompt ?? ""
   ].join("");
+}
+function filesKey(conflicts, groups2, narrowed) {
+  const c = conflicts.map((x) => [x.a, x.b, x.more ?? 0, x.path].join(""));
+  const g = groups2.map(
+    (x) => [x.agentId, x.name, x.state, x.files.map((f) => `${f.kind[0]}${f.path}`).join("")].join("")
+  );
+  return `${narrowed ? 1 : 0}${c.join("")}${g.join("")}`;
 }
 function agentsKey(agents2, idle) {
   const c = agents2.map(
@@ -26679,9 +26783,27 @@ function PanelApp(props = {}) {
   });
   const selRow = ui.selectedAgentId === null ? void 0 : ag.byId.get(ui.selectedAgentId);
   const detail = selRow === void 0 ? null : buildDetail({ row: selRow, branches, ports: scanned, liveRows, now: now() });
-  const panes = { ...SAMPLE, agents: ag.agents, idle: ag.idle, detail };
-  const panesKey = `${agentsKey(ag.agents, ag.idle)}${detailKey(detail)}`;
-  const animating = ag.agents.some((a) => a.state === "running") || tickerRows(SAMPLE.groups).length > TICKER_VISIBLE;
+  const files = buildFiles({
+    display: roster.display,
+    conflicts: roster.conflicts,
+    order: orderRef.current,
+    selectedId: selRow === void 0 ? null : selRow.session_id
+  });
+  const panes = {
+    ...SAMPLE,
+    agents: ag.agents,
+    idle: ag.idle,
+    detail,
+    conflicts: files.conflicts,
+    groups: files.groups,
+    filesNarrowed: files.narrowed
+  };
+  const panesKey = [
+    agentsKey(ag.agents, ag.idle),
+    detailKey(detail),
+    filesKey(files.conflicts, files.groups, files.narrowed)
+  ].join("");
+  const animating = ag.agents.some((a) => a.state === "running") || !files.narrowed && tickerRows(files.groups).length > TICKER_VISIBLE;
   const flash = flashVisible(ui, now());
   const { tick, step: step2 } = useUiTick({
     active: animating || flash !== null || ui.selectedAgentId !== null,

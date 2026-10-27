@@ -23,11 +23,12 @@ import { SAMPLE } from "./ui/sample.js";
 import { ScreenView } from "./ui/ScreenView.js";
 import { buildAgents, stableOrder } from "./ui/build/agents.js";
 import { buildDetail } from "./ui/build/detail.js";
+import { buildFiles } from "./ui/build/files.js";
 import { gridItems, moveGrid, pageGrid } from "./ui/nav.js";
 import { geometry } from "./ui/geometry.js";
 import { defaultGotoDeps, runGoto, type GotoDeps } from "./actions/goto.js";
 import type { SessionRow } from "../aggregate.js";
-import type { AgentCard, DetailModel, IdleStrip } from "./ui/models.js";
+import type { AgentCard, DetailModel, FileConflict, FileGroup, IdleStrip } from "./ui/models.js";
 
 /**
  * The v2 panel root behind `CSM_UI=v2` (Phase 9, plan 09-12). Plan 09-13 wires
@@ -103,6 +104,16 @@ import type { AgentCard, DetailModel, IdleStrip } from "./ui/models.js";
  *     FILES. It carries no go-to reachability marker (D-11).
  *   - usePorts is the slow second timer (lsof/ps off the render path); the
  *     PORTS pane itself still draws SAMPLE until 10-14.
+ *
+ * Phase 10 plan 10-12 (LAYOUT-07, LAYOUT-03, LAYOUT-02, D-23):
+ *   - The FILES pane is LIVE: `buildFiles` turns the roster's conflicts and
+ *     each live session's writes and reads into conflict rows and groups, in
+ *     the same stable order as the grid (`orderRef`). Its ` sample ` chip is
+ *     gone.
+ *   - While a card or idle strip is selected (the effective selection, as for
+ *     the detail strip) FILES narrows to it (`panes.filesNarrowed`): its
+ *     group and conflicts only, the ticker stopped. Esc or the 15 s idle drop
+ *     clears the selection and every session shows again.
  */
 export interface PanelAppProps {
   tickMs?: number;
@@ -130,8 +141,8 @@ interface ViewFacts {
   nameById: ReadonlyMap<string, string>;
 }
 
-/** Each flag turns false when its pane goes live (D-23); AGENTS is live from 10-09. */
-const SAMPLE_FLAGS: SampleFlags = { agents: false, files: true, phases: true, sessions: true, ports: true };
+/** Each flag turns false when its pane goes live (D-23); AGENTS from 10-09, FILES from 10-12. */
+const SAMPLE_FLAGS: SampleFlags = { agents: false, files: false, phases: true, sessions: true, ports: true };
 
 /** A redraw key over every drawn detail-strip field (10-11). */
 function detailKey(d: DetailModel | null): string {
@@ -147,6 +158,15 @@ function detailKey(d: DetailModel | null): string {
     d.ports.map((p) => `${p.port}:${p.proc}`).join(","),
     d.prompt ?? "",
   ].join("\u001f");
+}
+
+/** A redraw key over every drawn FILES field (10-12). */
+function filesKey(conflicts: readonly FileConflict[], groups: readonly FileGroup[], narrowed: boolean): string {
+  const c = conflicts.map((x) => [x.a, x.b, x.more ?? 0, x.path].join("\u001f"));
+  const g = groups.map((x) =>
+    [x.agentId, x.name, x.state, x.files.map((f) => `${f.kind[0]}${f.path}`).join("\u001f")].join("\u001f"),
+  );
+  return `${narrowed ? 1 : 0}\u001d${c.join("\u001e")}\u001d${g.join("\u001e")}`;
 }
 
 /** A redraw key over every drawn card / strip field, so a live change redraws. */
@@ -225,12 +245,32 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
   const selRow = ui.selectedAgentId === null ? undefined : ag.byId.get(ui.selectedAgentId);
   const detail: DetailModel | null =
     selRow === undefined ? null : buildDetail({ row: selRow, branches, ports: scanned, liveRows, now: now() });
-  const panes = { ...SAMPLE, agents: ag.agents, idle: ag.idle, detail };
-  const panesKey = `${agentsKey(ag.agents, ag.idle)}\u001c${detailKey(detail)}`;
+  // 10-12 (LAYOUT-07): FILES, narrowed to the same live selection as the strip
+  const files = buildFiles({
+    display: roster.display,
+    conflicts: roster.conflicts,
+    order: orderRef.current,
+    selectedId: selRow === undefined ? null : selRow.session_id,
+  });
+  const panes = {
+    ...SAMPLE,
+    agents: ag.agents,
+    idle: ag.idle,
+    detail,
+    conflicts: files.conflicts,
+    groups: files.groups,
+    filesNarrowed: files.narrowed,
+  };
+  const panesKey = [
+    agentsKey(ag.agents, ag.idle),
+    detailKey(detail),
+    filesKey(files.conflicts, files.groups, files.narrowed),
+  ].join("\u001c");
 
-  // the FILES ticker still draws SAMPLE until 10-12
+  // the live FILES ticker scrolls only when unnarrowed and longer than its window
   const animating =
-    ag.agents.some((a) => a.state === "running") || tickerRows(SAMPLE.groups).length > TICKER_VISIBLE;
+    ag.agents.some((a) => a.state === "running") ||
+    (!files.narrowed && tickerRows(files.groups).length > TICKER_VISIBLE);
   const flash = flashVisible(ui, now());
   // D-09 / D-12: the clock also runs while a flash is up or a selection may expire
   const { tick, step } = useUiTick({
