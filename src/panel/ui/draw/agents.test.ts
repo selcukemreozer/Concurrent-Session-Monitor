@@ -758,3 +758,20 @@ describe("drawAgentsPane: scroll follows the selection (10-09, D-05)", () => {
     expect(rowsWith(scr, "idle 14")).toHaveLength(1);
   });
 });
+
+describe("drawAgentsPane: a rect with no room for a card row (10-11)", () => {
+  it("draws `↓ N more` counting every item from row 0, never a lone `↑ N more`, even with a selection below", () => {
+    const cards: AgentCard[] = Array.from({ length: 5 }, (_, i) => ({ ...SAMPLE.agents[i % SAMPLE.agents.length]!, id: `c${i}`, name: `card ${i}` }));
+    for (const [selectedId, firstRow] of [["c3", 0], ["c4", 2], [null, 3]] as const) {
+      for (const h of [2, 3, 7]) {
+        const scr = new Screen(96, 10);
+        const res = drawAgentsPane(scr, { x: 0, y: 0, w: 96, h }, { ...PANE, agents: cards, idle: SAMPLE.idle, selectedId, firstRow });
+        expect(res.firstRow, `${selectedId} h ${h}`).toBe(0);
+        expect(res.visibleRows).toBe(0);
+        expect(text(scr, 1)).toBe("  ↓ 8 more");
+        expect(res.moreBelow).toBe(8);
+        expect(scr.toLines().map((l) => l.map((s) => s.text).join("")).join("\n")).not.toContain("↑");
+      }
+    }
+  });
+});

@@ -366,6 +366,11 @@ export function drawAgentsPane(
     first = Math.min(Math.max(0, first), maxStart);
   }
 
+  // 10-11: a rect with no room for a whole card row (the grid collapsed to its
+  // title + one row under a focused bottom pane or the detail strip) shows the
+  // window from row 0, so its one row is `↓ N more` counting every item, never
+  // an `↑ N more` that hides the rest silently.
+  if (windowAt(first, r.h, cardRows).k === 0) first = 0;
   const { up, k, downRow } = windowAt(first, r.h, cardRows);
   const above = sumItems(slots, 0, first * cols);
   const below = sumItems(slots, (first + k) * cols, slots.length);

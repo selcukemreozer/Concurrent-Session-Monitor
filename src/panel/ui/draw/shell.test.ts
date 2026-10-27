@@ -4,6 +4,8 @@ import { cellWidth, graphemes } from "../text.js";
 import { initialUi, type UiState } from "../uiState.js";
 import { SAMPLE, SAMPLE_HEADER } from "../sample.js";
 import { PALETTE } from "../palette.js";
+import { geometry } from "../geometry.js";
+import type { DetailModel, PanesModel } from "../models.js";
 import { drawTooSmall } from "./tooSmall.js";
 import { drawShell, drawShellFrame, EMPTY_SCROLL, type SampleFlags, type ScrollState, type ShellInput } from "./shell.js";
 
@@ -509,6 +511,142 @@ describe("drawShellFrame: per-pane sample chips (10-08, D-23, Pattern 4)", () =>
     const none: SampleFlags = { agents: false, files: false, phases: false, sessions: false, ports: false };
     for (const [cols, rows] of [[175, 55], [120, 40]] as const) {
       expect(texts(drawShell(input({ cols, rows, sample: none }))).some((s) => s.includes("sample"))).toBe(false);
+    }
+  });
+});
+
+// --- Phase 10 plan 10-11: the selection detail strip (LAYOUT-07, LAYOUT-03) ---
+
+describe("drawShell: the selection detail strip (10-11, LAYOUT-07, UI-SPEC priority 3)", () => {
+  const LONG = Array.from({ length: 60 }, (_, i) => `word${i}`).join(" ");
+  /** SAMPLE with `n` active cards (ids extended) and optionally no idle strips. */
+  const panesN = (n: number, idle = false): PanesModel => ({
+    ...SAMPLE,
+    agents: Array.from({ length: n }, (_, i) => ({ ...SAMPLE.agents[i % SAMPLE.agents.length]!, id: `a${i}`, name: `agent ${i}` })),
+    idle: idle ? SAMPLE.idle : [],
+  });
+  const detailFor = (id: string, name: string): DetailModel => ({
+    id,
+    name,
+    state: "running",
+    uptime: "6m",
+    model: "opus 4.7",
+    intent: "checkout screen",
+    branch: "main",
+    ports: [{ port: 3000, proc: "bun" }],
+    prompt: LONG,
+  });
+  const withDetail = (p: PanesModel, i = 1): PanesModel => ({ ...p, detail: detailFor(p.agents[i]!.id, p.agents[i]!.name) });
+  const sel = (p: PanesModel, o: Partial<UiState> = {}, i = 1): UiState => ui({ selectedAgentId: p.agents[i]!.id, ...o });
+  /** Card rows drawn in the first card column (a `▄` × 47 or `┏` top at x 0). */
+  const cardRows = (t: string[]): number => t.filter((s) => /^(▄{47}|┏)/.test(s)).length;
+  const pillRow = (t: string[], name: string): number => rowOf(t, (s) => s.startsWith(`▐${name}▌`));
+
+  it("175x55 with 10 active sessions: 5 card rows without a selection, 4 + the strip with one", () => {
+    for (const idle of [false, true]) {
+      const p = panesN(10, idle);
+      const plain = texts(drawShell(input({ panes: p })));
+      expect(cardRows(plain), `idle ${idle}`).toBe(5);
+      expect(plain.some((s) => s.includes("▐agent 1▌"))).toBe(false);
+
+      const t = texts(drawShell(input({ panes: withDetail(p), ui: sel(p) })));
+      expect(t.length).toBeLessThanOrEqual(55);
+      expect(cardRows(t), `idle ${idle}`).toBe(4);
+      const y = pillRow(t, "agent 1");
+      expect(y).toBeGreaterThan(2);
+      expect(t[y]).toContain("RUNNING · 6m · opus 4.7 ─");
+      expect(t[y + 1]).toMatch(/^ {2}» checkout screen {4}⎇ main {4}:3000 bun/);
+      expect(t[y + 2]).toMatch(/^ {2}› word0 /);
+      expect(cut(t[y + 3] as string, 0, 96).trimEnd()).toMatch(/^ {4}word\d+ .*…$/);
+      expect(cut(t[y + 4] as string, 0, 96).trim()).toBe("");
+      expect(t[y + 5]!.startsWith(" FILES ")).toBe(true);
+      // the strip sits under the grid: no card row below it
+      expect(t.slice(y).some((s) => /^(▄{47}|┏)/.test(s))).toBe(false);
+    }
+  });
+
+  it("284x67 with a selection: the strip is in the left column only; the right column above FILES is unchanged", () => {
+    const geo = geometry(284, 67);
+    const divX = geo.divX as number;
+    const plainLines = texts(drawShell(input({ cols: 284, rows: 67 })));
+    const t = texts(drawShell(input({ cols: 284, rows: 67, panes: withDetail(SAMPLE, 2), ui: sel(SAMPLE, {}, 2) })));
+    const y = pillRow(t, SAMPLE.agents[2]!.name);
+    expect(y).toBeGreaterThan(2);
+    for (let r = y; r < y + 4; r++) {
+      // the divider is intact and nothing of the strip reaches the gutter
+      expect(cellAt(t[r] as string, divX), `row ${r} divider`).toBe("│");
+      expect(cut(t[r] as string, geo.LW, divX - geo.LW).trim(), `row ${r} gutter`).toBe("");
+    }
+    // the rule runs to the left column's edge and stops there
+    expect(cut(t[y] as string, geo.LW - 1, 1)).toBe("─");
+    const filesPlain = rowOf(plainLines, (s) => s.startsWith(" FILES "));
+    const files = rowOf(t, (s) => s.startsWith(" FILES "));
+    expect(files).toBe(y + 5);
+    // the right column above the FILES row is unchanged
+    for (let r = 2; r < Math.min(filesPlain, files); r++) {
+      expect(cut(t[r] as string, geo.RX, 284 - geo.RX), `right row ${r}`).toBe(cut(plainLines[r] as string, geo.RX, 284 - geo.RX));
+    }
+    // PORTS still lines up with FILES (D-02)
+    expect(cut(t[files] as string, geo.RX, 284 - geo.RX)).toMatch(/^ ?PORTS/);
+  });
+
+  it.each([
+    [24, 80],
+    [16, 60],
+    [16, 80],
+    [20, 120],
+    [16, 165],
+  ])("under pressure %ix%i (focus AGENTS): pill + a prompt row before the grid's card row; FILES title + conflict stay", (rows, cols) => {
+    const t = texts(drawShell(input({ rows, cols, panes: withDetail(SAMPLE), ui: sel(SAMPLE) })));
+    expect(t.length).toBeLessThanOrEqual(rows);
+    for (const s of t) expect(cellWidth(s)).toBeLessThanOrEqual(cols);
+    const y = pillRow(t, SAMPLE.agents[1]!.name);
+    expect(y, t.join("\n")).toBeGreaterThan(2);
+    expect(t[y + 1]).toContain("» ");
+    expect(t[y + 2]).toContain("› ");
+    const files = rowOf(t, (s) => s.startsWith(" FILES "));
+    expect(files).toBeGreaterThan(y + 2);
+    expect(t[files + 1]).toMatch(/^▌ !/);
+    // a grid that lost its card row still says what it hides (WR-01)
+    if (!t.slice(2, y).some((s) => /^(▄{47}|┏)/.test(s))) {
+      expect(t.slice(2, y).some((s) => /↓ \d+ more/.test(s))).toBe(true);
+    }
+  });
+
+  it("80x24 (focus AGENTS): the selected card row and the strip both fit", () => {
+    const t = texts(drawShell(input({ rows: 24, cols: 80, panes: withDetail(SAMPLE), ui: sel(SAMPLE) })));
+    const y = pillRow(t, SAMPLE.agents[1]!.name);
+    expect(t.slice(2, y).some((s) => s.startsWith("┏"))).toBe(true);
+  });
+
+  it.each([16, 20, 22, 24, 30])("stacked 80x%i / S2 120x%i with PORTS or PHASES focused: the focused pane is as without the strip", (rows) => {
+    for (const cols of [60, 80, 120]) {
+      for (const focus of ["right", "ports"] as const) {
+        const u = sel(SAMPLE, { focus });
+        const plain = texts(drawShell(input({ rows, cols, ui: u })));
+        const t = texts(drawShell(input({ rows, cols, ui: u, panes: withDetail(SAMPLE) })));
+        expect(t.length).toBeLessThanOrEqual(rows);
+        const top = (ls: string[]) => rowOf(ls, (s) => /PHASES/.test(s) && /SESSIONS/.test(s), 3);
+        const a = top(plain);
+        const b = top(t);
+        expect(b, `${cols}x${rows} ${focus}`).toBeGreaterThan(0);
+        // the focused bottom pane keeps every row it had (the strip yields first)
+        expect(t.slice(b, t.length - 2), `${cols}x${rows} ${focus}`).toEqual(plain.slice(a, plain.length - 2));
+        if (focus === "ports") expect(t.some((s) => s.includes("▐PORTS▌"))).toBe(true);
+        else expect(t[b]).toContain("▐PHASES▌");
+      }
+    }
+  });
+
+  it("no detail, or a selection that is not the detail's id: frames are as before 10-11", () => {
+    for (const [cols, rows] of [[175, 55], [284, 67], [120, 40], [80, 24], [60, 16]] as const) {
+      for (const u of [initialUi, sel(SAMPLE, {}, 2), sel(SAMPLE, { focus: "ports" }, 3)]) {
+        const base = drawShellFrame(input({ cols, rows, ui: u }));
+        expect(drawShellFrame(input({ cols, rows, ui: u, panes: { ...SAMPLE, detail: null } }))).toEqual(base);
+        if (u.selectedAgentId !== SAMPLE.agents[1]!.id) {
+          expect(drawShellFrame(input({ cols, rows, ui: u, panes: withDetail(SAMPLE) }))).toEqual(base);
+        }
+      }
     }
   });
 });

@@ -5,9 +5,10 @@ import { PALETTE } from "../palette.js";
 import { V2 } from "../glyphs.js";
 import { hintsFor } from "../keymap.js";
 import type { UiState } from "../uiState.js";
-import type { Flash, HeaderModel, PanesModel, Rect } from "../models.js";
+import type { DetailModel, Flash, HeaderModel, PanesModel, Rect } from "../models.js";
 import { drawHeader } from "./header.js";
 import { drawAgentsPane } from "./agents.js";
+import { DETAIL_ROWS, drawDetail } from "./detail.js";
 import { drawFilesPane } from "./files.js";
 import { bandFloor, drawBand, drawRightColumn, drawTabsBody, focusedFloor, type RightColumnModel } from "./right.js";
 import { drawPortsPane } from "./ports.js";
@@ -75,6 +76,26 @@ import { drawTooSmall } from "./tooSmall.js";
  *              sits beside it), or `max(bandFloor(), 5)` when the band holds
  *              focus; the grid yields when one card row would leave the band
  *              below `bandFloor()`.
+ *
+ * Selection detail strip (Phase 10 plan 10-11; LAYOUT-07, UI-SPEC § Height
+ * allocation priority 3 and shrink step 4): while `ui.selectedAgentId` names
+ * `panes.detail`, a `detail` demand (pill row + segment row + 1 prompt row
+ * minimum, 4 rows maximum) and a 0-1 `detailSpacer` join the left column,
+ * drawn between the grid and the FILES title (drawLeft). Its minimum comes
+ * right after the FILES title + conflict rows (they never yield, LAYOUT-03)
+ * and before the grid's card row, so under pressure the grid collapses to its
+ * title + `↓ N more` before the strip drops below 3 rows. It grows to 4 (the
+ * second prompt line) before any extra card row.
+ *   - split:   always that minimum (the right column does not compete). The
+ *              detail spacer and the FILES ticker (to its preferred 6) grow
+ *              before extra card rows, which gives the UI-SPEC 175x55 budget:
+ *              5 card rows without a selection, 4 + the strip with one.
+ *   - stacked / S2: that minimum only while AGENTS holds focus. With the
+ *              right column, the band or PORTS focused the strip's minimum is
+ *              0 and it grows only after the focused pane, so the 09-16 /
+ *              10-01 floors stay authoritative (the strip yields first).
+ *   - no detail, or a selection that is not `panes.detail.id`: every frame is
+ *     exactly as before 10-11.
  *
  * Every pane clips to the rect it is given (09-09 rect clip), so nothing is
  * drawn outside its rect, every line is at most `cols` cells and at most
@@ -181,6 +202,35 @@ const BAND_MIN = 5;
  * its title + the ↓ N more row drawAgentsPane draws when no card row fits.
  */
 const AGENTS_COLLAPSED = 2;
+/** The detail strip's minimum: pill row + segment row + one prompt row (shrink step 4). */
+const DETAIL_MIN = 3;
+
+/** The detail model to draw this frame, or null (no selection, or not this one). */
+function detailOf(input: ShellInput): DetailModel | null {
+  const d = input.panes.detail;
+  if (d === undefined || d === null) return null;
+  const sel = input.ui.selectedAgentId;
+  return sel !== null && sel === d.id ? d : null;
+}
+
+/** The left column's row grants, as drawLeft takes them. */
+interface LeftRows {
+  /** AGENTS + its trailing spacer. */
+  agents: number;
+  detail: number;
+  detailSpacer: number;
+  /** FILES title + conflicts + ticker. */
+  files: number;
+}
+
+function leftRows(b: Record<string, number>): LeftRows {
+  return {
+    agents: (b.agents ?? 0) + (b.agentsSpacer ?? 0),
+    detail: b.detail ?? 0,
+    detailSpacer: b.detailSpacer ?? 0,
+    files: (b.filesHard ?? 0) + (b.ticker ?? 0),
+  };
+}
 
 interface Measured {
   agents: number;
@@ -258,6 +308,12 @@ function gridDemands(m: Measured): [Demand, Demand] {
   ];
 }
 
+/** The grid collapsed to its title + the `↓ N more` row (09-16; 10-11). */
+function collapsedGrid(m: Measured): Demand {
+  const n = Math.min(AGENTS_COLLAPSED, m.agents);
+  return { id: "agents", min: n, max: n };
+}
+
 /** Natural AGENTS / FILES heights, measured by drawing into scratch Screens. */
 function measureLeft(input: ShellInput, w: number, cardCols: number): Measured {
   const p = input.panes;
@@ -291,8 +347,9 @@ function bandNatural(rm: RightColumnModel, leftW: number, rightW: number, h: num
 }
 
 /**
- * Draw AGENTS then FILES down one column; returns the FILES title row, the
- * last row used and the grid window drawn (10-08).
+ * Draw AGENTS, the detail strip (10-11, while one is granted rows) and FILES
+ * down one column; returns the FILES title row, the last row used and the
+ * grid window drawn (10-08).
  */
 function drawLeft(
   scr: Screen,
@@ -300,17 +357,27 @@ function drawLeft(
   x: number,
   w: number,
   cardCols: number,
-  agentsH: number,
-  filesH: number,
+  h: LeftRows,
+  detail: DetailModel | null,
   bottom: number,
 ): { filesY: number; end: number; grid: PaneWindow } {
-  const ar: Rect = { x, y: BODY_Y, w, h: agentsH };
+  const ar: Rect = { x, y: BODY_Y, w, h: h.agents };
   const a = drawAgentsPane(scr, ar, agentsModel(input, cardCols));
+  let end = BODY_Y + a.rows - 1;
   // a spacer after the grid only when the rect has a row left for it
-  const filesY = BODY_Y + a.rows + (a.rows < agentsH ? 1 : 0);
-  const fh = Math.max(0, Math.min(filesH, bottom - filesY));
+  let y = BODY_Y + a.rows + (a.rows < h.agents ? 1 : 0);
+  if (detail !== null && h.detail > 0) {
+    const dh = Math.max(0, Math.min(h.detail, bottom - y));
+    const d = drawDetail(scr, { x, y, w, h: dh }, detail);
+    if (d > 0) {
+      end = y + d - 1;
+      y += d + (h.detailSpacer > 0 ? 1 : 0);
+    }
+  }
+  const filesY = y;
+  const fh = Math.max(0, Math.min(h.files, bottom - filesY));
   const f = drawFilesPane(scr, { x, y: filesY, w, h: fh }, filesModel(input));
-  const end = f > 0 ? filesY + f - 1 : BODY_Y + a.rows - 1;
+  if (f > 0) end = filesY + f - 1;
   return { filesY, end, grid: { offset: a.firstRow, visible: a.visibleRows } };
 }
 
@@ -338,27 +405,35 @@ export function drawShellFrame(input: ShellInput): { lines: Line[]; scroll: Scro
   let end: number;
   let gridWin: PaneWindow = NO_WINDOW;
 
+  const detail = detailOf(input);
+
   if (g.split && g.divX !== null) {
     const m = measureLeft(input, g.LW, g.cardCols);
     // WR-02: FILES title + conflicts, then the grid's card row, then the ticker
-    const [grid, gridSpacer] = gridDemands(m);
-    const demands: Demand[] = [
-      { id: "filesHard", min: m.filesHard, max: m.filesHard },
-      grid,
-      { id: "ticker", min: Math.min(TICKER_MIN, m.filesTicker), max: m.filesTicker },
-      gridSpacer,
-    ];
-    const b = allocate(total, demands, ["agentsSpacer", "agents", "ticker"]);
-    const left = drawLeft(
-      scr,
-      input,
-      0,
-      g.LW,
-      g.cardCols,
-      (b.agents ?? 0) + (b.agentsSpacer ?? 0),
-      (b.filesHard ?? 0) + (b.ticker ?? 0),
-      bottom,
-    );
+    const [grid0, gridSpacer] = gridDemands(m);
+    const filesHard: Demand = { id: "filesHard", min: m.filesHard, max: m.filesHard };
+    const ticker: Demand = { id: "ticker", min: Math.min(TICKER_MIN, m.filesTicker), max: m.filesTicker };
+    let b: Record<string, number>;
+    if (detail === null) {
+      b = allocate(total, [filesHard, grid0, ticker, gridSpacer], ["agentsSpacer", "agents", "ticker"]);
+    } else {
+      // 10-11: the strip's minimum before the grid's card row; the grid collapses first
+      const yields = total - m.filesHard - DETAIL_MIN < cardMinOf(m);
+      const grid: Demand = yields ? collapsedGrid(m) : grid0;
+      b = allocate(
+        total,
+        [
+          filesHard,
+          { id: "detail", min: DETAIL_MIN, max: DETAIL_ROWS },
+          grid,
+          ticker,
+          yields ? { id: "agentsSpacer", min: 0, max: 1 } : gridSpacer,
+          { id: "detailSpacer", min: 0, max: 1 },
+        ],
+        ["agentsSpacer", "detail", "detailSpacer", "ticker", "agents"],
+      );
+    }
+    const left = drawLeft(scr, input, 0, g.LW, g.cardCols, leftRows(b), detail, bottom);
     const right = drawRightColumn(scr, { x: g.RX, y: BODY_Y, w: g.RW, h: total }, rightModel(input, left.filesY));
     gridWin = left.grid;
     end = Math.max(left.end, right.end);
@@ -374,13 +449,16 @@ export function drawShellFrame(input: ShellInput): { lines: Line[]; scroll: Scro
         ? bandNatural(rm, band.leftW, band.rightW, rh)
         : drawRightColumn(new Screen(cols, rh), { x: 0, y: 0, w: cols, h: rh }, rm).end + 1;
     const rightFocused = input.ui.focus === "right" || input.ui.focus === "ports";
+    // 10-11: with AGENTS focused the strip's minimum comes before the grid's card row
+    const detailMin = detail !== null && !rightFocused ? DETAIL_MIN : 0;
     // 09-16: the grid keeps its one card row unless that would leave the focused pane below its floor
     const cardMin = cardMinOf(m);
     const focusFloor = Math.min(band !== null ? bandFloor(rm) : focusedFloor(rm), rNat);
-    const gridYields = rightFocused && total - cardMin - m.filesHard < focusFloor;
-    const collapsed = Math.min(AGENTS_COLLAPSED, m.agents);
+    const gridYields =
+      (rightFocused && total - cardMin - m.filesHard < focusFloor) ||
+      (detailMin > 0 && total - m.filesHard - detailMin < cardMin);
     const [grid, gridSpacer] = gridDemands(m);
-    const agents: Demand = gridYields ? { id: "agents", min: collapsed, max: collapsed } : grid;
+    const agents: Demand = gridYields ? collapsedGrid(m) : grid;
     const filesHard: Demand = { id: "filesHard", min: m.filesHard, max: m.filesHard };
     const ticker: Demand = { id: "ticker", min: Math.min(TICKER_MIN, m.filesTicker), max: m.filesTicker };
     const rightMin =
@@ -397,23 +475,24 @@ export function drawShellFrame(input: ShellInput): { lines: Line[]; scroll: Scro
       gridYields ? { id: "agentsSpacer", min: 0, max: 1 } : gridSpacer,
       { id: "rightSpacer", min: 0, max: 1 },
     ];
-    const demands = rightFocused
+    let demands = rightFocused
       ? [agents, filesHard, right, ticker, ...spacers]
       : [agents, filesHard, ticker, right, ...spacers];
-    const grow = rightFocused
+    let grow = rightFocused
       ? [rid, "agentsSpacer", "agents", "ticker", "rightSpacer"]
       : ["agentsSpacer", "agents", "ticker", rid, "rightSpacer"];
+    if (detail !== null) {
+      // 10-11: FILES title + conflicts, the strip, then the rest; the strip grows before extra card rows
+      const strip: Demand = { id: "detail", min: detailMin, max: DETAIL_ROWS };
+      demands = rightFocused
+        ? [agents, filesHard, right, strip, ticker, ...spacers]
+        : [filesHard, strip, agents, ticker, right, ...spacers];
+      demands.push({ id: "detailSpacer", min: 0, max: 1 });
+      const at = grow.indexOf("agents");
+      grow = [...grow.slice(0, at), "detail", ...grow.slice(at), "detailSpacer"];
+    }
     const b = allocate(total, demands, grow);
-    const left = drawLeft(
-      scr,
-      input,
-      0,
-      cols,
-      g.cardCols,
-      (b.agents ?? 0) + (b.agentsSpacer ?? 0),
-      (b.filesHard ?? 0) + (b.ticker ?? 0),
-      bottom,
-    );
+    const left = drawLeft(scr, input, 0, cols, g.cardCols, leftRows(b), detail, bottom);
     gridWin = left.grid;
     end = left.end;
     const ry = left.end + 1 + (b.rightSpacer ?? 0);

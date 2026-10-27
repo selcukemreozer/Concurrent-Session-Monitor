@@ -32,6 +32,11 @@
  *     band.divX on the band rows only, the gutter is empty, and the focused
  *     band pane draws its inverse title. The WR-04/05/08/09 sweeps above read
  *     the band halves through `regions()`.
+ *   - detail (10-11, LAYOUT-07, LAYOUT-03): with a selection and its detail
+ *     strip, every frame fits, the FILES title and its conflict row are drawn,
+ *     the focused bottom pane keeps its inverse title and its WR-08 / WR-09
+ *     content, and with AGENTS focused at 24+ rows the strip's pill row is
+ *     drawn.
  *
  * Later plans of Phase 10 append to this file.
  */
@@ -44,7 +49,7 @@ import { cellWidth, graphemes } from "./text.js";
 import { geometry } from "./geometry.js";
 import { FOCUS_ORDER, initialUi, type UiState } from "./uiState.js";
 import { SAMPLE, SAMPLE_HEADER } from "./sample.js";
-import type { AgentCard, IdleStrip, PanesModel, PortEntry, Rect } from "./models.js";
+import type { AgentCard, DetailModel, IdleStrip, PanesModel, PortEntry, Rect } from "./models.js";
 import { drawShell } from "./draw/shell.js";
 import { drawAgentsPane } from "./draw/agents.js";
 import { drawFilesPane } from "./draw/files.js";
@@ -603,6 +608,73 @@ describe("v2 content: S2 band (LAYOUT-04)", () => {
           // never more lines than rows, never wider than cols
           expect(lines.length, msg).toBeLessThanOrEqual(rows);
           for (const l of lines) expect(cells(l).length, msg).toBeLessThanOrEqual(cols);
+        }
+      }
+    }
+  });
+});
+
+// --- 10-11: the selection detail strip never starves FILES or the focused pane
+
+/** The fixture with its third card selected and a detail strip for it. */
+function detailed(p: PanesModel): { panes: PanesModel; id: string; name: string } {
+  const a = p.agents[2]!;
+  const detail: DetailModel = {
+    id: a.id,
+    name: a.name,
+    state: a.state,
+    uptime: a.uptime,
+    model: a.model,
+    intent: "checkout screen",
+    branch: a.branch,
+    ports: [{ port: 3000, proc: "bun" }],
+    prompt: Array.from({ length: 50 }, (_, i) => `word${i}`).join(" "),
+  };
+  return { panes: { ...p, detail }, id: a.id, name: a.name };
+}
+
+describe("v2 content: the selection detail strip (10-11, LAYOUT-07, LAYOUT-03)", () => {
+  it.each(SIZES)("detail %i rows x %i cols: fits, FILES title + conflict stay, the focused pane keeps its content", (rows, cols) => {
+    for (const [name, base] of FIXTURES) {
+      const { panes, id, name: agentName } = detailed(base);
+      for (const focus of FOCUS_ORDER) {
+        for (const rightTab of TABS) {
+          const ui: UiState = { ...initialUi, focus, rightTab, selectedAgentId: id };
+          const msg = `${name}, ${focusName(ui)}`;
+          const lines = frame(rows, cols, ui, panes);
+          expect(lines.length, msg).toBeLessThanOrEqual(rows);
+          for (const l of lines) expect(cells(l).length, msg).toBeLessThanOrEqual(cols);
+          const { left, tabs, right } = regions(lines, rows, cols);
+          // LAYOUT-03: the FILES title and its conflict row never yield
+          const filesY = left.findIndex((s, y) => y >= 2 && FILES_TITLE.test(s));
+          expect(filesY, `${msg}: FILES title`).toBeGreaterThan(1);
+          expect(left[filesY + 1], `${msg}: conflict row`).toMatch(/^▌ !/);
+          const footer = lines.length - 1;
+          // the strip's pill row with AGENTS focused (always above FILES)
+          const pill = left.findIndex((s) => s.startsWith(`▐${agentName}▌`));
+          if (focus === "agents" && rows >= 24) expect(pill, `${msg}: pill row`).toBeGreaterThan(1);
+          if (pill >= 0) expect(pill, msg).toBeLessThan(filesY);
+          if (focus === "ports") {
+            // WR-08 with the strip open
+            const portsY = right.findIndex((s, y) => y >= 2 && y < footer && PORTS_TITLE.test(s));
+            expect(portsY, `${msg}: PORTS title`).toBeGreaterThan(0);
+            expect(right[portsY]!.startsWith("▐PORTS▌"), msg).toBe(true);
+            const region = right.slice(portsY + 1, footer);
+            const drawn = region.filter((s) => /(^|\s):\d+/.test(s)).length;
+            expect(drawn + arrowCount(region), `${msg}: drawn ${drawn}`).toBe(panes.ports.length);
+          }
+          if (focus === "right") {
+            const tabsY = tabs.findIndex((s, y) => y >= 2 && /PHASES/.test(s) && /SESSIONS/.test(s));
+            expect(tabsY, `${msg}: tabs row`).toBeGreaterThan(0);
+            expect(tabs[tabsY], msg).toContain(rightTab === "phases" ? "▐PHASES▌" : "▐SESSIONS▌");
+            if (rightTab === "phases") {
+              // WR-09 with the strip open
+              let portsY = tabs.findIndex((s, y) => y > tabsY && y < footer && PORTS_TITLE.test(s));
+              if (portsY < 0) portsY = footer;
+              const body = tabs.slice(tabsY + 1, portsY);
+              expect(body.some((s) => PHASE_MARKER.test(s)), `${msg}: body ${JSON.stringify(body)}`).toBe(true);
+            }
+          }
         }
       }
     }
