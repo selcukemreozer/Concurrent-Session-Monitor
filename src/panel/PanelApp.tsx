@@ -21,12 +21,14 @@ import {
 import { contextOf, isIntent, resolve, type HintContext, type Intent, type KeyInput } from "./ui/keymap.js";
 import { drawShellFrame, EMPTY_SCROLL, type SampleFlags, type ScrollState } from "./ui/draw/shell.js";
 import { tickerRows } from "./ui/draw/files.js";
+import { visiblePortEntries } from "./ui/draw/ports.js";
 import { SAMPLE } from "./ui/sample.js";
 import { ScreenView } from "./ui/ScreenView.js";
 import { buildAgents, stableOrder } from "./ui/build/agents.js";
 import { buildDetail } from "./ui/build/detail.js";
 import { buildFiles } from "./ui/build/files.js";
 import { buildProjects, buildSessions, currentPhaseNumber } from "./ui/build/right.js";
+import { buildPorts } from "./ui/build/ports.js";
 import { cycleId, gridItems, moveGrid, moveList, pageGrid } from "./ui/nav.js";
 import { geometry } from "./ui/geometry.js";
 import { defaultGotoDeps, runGoto, type GotoDeps } from "./actions/goto.js";
@@ -38,6 +40,7 @@ import type {
   FileGroup,
   Flash,
   IdleStrip,
+  PortEntry,
   Project,
   SessionEntry,
 } from "./ui/models.js";
@@ -146,6 +149,22 @@ import type {
  *     re-check, launch.ts cwd validation; T-10-34); PanelApp imports no
  *     launcher. Switching the right tab clears the copy/open status (legacy
  *     onToggle parity).
+ *
+ * Phase 10 plan 10-15 (KEYS-02, KEYS-03, LAYOUT-01, LAYOUT-02, D-23):
+ *   - PORTS is LIVE: `buildPorts` joins the cached `usePorts` scan with the
+ *     live rows (owner names through livePidMap / attribute). Its ` sample `
+ *     chip is gone, so every v2 pane now runs on live data.
+ *   - KEYS-02: the PORTS cursor is a portKey (`setPortCursor`). `↑`/`↓` move it
+ *     by one shown port and PgUp/PgDn by the drawn window; a null cursor
+ *     starts from the first shown port (where the draw puts `❯`).
+ *   - Fail closed (RESEARCH open question 4; T-10-37): when a scan no longer
+ *     lists the selected port, PanelApp leaves the stale key alone. It is not
+ *     cleared (that would put `❯` on the first port) nor moved to the nearest
+ *     port, so no `❯` is drawn; the next arrow goes through `moveList`, whose
+ *     unknown-current rule selects the first shown port. Phase 11 acts on the
+ *     port under the cursor, so it must never jump on its own.
+ *   - Enter on a port stays the Phase 11 noop; PanelApp imports no scanner or
+ *     kill backend (T-10-39), and the footer hides `⏎ actions` (KEYS-03).
  */
 export interface PanelAppProps {
   tickMs?: number;
@@ -179,13 +198,23 @@ interface ViewFacts {
   roots: readonly string[];
   /** The index of the shown project in `roots` (10-14). */
   projectIdx: number;
+  /** The focused PORTS list's portKeys in drawn order (10-15, KEYS-02). */
+  portKeys: readonly string[];
 }
 
 /**
  * Each flag turns false when its pane goes live (D-23); AGENTS from 10-09,
- * FILES from 10-12, PHASES and SESSIONS from 10-14.
+ * FILES from 10-12, PHASES and SESSIONS from 10-14, PORTS from 10-15: every
+ * pane is live.
  */
-const SAMPLE_FLAGS: SampleFlags = { agents: false, files: false, phases: false, sessions: false, ports: true };
+const SAMPLE_FLAGS: SampleFlags = { agents: false, files: false, phases: false, sessions: false, ports: false };
+
+/** A redraw key over every drawn PORTS field (10-15). */
+function portsKey(ports: readonly PortEntry[]): string {
+  return ports
+    .map((p) => [p.key, p.port, p.proc, p.pid, p.exposed ? 1 : 0, p.owner ?? "\u0000"].join("\u001f"))
+    .join("\u001e");
+}
 
 /** A redraw key over every drawn PHASES field (10-14). */
 function phasesKey(projects: readonly Project[], idx: number): string {
@@ -298,6 +327,7 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
   liveRowsRef.current = liveRows;
   const branches = useBranches(liveRowsRef);
   // 10-11: the cached last-good port scan, for the detail strip's owned ports
+  // and (10-15) the live PORTS pane
   const scanned = usePorts();
   // D-05: the first-seen start order survives re-sorts and compacts (Pitfall 2)
   const orderRef = React.useRef<Map<string, number>>(new Map());
@@ -333,6 +363,8 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
   const resume = useResume(liveRowsRef, ui.rightTab === "sessions");
   const sessions = buildSessions(resume.rows, resume.isLive, now());
   const sessionsScanning = resume.rows === null;
+  // 10-15 (D-23, KEYS-02): PORTS from the same scan, identity-keyed by portKey
+  const ports = buildPorts(scanned, liveRows);
   const panes = {
     ...SAMPLE,
     agents: ag.agents,
@@ -347,6 +379,7 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
     sessionStatus: resume.status,
     sessionCursor: resume.selId,
     sessionsScanning,
+    ports,
   };
   const panesKey = [
     agentsKey(ag.agents, ag.idle),
@@ -354,6 +387,7 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
     filesKey(files.conflicts, files.groups, files.narrowed),
     phasesKey(projects, ph.idx),
     sessionsKey(sessions, resume.status, resume.selId, sessionsScanning),
+    portsKey(ports),
   ].join("\u001c");
 
   // Legacy onToggle parity (08 D-15): switching the right tab clears the
@@ -396,6 +430,7 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
     currentPhase: null,
     roots: [],
     projectIdx: 0,
+    portKeys: [],
   });
   const shownProject = projects[ph.idx];
   viewRef.current = {
@@ -409,6 +444,7 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
     currentPhase: currentPhaseNumber(shownProject),
     roots: ph.focusSet.map((f) => f.root),
     projectIdx: ph.idx,
+    portKeys: visiblePortEntries(ports, true).shown.map((p) => p.key),
   };
   const scrollRef = React.useRef<ScrollState>(EMPTY_SCROLL);
   const uiForDraw = effectiveUi(ui, viewRef.current.agentIds);
@@ -475,7 +511,7 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
   // The dispatcher's per-context intent handlers, reassigned every render so
   // they read the latest view-model. A handler is added only by the plan that
   // makes its pane live (T-10-19): AGENTS from 10-09, PHASES and SESSIONS
-  // from 10-14; the rest are no-ops.
+  // from 10-14, PORTS browse from 10-15; the rest are no-ops.
   const intentSpy = props.intentSpy;
   const intentRef = React.useRef<(intent: Intent, ctx: HintContext) => void>(() => undefined);
   intentRef.current = (intent: Intent, ctx: HintContext): void => {
@@ -565,8 +601,22 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
         }
         return;
       }
-      case "ports": // browse: 10-15
+      case "ports": {
+        // KEYS-02 / D-16: the port cursor by portKey over the focused list. A
+        // null cursor starts from the first shown port (the drawn `❯`); a key
+        // that left the scan is unknown to moveList, which picks the first
+        // shown port (fail closed, T-10-37). Enter is the Phase 11 noop and
+        // never reaches here (T-10-39).
+        const keys = viewRef.current.portKeys;
+        let delta = 0;
+        if (intent.t === "move" && (intent.dir === "up" || intent.dir === "down")) delta = intent.dir === "up" ? -1 : 1;
+        else if (intent.t === "page") delta = intent.dir * Math.max(1, scrollRef.current.ports.visible);
+        if (delta === 0) return;
+        const cur = uiRef.current.portCursor ?? keys[0] ?? null;
+        const key = moveList(keys, cur, delta);
+        if (key !== null) apply({ t: "setPortCursor", key });
         return;
+      }
       case "menu":
       case "confirm":
       case "confirmKill":

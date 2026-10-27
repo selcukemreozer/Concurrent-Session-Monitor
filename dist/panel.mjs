@@ -21893,6 +21893,9 @@ async function scanPorts(uid = process.getuid?.()) {
   }
   return [...byKey.values()];
 }
+function portKey(port2, pid) {
+  return `${port2} ${pid}`;
+}
 
 // src/panel/ui/rowModels.ts
 function dotColor(dotState) {
@@ -26613,6 +26616,22 @@ function buildSessions(rows, isLive, now) {
   return rows.map((r2) => ({ id: r2.id, name: r2.label, ago: fmtAge(r2.mtimeMs, now), live: isLive(r2) }));
 }
 
+// src/panel/ui/build/ports.ts
+function buildPorts(scanned, liveRows) {
+  const live = livePidMap(liveRows);
+  return scanned.map((p) => {
+    const owner = attribute(p, live);
+    return {
+      key: portKey(p.port, p.pid),
+      port: p.port,
+      proc: p.command,
+      pid: p.pid,
+      exposed: p.exposed,
+      owner: owner ? labelLead({ title: owner.title, folder: owner.folder }) : null
+    };
+  }).sort((a, b) => a.port - b.port || a.pid - b.pid);
+}
+
 // src/panel/ui/nav.ts
 var STRIPS_PER_SLOT = 3;
 function normCols(cols) {
@@ -26837,7 +26856,10 @@ async function runGoto(t, deps = defaultGotoDeps()) {
 
 // src/panel/PanelApp.tsx
 var import_jsx_runtime4 = __toESM(require_jsx_runtime(), 1);
-var SAMPLE_FLAGS = { agents: false, files: false, phases: false, sessions: false, ports: true };
+var SAMPLE_FLAGS = { agents: false, files: false, phases: false, sessions: false, ports: false };
+function portsKey(ports) {
+  return ports.map((p) => [p.key, p.port, p.proc, p.pid, p.exposed ? 1 : 0, p.owner ?? "\0"].join("")).join("");
+}
 function phasesKey(projects, idx) {
   const p = projects.map(
     (x) => [
@@ -26945,6 +26967,7 @@ function PanelApp(props = {}) {
   const resume = useResume(liveRowsRef, ui.rightTab === "sessions");
   const sessions2 = buildSessions(resume.rows, resume.isLive, now());
   const sessionsScanning = resume.rows === null;
+  const ports = buildPorts(scanned, liveRows);
   const panes = {
     ...SAMPLE,
     agents: ag.agents,
@@ -26958,14 +26981,16 @@ function PanelApp(props = {}) {
     sessions: sessions2,
     sessionStatus: resume.status,
     sessionCursor: resume.selId,
-    sessionsScanning
+    sessionsScanning,
+    ports
   };
   const panesKey = [
     agentsKey(ag.agents, ag.idle),
     detailKey(detail),
     filesKey(files.conflicts, files.groups, files.narrowed),
     phasesKey(projects, ph.idx),
-    sessionsKey(sessions2, resume.status, resume.selId, sessionsScanning)
+    sessionsKey(sessions2, resume.status, resume.selId, sessionsScanning),
+    portsKey(ports)
   ].join("");
   const clearResumeStatus = resume.clearStatus;
   import_react47.default.useEffect(() => {
@@ -26993,7 +27018,8 @@ function PanelApp(props = {}) {
     phaseNumbers: [],
     currentPhase: null,
     roots: [],
-    projectIdx: 0
+    projectIdx: 0,
+    portKeys: []
   });
   const shownProject = projects[ph.idx];
   viewRef.current = {
@@ -27006,7 +27032,8 @@ function PanelApp(props = {}) {
     phaseNumbers: shownProject === void 0 ? [] : shownProject.phases.map((e) => e.number),
     currentPhase: currentPhaseNumber(shownProject),
     roots: ph.focusSet.map((f) => f.root),
-    projectIdx: ph.idx
+    projectIdx: ph.idx,
+    portKeys: visiblePortEntries(ports, true).shown.map((p) => p.key)
   };
   const scrollRef = import_react47.default.useRef(EMPTY_SCROLL);
   const uiForDraw = effectiveUi(ui, viewRef.current.agentIds);
@@ -27134,8 +27161,17 @@ function PanelApp(props = {}) {
         }
         return;
       }
-      case "ports":
+      case "ports": {
+        const keys = viewRef.current.portKeys;
+        let delta = 0;
+        if (intent.t === "move" && (intent.dir === "up" || intent.dir === "down")) delta = intent.dir === "up" ? -1 : 1;
+        else if (intent.t === "page") delta = intent.dir * Math.max(1, scrollRef.current.ports.visible);
+        if (delta === 0) return;
+        const cur = uiRef.current.portCursor ?? keys[0] ?? null;
+        const key = moveList(keys, cur, delta);
+        if (key !== null) apply({ t: "setPortCursor", key });
         return;
+      }
       case "menu":
       case "confirm":
       case "confirmKill":
