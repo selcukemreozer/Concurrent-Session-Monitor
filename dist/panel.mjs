@@ -24167,6 +24167,7 @@ function effectiveUi(ui, agentIds) {
 }
 
 // src/panel/ui/keymap.ts
+var BUILT_PHASE = 10;
 var INTENT_TAGS = /* @__PURE__ */ new Set(["move", "page", "project", "goto", "copy", "open"]);
 function isIntent(a) {
   return INTENT_TAGS.has(a.t);
@@ -24456,8 +24457,9 @@ function contextOf(ui) {
       return "ports";
   }
 }
-function hintsFor(ui) {
-  return FOOTER_HINTS[contextOf(ui)].map((h) => ({
+var BUILT_BY_ID = new Map(KEYMAP.map((b) => [b.id, b.built]));
+function hintsFor(ui, built = BUILT_PHASE) {
+  return FOOTER_HINTS[contextOf(ui)].filter((h) => (BUILT_BY_ID.get(h.binding) ?? Infinity) <= built).map((h) => ({
     binding: h.binding,
     key: h.key,
     label: typeof h.label === "function" ? h.label(ui) : h.label

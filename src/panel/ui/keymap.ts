@@ -25,11 +25,19 @@
  *     row sits before `close`), and `q` still closes. Tab / Shift+Tab move
  *     focus in the normal contexts and close an open menu (UI-SPEC), but a
  *     confirm is never dismissed by Tab.
+ *   - KEYS-03 (plan 10-15): the footer never shows a key that does nothing
+ *     yet. `hintsFor` drops every hint whose binding row is `built` in a
+ *     later phase than BUILT_PHASE (e.g. PORTS `⏎ actions`, a Phase 11 key).
+ *     Routing (`resolve`) is unchanged: those rows still resolve to noops.
+ *     Phase 11 raises BUILT_PHASE when it wires the port menu.
  */
 import type { Action, UiState } from "./uiState.js";
 import type { Dir } from "./nav.js";
 
 /** The subset of Ink's `Key` the keymap reads. Ink's `Key` is assignable. */
+/** The latest phase whose key bindings are wired (KEYS-03). */
+export const BUILT_PHASE = 10;
+
 export interface KeyInput {
   tab?: boolean;
   shift?: boolean;
@@ -389,13 +397,21 @@ export function contextOf(ui: UiState): HintContext {
   }
 }
 
-/** The footer hints for a UI state, with dynamic labels resolved. */
-export function hintsFor(ui: UiState): Hint[] {
-  return FOOTER_HINTS[contextOf(ui)].map((h) => ({
-    binding: h.binding,
-    key: h.key,
-    label: typeof h.label === "function" ? h.label(ui) : h.label,
-  }));
+const BUILT_BY_ID: ReadonlyMap<string, Binding["built"]> = new Map(KEYMAP.map((b) => [b.id, b.built]));
+
+/**
+ * The footer hints for a UI state, with dynamic labels resolved. Hints whose
+ * binding is built after `built` (default BUILT_PHASE) are hidden (KEYS-03);
+ * tests pass a later phase to read the full UI-SPEC hint set.
+ */
+export function hintsFor(ui: UiState, built: number = BUILT_PHASE): Hint[] {
+  return FOOTER_HINTS[contextOf(ui)]
+    .filter((h) => (BUILT_BY_ID.get(h.binding) ?? Infinity) <= built)
+    .map((h) => ({
+      binding: h.binding,
+      key: h.key,
+      label: typeof h.label === "function" ? h.label(ui) : h.label,
+    }));
 }
 
 /**
