@@ -22346,7 +22346,7 @@ function isNewer(remote, installed) {
   return false;
 }
 function installedVersion() {
-  return true ? normalizeVersion("1.8.0") : null;
+  return true ? normalizeVersion("2.0.0") : null;
 }
 function updateCheckEnabled(opts) {
   const flag = (opts.env.CSM_UPDATE_CHECK ?? "").trim().toLowerCase();

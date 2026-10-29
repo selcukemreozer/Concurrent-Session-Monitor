@@ -2,6 +2,76 @@
 
 Notable changes to Concurrent Session Monitor, newest release first.
 
+## v2.0.0 (2026-10-29)
+
+This is a major version because several keys change and break muscle memory.
+Read the key list below before you update.
+
+### New
+
+- The new panel is the default: plain `csm` opens it.
+  - AGENTS: a card grid, one card per active session (asking, waiting,
+    running or subagent) with its folder, branch, uptime, model and last
+    prompt, plus selectable 2-row idle strips.
+  - Selecting a card or strip opens a detail strip (intent, branch, owned
+    ports, uptime, model and the full last prompt) and narrows FILES to that
+    session (`FILES · N · esc: all`). A selection drops after 15 s without a
+    key.
+  - PHASES, SESSIONS and PORTS show live data.
+  - Go-to: Enter on a selected card or idle strip brings that session's Warp
+    pane to the front and the footer shows `focusing <name>`. When it cannot,
+    the footer gives one plain reason (for example `pane not findable`). tmux,
+    GNU screen and other multiplexers, IDE terminals and non-Warp apps are
+    never focused.
+  - The panel redraws as one clean frame on every resize (sidebar toggle,
+    edge drag, height change). No repeated `◆ CSM` header or leftover borders
+    remain.
+  - At 100–164 columns PHASES/SESSIONS and PORTS sit side by side under
+    FILES.
+
+### Changed keys and behavior
+
+- `Tab` / `Shift+Tab` now move focus between panes (AGENTS → PHASES/SESSIONS
+  → PORTS). They no longer switch the PHASES project.
+- PHASES project cycling moved from `Tab` to `←` / `→` while PHASES is
+  focused. `↑` / `↓` move through the phases.
+- `q` quits. `Ctrl+C` still quits too.
+- `Enter` on a selected agent card or idle strip goes to its Warp pane.
+  `Enter` in SESSIONS still copies the resume line and `o` still opens it
+  (shown as `copied ✓` / `✓ opened`).
+- `Esc` clears the agent selection (and the FILES narrowing), or returns
+  focus to AGENTS from another pane.
+- `PgUp` / `PgDn` are kept. They page the focused list (the AGENTS grid by
+  card rows, PHASES, SESSIONS, PORTS); they have no footer hint.
+- `↑` / `↓` in PORTS browse by port; the cursor follows the port, not the
+  row, and drops when that port goes away.
+- The clickable OSC-8 `↪ go to pane` link on cards is removed. Go-to is
+  `Enter` only.
+- The card grid order is stable: cards keep session start order, so a
+  re-sort or a `/compact` never moves the card under the cursor. Attention
+  shows through color and the header chips, not through position.
+- A scrolled list always says what is hidden: `↑ N more` / `↓ N more`, or one
+  `↑ N more · ↓ N more` row when the grid has no room for both.
+- The footer shows only keys that work in this release; hints for port
+  actions that arrive later are hidden.
+- The crash handler now covers the default panel: a crash restores the
+  terminal, prints one `csm crashed:` line and writes the stack to
+  `crash.log` in the store directory.
+
+### Legacy
+
+- `CSM_UI=legacy csm` opens the previous panel, with its old keys, for this
+  release only. 2.1.0 removes it. Any other `CSM_UI` value (including `v2`)
+  opens the new panel.
+- In the previous panel, `r` (show SESSIONS) followed by `Enter` in the same
+  key burst is now ignored until the pane has drawn, so `Enter` never acts on
+  a hidden pane.
+
+### Notes
+
+- After updating, run `/plugin update` and then `/csm-setup` so the global
+  `csm` command (a version-pinned link) points at 2.0.0.
+
 ## v1.8.0 (2026-10-28)
 
 ### New (candidate, CSM_UI=v2)
