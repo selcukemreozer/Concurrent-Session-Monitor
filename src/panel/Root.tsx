@@ -28,10 +28,12 @@ export interface RootProps {
  *
  * Phase 9 plan 09-13: the UI variant is chosen HERE, inside the single render tree,
  * so main.tsx stays the sole render site and bin/csm.mjs is untouched.
- *   - `v2` (CSM_UI, trimmed, exactly `v2`; or the `variant` prop): the same splash
- *     recolored for v2 (D-22), then {@link PanelApp}.
- *   - anything else: the unchanged 1.6.x pair, legacy {@link Splash} then {@link App}
- *     (D-23).
+ * Phase 10 plan 10-17 (D-22, 2.0.0): the new panel is the default.
+ *   - `legacy` (CSM_UI, trimmed, exactly `legacy`; or the `variant` prop): the
+ *     unchanged previous pair, legacy {@link Splash} then {@link App}. Kept for one
+ *     release; removed in 2.1.0.
+ *   - anything else, unset included (or the `v2` prop): the same splash recolored
+ *     for v2, then {@link PanelApp}.
  * The variant sits in a useState initializer so it is read once per mount; a later
  * env change never swaps trees under a running panel (T-09-13).
  */

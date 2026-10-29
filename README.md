@@ -130,6 +130,12 @@ and `off` also work).
 
 ## Panel keys
 
+Since 2.0.0, plain `csm` opens the new panel. Its keys are listed in the
+2.0.0 entry of [CHANGELOG.md](CHANGELOG.md) (`Tab` moves focus between panes,
+`←` / `→` switch the PHASES project, `Enter` on an agent goes to its pane, `q`
+quits). The list below describes the previous panel, which `CSM_UI=legacy csm`
+still opens until 2.1.0.
+
 The panel reads the keyboard only when it runs in a real terminal (a TTY).
 Otherwise it shows `⌨ keys off` and stays on FAZLAR.
 
@@ -244,7 +250,7 @@ back to the default. Times are in milliseconds.
 | `CSM_RESUME_SCAN_MS` | `10000` (10 s) | Cadence of the recent-sessions scan feeding the OTURUMLAR pane. It runs only while OTURUMLAR is visible (press `r`). Values below `1000` (1 s) are raised to `1000`. |
 | `CSM_GSD_TOOLS` | auto-detected | Absolute path to the `gsd-tools` binary used by the phases pane. Set it to override auto-detection. |
 | `CSM_UPDATE_CHECK` | on | Set to `0` (or `false`/`off`) to disable the panel's update check; no network request is made. See [Update notice](#update-notice). |
-| `CSM_UI` | unset (current panel) | Set to `v2` to open the new panel, a release candidate in 1.8.0: every pane is live (cards with model and last prompt, selectable idle strips, detail strip, FILES narrowing, PHASES, SESSIONS, PORTS), Enter goes to a session's Warp pane, and the panel redraws cleanly on resize. Any other value keeps the current panel. |
+| `CSM_UI` | unset (new panel) | The new panel is the default since 2.0.0. Set to `legacy` to open the previous panel for one more release (it is removed in 2.1.0). Any other value opens the new panel. |
 
 ### Reserved (not yet wired)
 

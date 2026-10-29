@@ -80,8 +80,10 @@ process.on("exit", () => {
 // (Pitfall 3), so the catch around that await routes it to the same handler.
 // restoreTerminal(instance) is safe there: Ink's unmount() returns early once
 // the instance is already unmounted, so the restore bytes are never doubled.
-// RESEARCH Open Question 1: the handlers are v2-only in 1.7.0 (legacy keeps
-// today's crash behavior, D-23) and become universal at the Phase 10 flip.
+// RESEARCH Open Question 1 / D-21 (plan 10-17, 2.0.0): v2 is now the default,
+// so the crash handler and the waitUntilExit catch below cover the default
+// panel. `CSM_UI=legacy` keeps its 09-14 behavior (no handler, re-throw) for
+// its one remaining release; the gate itself is unchanged.
 // Installed BEFORE run(), like the signal handlers, so a boot-time crash is
 // covered too; `instance` is read when the handler runs, not now.
 const onCrash: ((err: unknown) => void) | null =
@@ -106,9 +108,9 @@ defaultLater(() => {
 }, 0);
 
 // Keep the process alive until Ink exits (unmount on signal, or an internal exit).
-// A rejection here is a render-phase error (Pitfall 3): legacy re-throws it
-// unchanged (D-23); v2 sends it through the crash handler, which exits 1 (the
-// exit listener above still runs both cleanups).
+// A rejection here is a render-phase error (Pitfall 3): the default v2 panel
+// sends it through the crash handler, which exits 1 (the exit listener above
+// still runs both cleanups); `CSM_UI=legacy` re-throws it unchanged (D-21).
 try {
   await instance.waitUntilExit();
 } catch (err) {

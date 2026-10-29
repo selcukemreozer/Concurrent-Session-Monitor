@@ -27053,7 +27053,7 @@ function Splash({ palette = "legacy" } = {}) {
 // src/panel/ui/variant.ts
 function uiVariant(env3 = process.env) {
   const raw = env3.CSM_UI;
-  return typeof raw === "string" && raw.trim() === "v2" ? "v2" : "legacy";
+  return typeof raw === "string" && raw.trim() === "legacy" ? "legacy" : "v2";
 }
 
 // src/panel/Root.tsx

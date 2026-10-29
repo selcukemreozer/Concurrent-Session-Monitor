@@ -19,7 +19,8 @@
 // The stderr writer that entry.ts injects must be synchronous
 // (`fs.writeSync(2, ...)`): stderr to a pipe is async on macOS (Pitfall 4), so
 // an async write can be lost when exit(1) runs. That wiring, and installing the
-// handler for `CSM_UI=v2` only, lives in entry.ts (plan 09-14).
+// handler for the v2 panel only (the default since 2.0.0, plan 10-17; not for
+// `CSM_UI=legacy`), lives in entry.ts (plan 09-14).
 //
 // Source kept ASCII-only (special code points are written as escapes).
 import * as fs from "node:fs";
