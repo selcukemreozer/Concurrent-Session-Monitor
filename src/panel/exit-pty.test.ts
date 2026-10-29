@@ -185,8 +185,9 @@ function panelEnv(storeDir: string, v2: boolean): NodeJS.ProcessEnv {
     CSM_UPDATE_CHECK: "0",
     TERM: "xterm-256color",
   };
-  delete env.CSM_UI;
-  if (v2) env.CSM_UI = "v2";
+  // Phase 10 plan 10-17 (D-22): every run names its variant explicitly. The
+  // default is v2 since 2.0.0, so a legacy run must set `legacy`.
+  env.CSM_UI = v2 ? "v2" : "legacy";
   return env;
 }
 

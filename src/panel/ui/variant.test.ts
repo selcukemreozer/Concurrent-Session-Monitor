@@ -1,31 +1,32 @@
 import { describe, it, expect } from "vitest";
 import { uiVariant } from "./variant.js";
 
-// Phase 9 plan 09-04 Task 1: CSM_UI selects the v2 shell only on an exact
-// trimmed "v2" (D-23, T-09-13). Everything else opens the 1.6.x panel.
+// Phase 10 plan 10-17 (D-22, T-09-13 / T-10-42): from 2.0.0 the new panel is
+// the default. Only an exact trimmed "legacy" opens the previous panel (for one
+// release, removed in 2.1.0); every other value, unset included, opens v2.
 describe("uiVariant", () => {
-  it("is legacy when CSM_UI is unset", () => {
-    expect(uiVariant({})).toBe("legacy");
+  it("is v2 when CSM_UI is unset", () => {
+    expect(uiVariant({})).toBe("v2");
   });
 
-  it.each(["", "v1", "legacy", "V2", "v2x", "2", " ", "v 2", "vv2"])(
-    "is legacy for CSM_UI=%j",
+  it.each(["LEGACY", "Legacy", "v1", "", "v2", " v2 ", " ", "legacy2", "le gacy", "legacyx"])(
+    "is v2 for CSM_UI=%j",
     (v) => {
-      expect(uiVariant({ CSM_UI: v })).toBe("legacy");
+      expect(uiVariant({ CSM_UI: v })).toBe("v2");
     },
   );
 
-  it.each(["v2", " v2 ", "\tv2\n"])("is v2 for CSM_UI=%j", (v) => {
-    expect(uiVariant({ CSM_UI: v })).toBe("v2");
+  it.each(["legacy", " legacy ", "\tlegacy\n"])("is legacy for CSM_UI=%j", (v) => {
+    expect(uiVariant({ CSM_UI: v })).toBe("legacy");
   });
 
   it("defaults to process.env", () => {
     const prev = process.env.CSM_UI;
     try {
-      process.env.CSM_UI = "v2";
-      expect(uiVariant()).toBe("v2");
-      delete process.env.CSM_UI;
+      process.env.CSM_UI = "legacy";
       expect(uiVariant()).toBe("legacy");
+      delete process.env.CSM_UI;
+      expect(uiVariant()).toBe("v2");
     } finally {
       if (prev === undefined) delete process.env.CSM_UI;
       else process.env.CSM_UI = prev;

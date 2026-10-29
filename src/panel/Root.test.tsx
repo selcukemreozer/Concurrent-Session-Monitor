@@ -52,9 +52,11 @@ function renderCapture(node: React.ReactElement) {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Phase 10 plan 10-17: this block exercises the legacy splash → App switch, so
+// it pins the legacy variant explicitly (the default became v2 in 2.0.0).
 describe("Root (csm splash → panel switch)", () => {
   it("mounts the panel immediately when the splash is disabled", () => {
-    const { inst, frame } = renderCapture(<Root enableSplash={false} />);
+    const { inst, frame } = renderCapture(<Root enableSplash={false} variant="legacy" />);
     expect(frame()).toContain("PANEL_STUB");
     expect(frame()).not.toContain("CONCURRENT");
     inst.unmount();
@@ -62,7 +64,7 @@ describe("Root (csm splash → panel switch)", () => {
 
   it("shows the splash first, then transitions to the panel", async () => {
     const { inst, frame, clear } = renderCapture(
-      <Root enableSplash={true} splashMs={30} />,
+      <Root enableSplash={true} splashMs={30} variant="legacy" />,
     );
     // Phase 1 — splash.
     expect(frame()).toContain("CONCURRENT");
@@ -90,19 +92,18 @@ describe("Root CSM_UI variant switch (Phase 9 plan 09-13, D-22/D-23)", () => {
   }
 
   it("the legacy variant prop renders the 1.6.x App", () => {
-    setEnv("v2");
+    setEnv(undefined);
     const { inst, frame } = renderCapture(<Root enableSplash={false} variant="legacy" />);
     expect(frame()).toContain("PANEL_STUB");
     expect(frame()).not.toContain("V2_STUB");
     inst.unmount();
   });
 
+  // Phase 10 plan 10-17 (D-22): 2.0.0 flips the default. Only an exact
+  // trimmed `legacy` keeps the 1.6.x App; everything else opens the v2 shell.
   it.each([
-    ["unset", undefined],
-    ["v1", "v1"],
     ["legacy", "legacy"],
-    ["V2", "V2"],
-    ["empty string", ""],
+    ["' legacy ' (trimmed)", " legacy "],
   ] as const)("CSM_UI %s keeps the 1.6.x App", (_label, value) => {
     setEnv(value);
     const { inst, frame } = renderCapture(<Root enableSplash={false} />);
@@ -112,8 +113,13 @@ describe("Root CSM_UI variant switch (Phase 9 plan 09-13, D-22/D-23)", () => {
   });
 
   it.each([
+    ["unset", undefined],
     ["v2", "v2"],
     ["' v2 ' (trimmed)", " v2 "],
+    ["v1", "v1"],
+    ["V2", "V2"],
+    ["empty string", ""],
+    ["LEGACY", "LEGACY"],
   ] as const)("CSM_UI %s opens the v2 shell", (_label, value) => {
     setEnv(value);
     const { inst, frame } = renderCapture(<Root enableSplash={false} />);
@@ -123,7 +129,7 @@ describe("Root CSM_UI variant switch (Phase 9 plan 09-13, D-22/D-23)", () => {
   });
 
   it("the v2 variant prop opens the v2 shell", () => {
-    setEnv(undefined);
+    setEnv("legacy");
     const { inst, frame } = renderCapture(<Root enableSplash={false} variant="v2" />);
     expect(frame()).toContain("V2_STUB");
     expect(frame()).not.toContain("PANEL_STUB");

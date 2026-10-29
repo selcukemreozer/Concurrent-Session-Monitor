@@ -112,6 +112,17 @@ describe("README end-user docs (SC-4 doc-lint gate)", () => {
     expect(README).toContain(knob);
   });
 
+  // Phase 10 plan 10-17 (D-22): 2.0.0 makes the new panel the default; the
+  // CSM_UI row documents the one-release `legacy` escape hatch.
+  it("the CSM_UI row documents the new default and the `legacy` escape hatch", () => {
+    const row = README.split("\n").find((l) => l.startsWith("| `CSM_UI`"));
+    expect(row).toBeDefined();
+    expect(row).toContain("`legacy`");
+    expect(row).toContain("2.0.0");
+    expect(row).toContain("2.1.0");
+    expect(row).not.toContain("release candidate");
+  });
+
   it("does NOT document the test-only CSM_TEST_NUM knob", () => {
     expect(README).not.toContain("CSM_TEST_NUM");
   });
