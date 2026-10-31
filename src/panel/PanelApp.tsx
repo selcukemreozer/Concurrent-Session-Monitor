@@ -364,18 +364,39 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
   });
   // 10-14 (D-23, KEYS-05): PHASES from the shared phase scan, the project by
   // root. Until ←/→ picks a root, the last shown root is kept, so a re-ordered
-  // focus set never swaps the project on screen (an unknown root falls back to
-  // the first project inside usePhases).
+  // focus set never swaps the project on screen.
   const shownRootRef = React.useRef<string | null>(null);
   const ph = usePhases(liveRowsRef, ui.projectRoot ?? shownRootRef.current ?? "");
-  shownRootRef.current = ph.focusRoot;
   // WR-01: ←/→ and `project i/N` walk the first-seen order of the roots, not
   // the focus set's most-recently-active order (which changes on every touch)
   const projectOrderRef = React.useRef<Map<string, number>>(new Map());
   projectOrderRef.current = stableProjectOrder(projectOrderRef.current, ph.focusSet);
   const focusSet = orderFocusSet(ph.focusSet, projectOrderRef.current);
-  const projectIdx = Math.max(0, focusSet.findIndex((f) => f.root === ph.focusRoot));
+  // WR-02: the shown root is the picked root while it is live, else the last
+  // shown root, else the first project in the stable order; never usePhases'
+  // recency-order fallback for a root that left the set. A picked root that
+  // left is reconciled to the shown root below, so its return never swaps the
+  // project back without a key press.
+  const inFocusSet = (r: string | null): r is string => r !== null && focusSet.some((f) => f.root === r);
+  const prevShownRoot = shownRootRef.current;
+  const shownRoot = inFocusSet(ui.projectRoot)
+    ? ui.projectRoot
+    : inFocusSet(prevShownRoot)
+      ? prevShownRoot
+      : (focusSet[0]?.root ?? null);
+  shownRootRef.current = shownRoot;
+  // WR-02: the phase cursor belongs to the project it was moved in, so it is
+  // not drawn after the shown project changes (state cleared in the effect)
+  const phaseCursorStale = shownRoot !== prevShownRoot;
+  const projectIdx = Math.max(0, focusSet.findIndex((f) => f.root === shownRoot));
   const projects = buildProjects(focusSet, ph.progress);
+  React.useEffect(() => {
+    if (shownRoot === null) return;
+    const s = uiRef.current;
+    if (s.projectRoot !== null && s.projectRoot !== shownRoot) apply({ t: "setProject", root: shownRoot });
+    else if (phaseCursorStale && s.phaseCursor !== null) apply({ t: "setPhaseCursor", n: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shownRoot, ui.projectRoot]);
   // 10-14 (D-23): SESSIONS from the shared resume picker; its scan runs only
   // while the SESSIONS tab is shown (08 D-19).
   const resume = useResume(liveRowsRef, ui.rightTab === "sessions");
@@ -465,7 +486,8 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
     portKeys: visiblePortEntries(ports, true).shown.map((p) => p.key),
   };
   const scrollRef = React.useRef<ScrollState>(EMPTY_SCROLL);
-  const uiForDraw = effectiveUi(ui, viewRef.current.agentIds);
+  const uiShown = phaseCursorStale && ui.phaseCursor !== null ? { ...ui, phaseCursor: null } : ui;
+  const uiForDraw = effectiveUi(uiShown, viewRef.current.agentIds);
 
   // Pitfall 4 / T-10-21: a selection whose session left the roster is cleared
   // (fails closed); effectiveUi keeps the draw and the footer honest until then.
@@ -508,7 +530,7 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
     // (panesKey) and the fed-back windows by their offsets (scrollKey): a
     // fresh object with the same values never re-draws the frame.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rows, columns, ui, uiForDraw.selectedAgentId, tick, step, isRawModeSupported, headerKey, flashKey, scrollKey, panesKey],
+    [rows, columns, ui, uiForDraw.selectedAgentId, uiForDraw.phaseCursor, tick, step, isRawModeSupported, headerKey, flashKey, scrollKey, panesKey],
   );
   // Pattern 3: the windows drawn are fed back on the next draw (a ref: no state, no extra render)
   scrollRef.current = frame.scroll;

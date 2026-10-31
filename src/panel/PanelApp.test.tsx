@@ -1248,6 +1248,34 @@ describe("PanelApp live PHASES (10-14, KEYS-05, KEYS-02)", () => {
     await vi.waitFor(() => expect(cursorPhase(lastFrame())).toBe("alpha-03"));
   });
 
+  it("a picked project that leaves the set is reconciled: no same-numbered cursor, no jump back (WR-02)", async () => {
+    const { lastFrame, stdin } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
+    await vi.waitFor(() => expect(lastFrame()).toContain("Alpha v1"), { timeout: 3000 });
+    // pick B and move its cursor to beta-02 (A has an alpha-02 too)
+    await pressEach(stdin, KEYS.tab, KEYS.right);
+    await vi.waitFor(() => expect(cursorPhase(lastFrame())).toBe("beta-01"), { timeout: 3000 });
+    press(stdin, KEYS.down);
+    await vi.waitFor(() => expect(cursorPhase(lastFrame())).toBe("beta-02"));
+
+    // B's last live session ends: A is shown with its cursor on A's current phase
+    const [a, b] = projectRows();
+    ROWS.list = [a!];
+    await vi.waitFor(() => expect(projLine(lastFrame())).toContain("projA"), { timeout: 3000 });
+    expect(projLine(lastFrame())).toContain("project 1/1");
+    expect(cursorPhase(lastFrame())).toBe("alpha-03");
+
+    // B comes back as the most recently active session: A stays on screen
+    ROWS.list = retitled([b!, a!], "B is back");
+    await vi.waitFor(() => expect(lastFrame()).toContain("B is back"), { timeout: 3000 });
+    expect(projLine(lastFrame())).toContain("projA");
+    expect(projLine(lastFrame())).toContain("project 1/2");
+    expect(cursorPhase(lastFrame())).toBe("alpha-03");
+    // and → still reaches B, with its cursor back on B's current phase
+    press(stdin, KEYS.right);
+    await vi.waitFor(() => expect(projLine(lastFrame())).toContain("projB"));
+    await vi.waitFor(() => expect(cursorPhase(lastFrame())).toBe("beta-01"));
+  });
+
   it("the footer shows the PHASES hints from the keymap", async () => {
     const { lastFrame, stdin } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
     press(stdin, KEYS.tab);

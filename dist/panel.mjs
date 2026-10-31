@@ -26768,12 +26768,22 @@ function PanelApp(props = {}) {
   });
   const shownRootRef = import_react47.default.useRef(null);
   const ph = usePhases(liveRowsRef, ui.projectRoot ?? shownRootRef.current ?? "");
-  shownRootRef.current = ph.focusRoot;
   const projectOrderRef = import_react47.default.useRef(/* @__PURE__ */ new Map());
   projectOrderRef.current = stableProjectOrder(projectOrderRef.current, ph.focusSet);
   const focusSet = orderFocusSet(ph.focusSet, projectOrderRef.current);
-  const projectIdx = Math.max(0, focusSet.findIndex((f) => f.root === ph.focusRoot));
+  const inFocusSet = (r) => r !== null && focusSet.some((f) => f.root === r);
+  const prevShownRoot = shownRootRef.current;
+  const shownRoot = inFocusSet(ui.projectRoot) ? ui.projectRoot : inFocusSet(prevShownRoot) ? prevShownRoot : focusSet[0]?.root ?? null;
+  shownRootRef.current = shownRoot;
+  const phaseCursorStale = shownRoot !== prevShownRoot;
+  const projectIdx = Math.max(0, focusSet.findIndex((f) => f.root === shownRoot));
   const projects = buildProjects(focusSet, ph.progress);
+  import_react47.default.useEffect(() => {
+    if (shownRoot === null) return;
+    const s = uiRef.current;
+    if (s.projectRoot !== null && s.projectRoot !== shownRoot) apply({ t: "setProject", root: shownRoot });
+    else if (phaseCursorStale && s.phaseCursor !== null) apply({ t: "setPhaseCursor", n: null });
+  }, [shownRoot, ui.projectRoot]);
   const resume = useResume(liveRowsRef, ui.rightTab === "sessions");
   const sessions = buildSessions(resume.rows, resume.isLive, now());
   const sessionsScanning = resume.rows === null;
@@ -26845,7 +26855,8 @@ function PanelApp(props = {}) {
     portKeys: visiblePortEntries(ports, true).shown.map((p) => p.key)
   };
   const scrollRef = import_react47.default.useRef(EMPTY_SCROLL);
-  const uiForDraw = effectiveUi(ui, viewRef.current.agentIds);
+  const uiShown = phaseCursorStale && ui.phaseCursor !== null ? { ...ui, phaseCursor: null } : ui;
+  const uiForDraw = effectiveUi(uiShown, viewRef.current.agentIds);
   const selectionLive = ui.selectedAgentId === null || viewRef.current.agentIds.has(ui.selectedAgentId);
   import_react47.default.useEffect(() => {
     if (!selectionLive) apply({ t: "clearSelection" });
@@ -26881,7 +26892,7 @@ function PanelApp(props = {}) {
     // (panesKey) and the fed-back windows by their offsets (scrollKey): a
     // fresh object with the same values never re-draws the frame.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rows, columns, ui, uiForDraw.selectedAgentId, tick, step2, isRawModeSupported, headerKey, flashKey, scrollKey, panesKey]
+    [rows, columns, ui, uiForDraw.selectedAgentId, uiForDraw.phaseCursor, tick, step2, isRawModeSupported, headerKey, flashKey, scrollKey, panesKey]
   );
   scrollRef.current = frame.scroll;
   const defaultDepsRef = import_react47.default.useRef(null);
