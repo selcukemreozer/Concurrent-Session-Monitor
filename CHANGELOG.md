@@ -2,6 +2,37 @@
 
 Notable changes to Concurrent Session Monitor, newest release first.
 
+## v2.0.1 (2026-10-31)
+
+A patch release with fixes from the 2.0.0 review. No keys change.
+
+### Fixes
+
+- PHASES: `←` / `→` and the `project i/N` number now follow a stable order,
+  the order in which projects were first seen. File activity in a session no
+  longer reshuffles or renumbers the projects.
+- PHASES: when the last session of the project you picked ends, the panel
+  moves to another project once and clears the phase cursor. When that
+  session comes back, the panel does not jump back to it on its own; `→`
+  still reaches it.
+- PORTS: the `❯` cursor stays on the port it was first drawn on. A new port
+  with a lower number no longer takes it over.
+
+### Security
+
+- Session go-to checks that a session's process belongs to the pane it
+  focuses. That check now runs `/bin/ps` by its absolute path, so a different
+  `ps` earlier on `PATH` (for example one inside a project folder) cannot fake
+  the result.
+
+### Notes
+
+- 2.0.1 changes no keys. The key list in the 2.0.0 entry still applies.
+- `CSM_UI=legacy` still opens the previous panel in this release; 2.1.0
+  removes it.
+- After updating, run `/plugin update` and then `/csm-setup` so the global
+  `csm` command (a version-pinned link) points at 2.0.1.
+
 ## v2.0.0 (2026-10-29)
 
 This is a major version because several keys change and break muscle memory.
