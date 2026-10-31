@@ -25,6 +25,9 @@
  *     T-10-17).
  *   - Every action returns the SAME object when nothing changes, so PanelApp
  *     can skip a re-render on identity.
+ *   - IN-02 (quick 261031-jxu): `pinPortCursor` names the port PanelApp pins a
+ *     null PORTS cursor to (the one the draw already shows ❯ on), and
+ *     `portTarget` is the fail-closed resolver every port action must use.
  */
 import type { Flash } from "./models.js";
 
@@ -173,4 +176,29 @@ export function resolveSelected<T extends { id: string }>(
 ): T | null {
   if (ui.selectedAgentId === null) return null;
   return items.find((x) => x.id === ui.selectedAgentId) ?? null;
+}
+
+/**
+ * The portKey PanelApp should pin a null PORTS cursor to, or null when
+ * nothing should change (IN-02, KEYS-02). While PORTS is focused with a null
+ * cursor the draw puts ❯ on the first shown port (`portCursorKey`'s fallback);
+ * pinning that key makes the cursor an identity, so a later scan cannot move
+ * ❯ onto a newly appearing lower-numbered port. A cursor that is already set,
+ * including a stale one whose port left the scan, is never touched (T-10-37).
+ */
+export function pinPortCursor(ui: UiState, shownKeys: readonly string[]): string | null {
+  if (ui.focus !== "ports" || ui.portCursor !== null || shownKeys.length === 0) return null;
+  return shownKeys[0] ?? null;
+}
+
+/**
+ * The port a port action may act on, or null (fails closed, IN-02). This is
+ * the ONLY way a Phase 11 port action (Enter, kill) may resolve its port. A
+ * null, stale or unfocused cursor yields no target and never falls back to
+ * the first port, so a Tab-then-Enter burst that lands before the pin acts on
+ * nothing.
+ */
+export function portTarget(ui: UiState, shownKeys: readonly string[]): string | null {
+  if (ui.focus !== "ports" || ui.portCursor === null) return null;
+  return shownKeys.includes(ui.portCursor) ? ui.portCursor : null;
 }
