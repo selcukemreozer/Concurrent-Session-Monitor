@@ -9,6 +9,8 @@ import {
   flashVisible,
   selectionExpired,
   effectiveUi,
+  pinPortCursor,
+  portTarget,
   type UiState,
   type Mode,
 } from "./uiState.js";
@@ -253,5 +255,57 @@ describe("effectiveUi (fails closed, Pitfall 4)", () => {
     expect(e).not.toBe(s);
     expect(e).toEqual({ ...s, selectedAgentId: null });
     expect(s.selectedAgentId).toBe("b");
+  });
+});
+
+// Quick 261031-jxu (IN-02): the PORTS cursor is pinned to the port the draw
+// already shows, and a port action resolves its target fail-closed.
+describe("pinPortCursor (IN-02, KEYS-02)", () => {
+  const keys = ["k3000", "k5173"];
+
+  it("pins a null cursor to the first shown port while PORTS is focused", () => {
+    expect(pinPortCursor(at({ focus: "ports", portCursor: null }), keys)).toBe("k3000");
+  });
+
+  it("does nothing while PORTS is not focused", () => {
+    expect(pinPortCursor(at({ focus: "agents", portCursor: null }), keys)).toBeNull();
+    expect(pinPortCursor(at({ focus: "right", portCursor: null }), keys)).toBeNull();
+  });
+
+  it("does nothing when the cursor is already on a shown port", () => {
+    expect(pinPortCursor(at({ focus: "ports", portCursor: "k5173" }), keys)).toBeNull();
+  });
+
+  it("never replaces a stale cursor (T-10-37)", () => {
+    expect(pinPortCursor(at({ focus: "ports", portCursor: "gone" }), keys)).toBeNull();
+  });
+
+  it("does nothing with no shown ports", () => {
+    expect(pinPortCursor(at({ focus: "ports", portCursor: null }), [])).toBeNull();
+  });
+});
+
+describe("portTarget (IN-02, fails closed)", () => {
+  it("resolves the cursor port while PORTS is focused and it is shown", () => {
+    expect(portTarget(at({ focus: "ports", portCursor: "k5173" }), ["k3000", "k5173"])).toBe(
+      "k5173",
+    );
+  });
+
+  it("never falls back to the first port for a null cursor", () => {
+    expect(portTarget(at({ focus: "ports", portCursor: null }), ["k3000"])).toBeNull();
+  });
+
+  it("resolves no port for a stale cursor", () => {
+    expect(portTarget(at({ focus: "ports", portCursor: "gone" }), ["k3000"])).toBeNull();
+  });
+
+  it("resolves no port while PORTS is not focused", () => {
+    expect(portTarget(at({ focus: "agents", portCursor: "k3000" }), ["k3000"])).toBeNull();
+  });
+
+  it("resolves no port with no shown ports", () => {
+    expect(portTarget(at({ focus: "ports", portCursor: "k3000" }), [])).toBeNull();
+    expect(portTarget(at({ focus: "ports", portCursor: null }), [])).toBeNull();
   });
 });
