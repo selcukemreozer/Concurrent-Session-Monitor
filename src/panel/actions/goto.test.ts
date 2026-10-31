@@ -6,6 +6,7 @@ import {
   classifyHost,
   defaultGotoDeps,
   focusingText,
+  PS_BIN,
   gotoVerdict,
   parseProcTable,
   runGoto,
@@ -364,6 +365,12 @@ describe("goto.ts source (T-10-25, Pitfall 6, D-13)", () => {
   });
   it("never picks a pane from the terminal device or the working directory", () => {
     expect(code).not.toMatch(/tty|cwd/);
+  });
+  it("runs ps by absolute path only, never through PATH (WR-03)", () => {
+    expect(PS_BIN).toBe("/bin/ps");
+    const calls = [...code.matchAll(/(?<!function )execText\(\s*([^,]+),/g)].map((m) => m[1].trim());
+    expect(calls).toEqual(["PS_BIN", "PS_BIN"]);
+    expect(code).not.toMatch(/["']ps["']/);
   });
   it("re-checks the url right before open and walks ancestry with ancestryChain", () => {
     expect((code.match(/isWarpSessionUrl\(/g) ?? []).length).toBeGreaterThanOrEqual(2);

@@ -159,6 +159,13 @@ export function focusingText(name: string): string {
   return `focusing ${nameText(name, 40) || "session"}`;
 }
 
+/**
+ * WR-03: the D-13 ancestry gate and the pid-reuse check read `ps` by absolute
+ * path (like OPEN_BIN), so a project-local `ps` early on the panel's PATH can
+ * never forge a Warp ancestry or a matching start time.
+ */
+export const PS_BIN = "/bin/ps";
+
 function execText(cmd: string, args: readonly string[]): Promise<string | null> {
   return new Promise((resolve) => {
     try {
@@ -176,8 +183,8 @@ export function defaultGotoDeps(): GotoDeps {
   return {
     probe: defaultProbe,
     startedProbe: (pid) =>
-      execText("ps", ["-o", "lstart=", "-p", String(pid)]).then((s) => (s === null ? "" : s.trim())),
-    procTable: () => execText("ps", ["-axo", "pid=,ppid=,comm="]),
+      execText(PS_BIN, ["-o", "lstart=", "-p", String(pid)]).then((s) => (s === null ? "" : s.trim())),
+    procTable: () => execText(PS_BIN, ["-axo", "pid=,ppid=,comm="]),
     open: (url) => defaultRun(OPEN_BIN, [url], { timeoutMs: 3000 }).then((r) => r.ok),
   };
 }

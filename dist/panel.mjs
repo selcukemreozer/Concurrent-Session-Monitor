@@ -26570,6 +26570,7 @@ function classifyHost(chain, comm) {
 function focusingText(name) {
   return `focusing ${nameText(name, 40) || "session"}`;
 }
+var PS_BIN = "/bin/ps";
 function execText(cmd, args) {
   return new Promise((resolve4) => {
     try {
@@ -26584,8 +26585,8 @@ function execText(cmd, args) {
 function defaultGotoDeps() {
   return {
     probe: defaultProbe,
-    startedProbe: (pid) => execText("ps", ["-o", "lstart=", "-p", String(pid)]).then((s) => s === null ? "" : s.trim()),
-    procTable: () => execText("ps", ["-axo", "pid=,ppid=,comm="]),
+    startedProbe: (pid) => execText(PS_BIN, ["-o", "lstart=", "-p", String(pid)]).then((s) => s === null ? "" : s.trim()),
+    procTable: () => execText(PS_BIN, ["-axo", "pid=,ppid=,comm="]),
     open: (url) => defaultRun(OPEN_BIN, [url], { timeoutMs: 3e3 }).then((r) => r.ok)
   };
 }
