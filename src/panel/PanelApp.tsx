@@ -13,6 +13,7 @@ import {
   effectiveUi,
   flashVisible,
   initialUi,
+  pinPortCursor,
   selectionExpired,
   uiReducer,
   type Action,
@@ -171,6 +172,12 @@ import type {
  *     port under the cursor, so it must never jump on its own.
  *   - Enter on a port stays the Phase 11 noop; PanelApp imports no scanner or
  *     kill backend (T-10-39), and the footer hides `⏎ actions` (KEYS-03).
+ *   - IN-02 (quick 261031-jxu): a null cursor is pinned to the first shown
+ *     port (uiState `pinPortCursor`) as soon as PORTS is focused with ports
+ *     present, so a scan that adds a lower-numbered port cannot move `❯`.
+ *     Phase 11 port actions (Enter, kill) must resolve their port only
+ *     through uiState's `portTarget`, which fails closed for a null, stale
+ *     or unfocused cursor.
  *
  * Phase 10 plan 10-16 (D-23, LAYOUT-01..04):
  *   - PanelApp no longer imports the sample fixture: `panes` is a PanesModel
@@ -485,6 +492,16 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
     projectIdx,
     portKeys: visiblePortEntries(ports, true).shown.map((p) => p.key),
   };
+  // IN-02: pin a null PORTS cursor to the port this frame draws `❯` on, so a
+  // later scan cannot move it onto a newly appearing lower port. The effect
+  // re-reads uiRef (T-08-11): a fast key may already have moved focus or set
+  // the cursor. A stale cursor is never replaced (pinPortCursor, T-10-37).
+  const portPin = pinPortCursor(ui, viewRef.current.portKeys);
+  React.useEffect(() => {
+    if (portPin === null) return;
+    const s = uiRef.current;
+    if (s.focus === "ports" && s.portCursor === null) apply({ t: "setPortCursor", key: portPin });
+  }, [portPin, apply]);
   const scrollRef = React.useRef<ScrollState>(EMPTY_SCROLL);
   const uiShown = phaseCursorStale && ui.phaseCursor !== null ? { ...ui, phaseCursor: null } : ui;
   const uiForDraw = effectiveUi(uiShown, viewRef.current.agentIds);
@@ -643,7 +660,9 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
       }
       case "ports": {
         // KEYS-02 / D-16: the port cursor by portKey over the focused list. A
-        // null cursor starts from the first shown port (the drawn `❯`); a key
+        // null cursor starts from the first shown port (the drawn `❯`); that is
+        // only the pre-pin bridge for a key burst that lands before the IN-02
+        // pin effect runs. A key
         // that left the scan is unknown to moveList, which picks the first
         // shown port (fail closed, T-10-37). Enter is the Phase 11 noop and
         // never reaches here (T-10-39).

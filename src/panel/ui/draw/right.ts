@@ -124,6 +124,8 @@ function idleWindows(m: RightColumnModel): RightWindows {
 /**
  * The PORTS cursor key to draw (10-13): `portCursor` when set (a key that is
  * gone then draws no `❯`), else the first shown port while PORTS is focused.
+ * That null-cursor fallback is only the one-frame bridge until PanelApp pins
+ * the same key (IN-02), so `❯` never flickers off on focus entry.
  */
 export function portCursorKey(m: RightColumnModel): string | null {
   const focused = m.ui.focus === "ports";

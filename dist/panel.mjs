@@ -24168,6 +24168,10 @@ function effectiveUi(ui, agentIds) {
   if (ui.selectedAgentId === null || agentIds.has(ui.selectedAgentId)) return ui;
   return { ...ui, selectedAgentId: null };
 }
+function pinPortCursor(ui, shownKeys) {
+  if (ui.focus !== "ports" || ui.portCursor !== null || shownKeys.length === 0) return null;
+  return shownKeys[0] ?? null;
+}
 
 // src/panel/ui/keymap.ts
 var BUILT_PHASE = 10;
@@ -26854,6 +26858,12 @@ function PanelApp(props = {}) {
     projectIdx,
     portKeys: visiblePortEntries(ports, true).shown.map((p) => p.key)
   };
+  const portPin = pinPortCursor(ui, viewRef.current.portKeys);
+  import_react47.default.useEffect(() => {
+    if (portPin === null) return;
+    const s = uiRef.current;
+    if (s.focus === "ports" && s.portCursor === null) apply({ t: "setPortCursor", key: portPin });
+  }, [portPin, apply]);
   const scrollRef = import_react47.default.useRef(EMPTY_SCROLL);
   const uiShown = phaseCursorStale && ui.phaseCursor !== null ? { ...ui, phaseCursor: null } : ui;
   const uiForDraw = effectiveUi(uiShown, viewRef.current.agentIds);
