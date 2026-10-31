@@ -1530,6 +1530,39 @@ describe("PanelApp live PORTS (10-15, KEYS-02, KEYS-03)", () => {
     await vi.waitFor(() => expect(cursorPort(lastFrame())).toBe("27036"));
   });
 
+  it("IN-02: Tab to PORTS pins the drawn ❯; a new lower port does not move it", async () => {
+    setScanMs(60);
+    const { lastFrame, stdin } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
+    await vi.waitFor(() => expect(lastFrame()).toContain(":27036"));
+    await pressEach(stdin, KEYS.tab, KEYS.tab);
+    await vi.waitFor(() => expect(footer(lastFrame())).toContain("browse ports"));
+    await vi.waitFor(() => expect(cursorPort(lastFrame())).toBe("3000"));
+    // no arrow pressed: a scan that adds a lower-numbered port must not take the ❯
+    PORTS.list = [sp(2000, 40, "deno", [40]), VITE, BUN, STEAM];
+    await vi.waitFor(() => expect(lastFrame()).toContain(":2000"));
+    const first = (portsBlock(lastFrame())[0] ?? "").trim();
+    expect(first).toMatch(/^:2000 +deno/);
+    expect(first).not.toContain("❯");
+    expect(cursorPort(lastFrame())).toBe("3000");
+    // ↓ moves from the pinned identity (3000), not from the new first row
+    press(stdin, KEYS.down);
+    await vi.waitFor(() => expect(cursorPort(lastFrame())).toBe("5173"));
+  });
+
+  it("IN-02: ports that appear while PORTS is focused are pinned; a new lower port does not move ❯", async () => {
+    PORTS.list = [];
+    setScanMs(60);
+    const { lastFrame } = await mountTty(
+      <PanelApp tickMs={FROZEN} now={() => NOW} initialUi={{ focus: "ports" }} />,
+    );
+    await vi.waitFor(() => expect(lastFrame()).toContain("PORTS"));
+    PORTS.list = [VITE, BUN];
+    await vi.waitFor(() => expect(cursorPort(lastFrame())).toBe("3000"));
+    PORTS.list = [sp(2000, 40, "deno", [40]), VITE, BUN];
+    await vi.waitFor(() => expect(lastFrame()).toContain(":2000"));
+    expect(cursorPort(lastFrame())).toBe("3000");
+  });
+
   it("a vanished selected port draws no `❯` (not first, not nearest); one ↓ then selects the first port (fail closed)", async () => {
     setScanMs(60);
     const { lastFrame, stdin } = await mountTty(
