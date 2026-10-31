@@ -1103,6 +1103,9 @@ describe("PanelApp live PHASES (10-14, KEYS-05, KEYS-02)", () => {
     makeRow({ session_id: "s-pa", folder: "projA", cwd: "/projA", title: "work on A" }),
     makeRow({ session_id: "s-pb", folder: "projB", cwd: "/projB", title: "work on B" }),
   ];
+  /** `rows` with the first row re-titled, so the poll that lands a re-order is visible in the frame. */
+  const retitled = (rows: SessionRow[], title: string): SessionRow[] =>
+    rows.map((r, i) => (i === 0 ? { ...r, title } : r));
   /** The right-column line showing `project i/N` (the dir row). */
   const projLine = (frame: string): string => lines(frame).find((l) => /project \d\/\d/.test(l)) ?? "";
   /** The phase name on the PHASES cursor row (`❯`). */
@@ -1171,19 +1174,47 @@ describe("PanelApp live PHASES (10-14, KEYS-05, KEYS-02)", () => {
     await vi.waitFor(() => expect(lastFrame()).toContain("Alpha v1"), { timeout: 3000 });
     expect(projLine(lastFrame())).toContain("project 1/2");
 
-    // before any ←/→: the shown root is kept across the re-order
-    ROWS.list = projectRows().reverse();
-    await vi.waitFor(() => expect(projLine(lastFrame())).toContain("project 2/2"), { timeout: 3000 });
+    // before any ←/→: the shown root and its number are kept across the
+    // re-order (WR-01: `project i/N` counts the first-seen order, not recency)
+    ROWS.list = retitled(projectRows().reverse(), "polled B first");
+    await vi.waitFor(() => expect(lastFrame()).toContain("polled B first"), { timeout: 3000 });
     expect(projLine(lastFrame())).toContain("projA");
+    expect(projLine(lastFrame())).toContain("project 1/2");
     expect(lastFrame()).toContain("Alpha v1");
 
     // after →: the picked root is kept across the next re-order
     await pressEach(stdin, KEYS.tab, KEYS.right);
     await vi.waitFor(() => expect(projLine(lastFrame())).toContain("projB"));
-    expect(projLine(lastFrame())).toContain("project 1/2");
-    ROWS.list = projectRows();
-    await vi.waitFor(() => expect(projLine(lastFrame())).toContain("project 2/2"), { timeout: 3000 });
+    expect(projLine(lastFrame())).toContain("project 2/2");
+    ROWS.list = retitled(projectRows(), "polled A first");
+    await vi.waitFor(() => expect(lastFrame()).toContain("polled A first"), { timeout: 3000 });
     expect(projLine(lastFrame())).toContain("projB");
+    expect(projLine(lastFrame())).toContain("project 2/2");
+  });
+
+  it("→ walks every project in a stable order while activity re-orders the set (WR-01)", async () => {
+    const rowC = makeRow({ session_id: "s-pc", folder: "projC", cwd: "/projC", title: "work on C" });
+    ROWS.list = [...projectRows(), rowC];
+    PH.roots = ["/projA", "/projB", "/projC"];
+    const { lastFrame, stdin } = await mountTty(<PanelApp tickMs={FROZEN} now={() => NOW} />);
+    await vi.waitFor(() => expect(projLine(lastFrame())).toContain("project 1/3"), { timeout: 3000 });
+    expect(projLine(lastFrame())).toContain("projA");
+    await pressEach(stdin, KEYS.tab, KEYS.right);
+    await vi.waitFor(() => expect(projLine(lastFrame())).toContain("projB"));
+    expect(projLine(lastFrame())).toContain("project 2/3");
+
+    // activity moves B ahead of A (recency order B, A, C): the next → still reaches C
+    const [a, b] = projectRows();
+    ROWS.list = retitled([b!, a!, rowC], "polled B first");
+    await vi.waitFor(() => expect(lastFrame()).toContain("polled B first"), { timeout: 3000 });
+    expect(projLine(lastFrame())).toContain("projB");
+    expect(projLine(lastFrame())).toContain("project 2/3");
+    press(stdin, KEYS.right);
+    await vi.waitFor(() => expect(projLine(lastFrame())).toContain("projC"));
+    expect(projLine(lastFrame())).toContain("project 3/3");
+    press(stdin, KEYS.right);
+    await vi.waitFor(() => expect(projLine(lastFrame())).toContain("projA"));
+    expect(projLine(lastFrame())).toContain("project 1/3");
   });
 
   it("↑/↓ move the phase cursor by number, PgUp/PgDn by the window; a project change resets it", async () => {

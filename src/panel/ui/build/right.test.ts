@@ -1,7 +1,14 @@
 import { describe, it, expect } from "vitest";
 import type { FocusEntry, Phase, Progress } from "../../../phases.js";
 import type { ResumeRow } from "../../../sessions.js";
-import { buildProjects, buildSessions, currentPhaseNumber, phaseEntries } from "./right.js";
+import {
+  buildProjects,
+  buildSessions,
+  currentPhaseNumber,
+  orderFocusSet,
+  phaseEntries,
+  stableProjectOrder,
+} from "./right.js";
 
 // Phase 10 plan 10-14 Task 1: the pure PHASES / SESSIONS view-model builders
 // (D-23, KEYS-05: a project's identity is its root).
@@ -96,6 +103,38 @@ describe("buildProjects", () => {
     expect(buildProjects([], new Map())).toEqual([]);
     const rev = buildProjects([...focus].reverse(), new Map());
     expect(rev.map((p) => p.root)).toEqual(["/b", "/a"]);
+  });
+});
+
+describe("stableProjectOrder / orderFocusSet (WR-01, KEYS-05)", () => {
+  const fe = (root: string): FocusEntry => ({ root, name: root.slice(1) });
+  const roots = (fs: readonly FocusEntry[]): string[] => fs.map((f) => f.root);
+
+  it("numbers roots in first-seen order, so a recency re-order keeps the cycle order", () => {
+    const first = stableProjectOrder(new Map(), [fe("/a"), fe("/b"), fe("/c")]);
+    expect(roots(orderFocusSet([fe("/a"), fe("/b"), fe("/c")], first))).toEqual(["/a", "/b", "/c"]);
+    // activity moves /b then /c to the front: the order stays a, b, c
+    const second = stableProjectOrder(first, [fe("/b"), fe("/a"), fe("/c")]);
+    expect(roots(orderFocusSet([fe("/b"), fe("/a"), fe("/c")], second))).toEqual(["/a", "/b", "/c"]);
+    const third = stableProjectOrder(second, [fe("/c"), fe("/b"), fe("/a")]);
+    expect(roots(orderFocusSet([fe("/c"), fe("/b"), fe("/a")], third))).toEqual(["/a", "/b", "/c"]);
+  });
+
+  it("appends a new root and drops a root that left; a returning root goes to the end", () => {
+    const m1 = stableProjectOrder(new Map(), [fe("/a"), fe("/b")]);
+    const m2 = stableProjectOrder(m1, [fe("/c"), fe("/b")]);
+    expect([...m2.keys()].sort()).toEqual(["/b", "/c"]);
+    expect(roots(orderFocusSet([fe("/c"), fe("/b")], m2))).toEqual(["/b", "/c"]);
+    const m3 = stableProjectOrder(m2, [fe("/a"), fe("/c"), fe("/b")]);
+    expect(roots(orderFocusSet([fe("/a"), fe("/c"), fe("/b")], m3))).toEqual(["/b", "/c", "/a"]);
+  });
+
+  it("keeps the first scan in its given order (the D-02 default) and does not mutate its input", () => {
+    const input = [fe("/z"), fe("/m"), fe("/a")];
+    const out = orderFocusSet(input, stableProjectOrder(new Map(), input));
+    expect(roots(out)).toEqual(["/z", "/m", "/a"]);
+    expect(out).not.toBe(input);
+    expect(orderFocusSet([], new Map())).toEqual([]);
   });
 });
 

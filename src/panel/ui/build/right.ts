@@ -70,6 +70,36 @@ export function buildProjects(
 }
 
 /**
+ * WR-01 (KEYS-05): the first-seen sequence of each focus-set root. The focus
+ * set arrives in readAll's most-recently-active order, which changes on every
+ * file touch; ←/→ and `project i/N` use this order instead. A root keeps its
+ * number while it stays in the set; a new root is appended in the order it
+ * arrives (so the first scan keeps the D-02 most-recent-first default). The
+ * same shape as `stableOrder` for the agent cards.
+ */
+export function stableProjectOrder(
+  prev: ReadonlyMap<string, number>,
+  focusSet: readonly FocusEntry[],
+): Map<string, number> {
+  const next = new Map<string, number>();
+  let seq = 0;
+  for (const v of prev.values()) if (Number.isFinite(v)) seq = Math.max(seq, v + 1);
+  const live = new Set(focusSet.map((f) => f.root));
+  for (const [root, s] of prev) if (live.has(root)) next.set(root, s);
+  for (const f of focusSet) if (!next.has(f.root)) next.set(f.root, seq++);
+  return next;
+}
+
+/** The focus set sorted by `stableProjectOrder` (a root missing from `order` sorts last). */
+export function orderFocusSet(
+  focusSet: readonly FocusEntry[],
+  order: ReadonlyMap<string, number>,
+): FocusEntry[] {
+  const at = (root: string): number => order.get(root) ?? Number.MAX_SAFE_INTEGER;
+  return [...focusSet].sort((a, b) => at(a.root) - at(b.root));
+}
+
+/**
  * The phase the PHASES cursor rests on by default: the current phase, the last
  * phase when every phase is done, or null when the project has none.
  */

@@ -26,7 +26,13 @@ import { ScreenView } from "./ui/ScreenView.js";
 import { buildAgents, stableOrder } from "./ui/build/agents.js";
 import { buildDetail } from "./ui/build/detail.js";
 import { buildFiles } from "./ui/build/files.js";
-import { buildProjects, buildSessions, currentPhaseNumber } from "./ui/build/right.js";
+import {
+  buildProjects,
+  buildSessions,
+  currentPhaseNumber,
+  orderFocusSet,
+  stableProjectOrder,
+} from "./ui/build/right.js";
 import { buildPorts } from "./ui/build/ports.js";
 import { cycleId, gridItems, moveGrid, moveList, pageGrid } from "./ui/nav.js";
 import { geometry } from "./ui/geometry.js";
@@ -363,7 +369,13 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
   const shownRootRef = React.useRef<string | null>(null);
   const ph = usePhases(liveRowsRef, ui.projectRoot ?? shownRootRef.current ?? "");
   shownRootRef.current = ph.focusRoot;
-  const projects = buildProjects(ph.focusSet, ph.progress);
+  // WR-01: ←/→ and `project i/N` walk the first-seen order of the roots, not
+  // the focus set's most-recently-active order (which changes on every touch)
+  const projectOrderRef = React.useRef<Map<string, number>>(new Map());
+  projectOrderRef.current = stableProjectOrder(projectOrderRef.current, ph.focusSet);
+  const focusSet = orderFocusSet(ph.focusSet, projectOrderRef.current);
+  const projectIdx = Math.max(0, focusSet.findIndex((f) => f.root === ph.focusRoot));
+  const projects = buildProjects(focusSet, ph.progress);
   // 10-14 (D-23): SESSIONS from the shared resume picker; its scan runs only
   // while the SESSIONS tab is shown (08 D-19).
   const resume = useResume(liveRowsRef, ui.rightTab === "sessions");
@@ -380,7 +392,7 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
     groups: files.groups,
     filesNarrowed: files.narrowed,
     projects,
-    projectIndex: ph.idx,
+    projectIndex: projectIdx,
     sessions,
     sessionStatus: resume.status,
     sessionCursor: resume.selId,
@@ -391,7 +403,7 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
     agentsKey(ag.agents, ag.idle),
     detailKey(detail),
     filesKey(files.conflicts, files.groups, files.narrowed),
-    phasesKey(projects, ph.idx),
+    phasesKey(projects, projectIdx),
     sessionsKey(sessions, resume.status, resume.selId, sessionsScanning),
     portsKey(ports),
   ].join("\u001c");
@@ -438,7 +450,7 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
     projectIdx: 0,
     portKeys: [],
   });
-  const shownProject = projects[ph.idx];
+  const shownProject = projects[projectIdx];
   viewRef.current = {
     agentIds: new Set([...cardIds, ...stripIds]),
     cardIds,
@@ -448,8 +460,8 @@ export function PanelApp(props: PanelAppProps = {}): React.ReactElement {
     nameById: new Map([...ag.agents, ...ag.idle].map((x) => [x.id, x.name] as const)),
     phaseNumbers: shownProject === undefined ? [] : shownProject.phases.map((e) => e.number),
     currentPhase: currentPhaseNumber(shownProject),
-    roots: ph.focusSet.map((f) => f.root),
-    projectIdx: ph.idx,
+    roots: focusSet.map((f) => f.root),
+    projectIdx,
     portKeys: visiblePortEntries(ports, true).shown.map((p) => p.key),
   };
   const scrollRef = React.useRef<ScrollState>(EMPTY_SCROLL);

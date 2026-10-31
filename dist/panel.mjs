@@ -26398,6 +26398,19 @@ function buildProjects(focusSet, progress) {
     };
   });
 }
+function stableProjectOrder(prev, focusSet) {
+  const next = /* @__PURE__ */ new Map();
+  let seq = 0;
+  for (const v of prev.values()) if (Number.isFinite(v)) seq = Math.max(seq, v + 1);
+  const live = new Set(focusSet.map((f) => f.root));
+  for (const [root, s] of prev) if (live.has(root)) next.set(root, s);
+  for (const f of focusSet) if (!next.has(f.root)) next.set(f.root, seq++);
+  return next;
+}
+function orderFocusSet(focusSet, order) {
+  const at = (root) => order.get(root) ?? Number.MAX_SAFE_INTEGER;
+  return [...focusSet].sort((a, b) => at(a.root) - at(b.root));
+}
 function currentPhaseNumber(project) {
   if (project === void 0 || project.phases.length === 0) return null;
   const cur = project.phases.find((p) => p.status === "current");
@@ -26756,7 +26769,11 @@ function PanelApp(props = {}) {
   const shownRootRef = import_react47.default.useRef(null);
   const ph = usePhases(liveRowsRef, ui.projectRoot ?? shownRootRef.current ?? "");
   shownRootRef.current = ph.focusRoot;
-  const projects = buildProjects(ph.focusSet, ph.progress);
+  const projectOrderRef = import_react47.default.useRef(/* @__PURE__ */ new Map());
+  projectOrderRef.current = stableProjectOrder(projectOrderRef.current, ph.focusSet);
+  const focusSet = orderFocusSet(ph.focusSet, projectOrderRef.current);
+  const projectIdx = Math.max(0, focusSet.findIndex((f) => f.root === ph.focusRoot));
+  const projects = buildProjects(focusSet, ph.progress);
   const resume = useResume(liveRowsRef, ui.rightTab === "sessions");
   const sessions = buildSessions(resume.rows, resume.isLive, now());
   const sessionsScanning = resume.rows === null;
@@ -26769,7 +26786,7 @@ function PanelApp(props = {}) {
     groups: files.groups,
     filesNarrowed: files.narrowed,
     projects,
-    projectIndex: ph.idx,
+    projectIndex: projectIdx,
     sessions,
     sessionStatus: resume.status,
     sessionCursor: resume.selId,
@@ -26780,7 +26797,7 @@ function PanelApp(props = {}) {
     agentsKey(ag.agents, ag.idle),
     detailKey(detail),
     filesKey(files.conflicts, files.groups, files.narrowed),
-    phasesKey(projects, ph.idx),
+    phasesKey(projects, projectIdx),
     sessionsKey(sessions, resume.status, resume.selId, sessionsScanning),
     portsKey(ports)
   ].join("");
@@ -26813,7 +26830,7 @@ function PanelApp(props = {}) {
     projectIdx: 0,
     portKeys: []
   });
-  const shownProject = projects[ph.idx];
+  const shownProject = projects[projectIdx];
   viewRef.current = {
     agentIds: /* @__PURE__ */ new Set([...cardIds, ...stripIds]),
     cardIds,
@@ -26823,8 +26840,8 @@ function PanelApp(props = {}) {
     nameById: new Map([...ag.agents, ...ag.idle].map((x) => [x.id, x.name])),
     phaseNumbers: shownProject === void 0 ? [] : shownProject.phases.map((e) => e.number),
     currentPhase: currentPhaseNumber(shownProject),
-    roots: ph.focusSet.map((f) => f.root),
-    projectIdx: ph.idx,
+    roots: focusSet.map((f) => f.root),
+    projectIdx,
     portKeys: visiblePortEntries(ports, true).shown.map((p) => p.key)
   };
   const scrollRef = import_react47.default.useRef(EMPTY_SCROLL);
